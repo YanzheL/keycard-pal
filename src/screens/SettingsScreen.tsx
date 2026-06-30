@@ -23,6 +23,7 @@ import theme from '@/theme';
 
 import NFCBottomSheet from '@/components/NFCBottomSheet';
 import DashboardLayoutSettingsSection from '@/components/settings/DashboardLayoutSettingsSection';
+import Eip7730SettingsSection from '@/components/settings/eip7730/Eip7730SettingsSection.online';
 import EnsSettingsSection from '@/components/settings/ens/EnsSettingsSection.online';
 import KeycardSettingsSection from '@/components/settings/KeycardSettingsSection';
 import KeycardsInUseSettingsSection from '@/components/settings/KeycardsInUseSettingsSection';
@@ -170,6 +171,7 @@ export default function SettingsScreen({ navigation }: SettingsScreenProps) {
             <EnsSettingsSection />
             <WalletConnectSettingsSection />
             <TenderlySettingsSection />
+            <Eip7730SettingsSection />
           </FieldFocusContext.Provider>
         </View>
       </ScrollView>

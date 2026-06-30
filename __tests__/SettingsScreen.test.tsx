@@ -95,6 +95,10 @@ jest.mock('../src/components/settings/DashboardLayoutSettingsSection', () => {
 });
 
 jest.mock(
+  '../src/components/settings/eip7730/Eip7730SettingsSection.online',
+  () => () => null,
+);
+jest.mock(
   '../src/components/settings/ens/EnsSettingsSection.online',
   () => () => null,
 );
