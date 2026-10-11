@@ -154,7 +154,7 @@ describe('Eip712JsonPanel EIP-7730 integration', () => {
     expect(screen.queryByText('SpecialEip712Section')).toBeNull();
   });
 
-  it("keeps the app's own Permit reviewer over a matching descriptor", () => {
+  it("lets a matching descriptor replace the app's own Permit reviewer", () => {
     mockLookupEip712.mockReturnValue({ intent: 'Approve spender', fields: [] });
     const eip712 = {
       ...buildSummary({ spender: '0xabc', sigDeadline: '1' }),
@@ -169,9 +169,8 @@ describe('Eip712JsonPanel EIP-7730 integration', () => {
         chainId={1}
       />,
     );
-    expect(screen.getByText('SpecialEip712Section')).toBeTruthy();
-    expect(screen.queryByText('Approve spender')).toBeNull();
-    expect(mockLookupEip712).not.toHaveBeenCalled();
+    expect(screen.getByText('Approve spender')).toBeTruthy();
+    expect(screen.queryByText('SpecialEip712Section')).toBeNull();
   });
 
   it('looks the descriptor up by encoded type and passes the message domain', () => {

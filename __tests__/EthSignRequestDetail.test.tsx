@@ -4,6 +4,7 @@ import { RLP } from '@ethereumjs/rlp';
 import { encodeFunctionData, parseAbi } from 'viem';
 
 import SimulationAddressProvider from '../src/components/SignRequestDetail/SimulationAddressProvider';
+import { UNLIMITED_APPROVAL_WARNING } from '../src/constants/approval';
 import EthSignRequestDetail from '../src/components/SignRequestDetail/eth/SignRequestDetail';
 import type { EthSignRequest } from '../src/types';
 
@@ -454,8 +455,9 @@ describe('EthSignRequestDetail — EIP-712 special renderers', () => {
     expect(screen.getByText('true')).toBeTruthy();
   });
 
-  it('shows Permit allowance, spender, and deadline with token formatting', () => {
-    renderDetail({
+  // Descriptors bind USDC's Permit to "USD Coin" version 2 and Permit2 to "Permit2".
+  function usdcPermit(version: string): EthSignRequest {
+    return {
       signData: typedDataHex({
         types: {
           EIP712Domain: [
@@ -475,7 +477,7 @@ describe('EthSignRequestDetail — EIP-712 special renderers', () => {
         primaryType: 'Permit',
         domain: {
           name: 'USD Coin',
-          version: '2',
+          version,
           chainId: 1,
           verifyingContract: '0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48',
         },
@@ -490,22 +492,11 @@ describe('EthSignRequestDetail — EIP-712 special renderers', () => {
       dataType: 2,
       derivationPath: "m/44'/60'/0'/0",
       chainId: 1,
-    });
+    };
+  }
 
-    expect(screen.getByText('EIP-712 Permit')).toBeTruthy();
-    expect(
-      screen.getByText('0x1111111111111111111111111111111111111111'),
-    ).toBeTruthy();
-    expect(
-      screen.getByText('0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48'),
-    ).toBeTruthy();
-    expect(screen.getByText('1 USDC')).toBeTruthy();
-    expect(screen.getByText('1712345678')).toBeTruthy();
-    expect(screen.queryByText('Message Fields')).toBeNull();
-  });
-
-  it('flags unlimited PermitSingle approvals', () => {
-    renderDetail({
+  function unlimitedPermitSingle(domainName: string): EthSignRequest {
+    return {
       signData: typedDataHex({
         types: {
           EIP712Domain: [
@@ -527,7 +518,7 @@ describe('EthSignRequestDetail — EIP-712 special renderers', () => {
         },
         primaryType: 'PermitSingle',
         domain: {
-          name: 'Permit2',
+          name: domainName,
           chainId: 1,
           verifyingContract: '0x000000000022d473030f116ddee9f6b43ac78ba3',
         },
@@ -545,10 +536,47 @@ describe('EthSignRequestDetail — EIP-712 special renderers', () => {
       dataType: 2,
       derivationPath: "m/44'/60'/0'/0",
       chainId: 1,
-    });
+    };
+  }
+
+  it("shows the app's Permit reviewer when no descriptor matches", () => {
+    renderDetail(usdcPermit('1'));
+
+    expect(screen.getByText('EIP-712 Permit')).toBeTruthy();
+    expect(
+      screen.getByText('0x1111111111111111111111111111111111111111'),
+    ).toBeTruthy();
+    expect(
+      screen.getByText('0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48'),
+    ).toBeTruthy();
+    expect(screen.getByText('1 USDC')).toBeTruthy();
+    expect(screen.getByText('1712345678')).toBeTruthy();
+    expect(screen.queryByText('Message Fields')).toBeNull();
+  });
+
+  it('shows the registry descriptor for a Permit it binds', () => {
+    renderDetail(usdcPermit('2'));
+
+    expect(screen.getByText('Authorize spending of tokens')).toBeTruthy();
+    expect(screen.getByText('Max spending amount')).toBeTruthy();
+    expect(screen.getByText('1 USDC')).toBeTruthy();
+    expect(screen.queryByText('EIP-712 Permit')).toBeNull();
+  });
+
+  it("flags an unlimited PermitSingle in the app's reviewer", () => {
+    renderDetail(unlimitedPermitSingle('Not Permit2'));
 
     expect(screen.getByText('Unlimited USDC')).toBeTruthy();
     expect(screen.getByText(/Unlimited permit/)).toBeTruthy();
+  });
+
+  it('flags an unlimited PermitSingle in the registry descriptor', () => {
+    renderDetail(unlimitedPermitSingle('Permit2'));
+
+    expect(screen.getByText('Authorize spending of token')).toBeTruthy();
+    expect(screen.getByText('Unlimited USDC')).toBeTruthy();
+    expect(screen.getByText(UNLIMITED_APPROVAL_WARNING)).toBeTruthy();
+    expect(screen.queryByText(/Unlimited permit/)).toBeNull();
   });
 
   it('decodes SafeTx inner calldata through the selector database', () => {

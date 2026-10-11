@@ -45,8 +45,6 @@ export default function Eip712JsonPanel({
   const verifyingContract = eip712.domain?.verifyingContract;
 
   const eip7730Descriptor = useMemo(() => {
-    // The app's Permit and SafeTx reviewers check what a descriptor cannot, such as unlimited approvals.
-    if (specialEip712) return null;
     if (chainId === undefined || !verifyingContract || !rawTypedData) {
       return null;
     }
@@ -61,7 +59,7 @@ export default function Eip712JsonPanel({
       encodedType,
       rawTypedData.domain,
     );
-  }, [specialEip712, chainId, verifyingContract, rawTypedData]);
+  }, [chainId, verifyingContract, rawTypedData]);
 
   const fieldContext = useMemo<Eip7730FieldContext>(() => {
     const container = {

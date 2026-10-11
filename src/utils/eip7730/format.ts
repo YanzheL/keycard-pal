@@ -1,5 +1,7 @@
 import { formatUnits } from 'viem';
 
+import { UNLIMITED_APPROVAL_WARNING } from '@/constants/approval';
+
 import { getNativeCurrencySymbol } from '@/utils/chainMetadata';
 import { lookupToken } from '@/utils/tokenMetadata';
 
@@ -13,7 +15,7 @@ export type Eip7730FieldContext = {
 
 export type Eip7730FieldDisplay = {
   text: string;
-  warning?: string;
+  warnings?: string[];
 };
 
 export const UNKNOWN_TOKEN_WARNING = 'Unknown token';
@@ -21,6 +23,8 @@ export const UNKNOWN_TOKEN_WARNING = 'Unknown token';
 const ADDRESS_RE = /^0x[0-9a-fA-F]{40}$/;
 const ENUM_REF_PREFIX = '$.metadata.enums.';
 const NATIVE_DECIMALS = 18;
+// Spending permissions; "All" and "Max" withdraw the user's own funds.
+const UNLIMITED_MESSAGES = new Set(['Unlimited', 'Any amount']);
 
 type Params = Record<string, unknown> | undefined;
 type TokenInfo = { decimals: number; symbol: string };
@@ -122,15 +126,20 @@ function formatTokenAmount(
   const amount = toBigInt(value);
   if (amount === null) return { text: value };
   const token = resolveToken(format, ctx, params);
-  if (reachesThreshold(amount, params?.threshold)) {
-    const text = message(params, 'Unlimited');
+  if (!reachesThreshold(amount, params?.threshold)) {
     return token
-      ? { text: `${text} ${token.symbol}` }
-      : { text, warning: UNKNOWN_TOKEN_WARNING };
+      ? { text: amountText(amount, token) }
+      : { text: value, warnings: [UNKNOWN_TOKEN_WARNING] };
   }
-  return token
-    ? { text: amountText(amount, token) }
-    : { text: value, warning: UNKNOWN_TOKEN_WARNING };
+  const text = message(params, 'Unlimited');
+  const warnings = UNLIMITED_MESSAGES.has(text)
+    ? [UNLIMITED_APPROVAL_WARNING]
+    : [];
+  if (!token) warnings.push(UNKNOWN_TOKEN_WARNING);
+  return {
+    text: token ? `${text} ${token.symbol}` : text,
+    ...(warnings.length > 0 && { warnings }),
+  };
 }
 
 function formatAmount(

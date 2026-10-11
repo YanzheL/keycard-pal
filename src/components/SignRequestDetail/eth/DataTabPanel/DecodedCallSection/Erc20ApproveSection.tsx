@@ -1,6 +1,7 @@
 import { StyleSheet, View } from 'react-native';
 import { Icon, Text } from 'react-native-paper';
 
+import { UNLIMITED_APPROVAL_WARNING } from '@/constants/approval';
 import theme from '@/theme';
 
 import AddressInfoRow from '@/components/ens/AddressInfoRow.online';
@@ -61,7 +62,7 @@ export default function Erc20ApproveSection({
         <View style={styles.warningRow}>
           <Icon source="alert" size={16} color={theme.colors.negative} />
           <Text variant="labelSmall" style={styles.warningText}>
-            Unlimited approval — spender can transfer all tokens of this type
+            {UNLIMITED_APPROVAL_WARNING}
           </Text>
         </View>
       )}

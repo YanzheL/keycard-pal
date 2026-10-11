@@ -1,3 +1,4 @@
+import { UNLIMITED_APPROVAL_WARNING } from '../src/constants/approval';
 import {
   formatEip7730Field,
   UNKNOWN_TOKEN_WARNING,
@@ -124,7 +125,7 @@ describe('formatEip7730Field', () => {
           FORMAT,
           ctx({}, { chainId: 1, contractAddress: TOKEN }),
         ),
-      ).toEqual({ text: '1500000', warning: UNKNOWN_TOKEN_WARNING });
+      ).toEqual({ text: '1500000', warnings: [UNKNOWN_TOKEN_WARNING] });
     });
 
     it('warns on a token constant it cannot resolve yet', () => {
@@ -135,7 +136,7 @@ describe('formatEip7730Field', () => {
           FORMAT,
           ctx(),
         ),
-      ).toEqual({ text: '1500000', warning: UNKNOWN_TOKEN_WARNING });
+      ).toEqual({ text: '1500000', warnings: [UNKNOWN_TOKEN_WARNING] });
     });
 
     it('applies `*` metadata to the described contract only', () => {
@@ -150,7 +151,7 @@ describe('formatEip7730Field', () => {
       ).toEqual({ text: '1.5 USDT' });
       expect(
         formatEip7730Field(f, '1500000', own, ctx({ token: OTHER }, extra)),
-      ).toEqual({ text: '1500000', warning: UNKNOWN_TOKEN_WARNING });
+      ).toEqual({ text: '1500000', warnings: [UNKNOWN_TOKEN_WARNING] });
     });
 
     it('falls back to the bundled token list', () => {
@@ -190,7 +191,10 @@ describe('formatEip7730Field', () => {
           FORMAT,
           ctx({ token: NATIVE }),
         ),
-      ).toEqual({ text: '2000000000000000', warning: UNKNOWN_TOKEN_WARNING });
+      ).toEqual({
+        text: '2000000000000000',
+        warnings: [UNKNOWN_TOKEN_WARNING],
+      });
     });
 
     describe('threshold', () => {
@@ -198,33 +202,59 @@ describe('formatEip7730Field', () => {
         '0x8000000000000000000000000000000000000000000000000000000000000000';
       const f = field('tokenAmount', { token: TOKEN, threshold });
 
-      it('shows "Unlimited" with the ticker at the threshold', () => {
-        expect(formatEip7730Field(f, threshold, FORMAT, ctx())).toEqual({
-          text: 'Unlimited USDC',
-        });
+      const unlimited = {
+        text: 'Unlimited USDC',
+        warnings: [UNLIMITED_APPROVAL_WARNING],
+      };
+
+      it('shows "Unlimited" with the ticker and the approval warning at the threshold', () => {
+        expect(formatEip7730Field(f, threshold, FORMAT, ctx())).toEqual(
+          unlimited,
+        );
       });
 
       it('shows "Unlimited" above the threshold', () => {
         expect(
           formatEip7730Field(f, (2n ** 256n - 1n).toString(), FORMAT, ctx()),
-        ).toEqual({ text: 'Unlimited USDC' });
+        ).toEqual(unlimited);
       });
+
+      it('warns on "Any amount" too', () => {
+        expect(
+          formatEip7730Field(
+            field('tokenAmount', {
+              token: TOKEN,
+              threshold,
+              message: 'Any amount',
+            }),
+            threshold,
+            FORMAT,
+            ctx(),
+          ),
+        ).toEqual({
+          text: 'Any amount USDC',
+          warnings: [UNLIMITED_APPROVAL_WARNING],
+        });
+      });
+
+      it.each(['All', 'Max'])(
+        'does not warn on "%s", the user\'s own funds',
+        message => {
+          expect(
+            formatEip7730Field(
+              field('tokenAmount', { token: TOKEN, threshold, message }),
+              threshold,
+              FORMAT,
+              ctx(),
+            ),
+          ).toEqual({ text: `${message} USDC` });
+        },
+      );
 
       it('shows the amount below the threshold', () => {
         expect(formatEip7730Field(f, '1500000', FORMAT, ctx())).toEqual({
           text: '1.5 USDC',
         });
-      });
-
-      it('uses the descriptor message', () => {
-        expect(
-          formatEip7730Field(
-            field('tokenAmount', { token: TOKEN, threshold, message: 'Max' }),
-            threshold,
-            FORMAT,
-            ctx(),
-          ),
-        ).toEqual({ text: 'Max USDC' });
       });
 
       it('still warns when the token is unknown', () => {
@@ -235,7 +265,10 @@ describe('formatEip7730Field', () => {
             FORMAT,
             ctx(),
           ),
-        ).toEqual({ text: 'Unlimited', warning: UNKNOWN_TOKEN_WARNING });
+        ).toEqual({
+          text: 'Unlimited',
+          warnings: [UNLIMITED_APPROVAL_WARNING, UNKNOWN_TOKEN_WARNING],
+        });
       });
 
       it('ignores a threshold constant it cannot resolve yet', () => {

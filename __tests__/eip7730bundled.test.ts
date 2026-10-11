@@ -1,4 +1,5 @@
 // Real descriptors and no mocks, so a change to the bundled data or its parsing fails here.
+import { UNLIMITED_APPROVAL_WARNING } from '../src/constants/approval';
 import { encodeEip712Type } from '../src/utils/eip712';
 import { formatEip7730Field } from '../src/utils/eip7730/format';
 import { lookupCalldata, lookupEip712 } from '../src/utils/eip7730/lookup';
@@ -67,6 +68,15 @@ describe('bundled EIP-7730 descriptors', () => {
     );
     expect(out.intent).toBe('Approve');
     expect(out.Amount).toBe('Unlimited USDT');
+    const descriptor = lookupCalldata(1, USDT, '0x095ea7b3')!;
+    const amount = descriptor.fields.find(f => f.label === 'Amount')!;
+    expect(
+      formatEip7730Field(amount, (2n ** 256n - 1n).toString(), descriptor, {
+        chainId: 1,
+        contractAddress: USDT,
+        resolvePath: () => USDT,
+      }).warnings,
+    ).toEqual([UNLIMITED_APPROVAL_WARNING]);
   });
 
   it('Aave v2 borrow resolves the token argument and the rate enum', () => {

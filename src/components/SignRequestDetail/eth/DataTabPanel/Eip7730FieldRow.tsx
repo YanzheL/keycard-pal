@@ -29,20 +29,20 @@ export default function Eip7730FieldRow({
       </View>
     );
   }
-  const { text, warning } = formatEip7730Field(field, raw, format, ctx);
+  const { text, warnings = [] } = formatEip7730Field(field, raw, format, ctx);
   return (
     <>
       <View style={styles.row}>
         <InfoRow label={field.label} value={text} />
       </View>
-      {warning && (
-        <View style={styles.warningRow}>
+      {warnings.map(warning => (
+        <View key={warning} style={styles.warningRow}>
           <Icon source="alert" size={16} color={theme.colors.negative} />
           <Text variant="labelSmall" style={styles.warningText}>
             {warning}
           </Text>
         </View>
-      )}
+      ))}
     </>
   );
 }
