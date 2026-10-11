@@ -10,6 +10,7 @@ import AddressInfoRow from '@/components/ens/AddressInfoRow.online';
 import InfoRow from '@/components/InfoRow';
 
 import {
+  eip712DomainChainId,
   encodeEip712Type,
   parseEip712RawTypedData,
   type Eip712Summary,
@@ -43,9 +44,13 @@ export default function Eip712JsonPanel({
     [request.reviewData, request.signData],
   );
   const verifyingContract = eip712.domain?.verifyingContract;
+  // ERC-7730 binds a message to its domain's chain; WalletConnect requests carry no other.
+  const domainChainId = rawTypedData
+    ? eip712DomainChainId(rawTypedData.domain)
+    : undefined;
 
   const eip7730Descriptor = useMemo(() => {
-    if (chainId === undefined || !verifyingContract || !rawTypedData) {
+    if (domainChainId === undefined || !verifyingContract || !rawTypedData) {
       return null;
     }
     const encodedType = encodeEip712Type(
@@ -54,27 +59,27 @@ export default function Eip712JsonPanel({
     );
     if (!encodedType) return null;
     return lookupEip712(
-      chainId,
+      domainChainId,
       verifyingContract,
       encodedType,
       rawTypedData.domain,
     );
-  }, [chainId, verifyingContract, rawTypedData]);
+  }, [domainChainId, verifyingContract, rawTypedData]);
 
   const fieldContext = useMemo<Eip7730FieldContext>(() => {
     const container = {
       from: request.address,
       to: verifyingContract,
       value: '0',
-      chainId,
+      chainId: domainChainId,
     };
     return {
-      chainId,
+      chainId: domainChainId,
       contractAddress: verifyingContract,
       resolvePath: path =>
         resolveEip712FieldValue(path, rawTypedData?.message, container),
     };
-  }, [chainId, verifyingContract, rawTypedData, request.address]);
+  }, [domainChainId, verifyingContract, rawTypedData, request.address]);
 
   const eip712Digest = useMemo(() => {
     // Same classification as the bytes sent to the card, so the digest shown is the one signed.

@@ -6,11 +6,9 @@ import { Eip7730Context } from '../src/providers/eip7730/context';
 import { Eip7730DownloadProvider } from '../src/providers/eip7730/Provider.online';
 
 const mockSavePersistedIndex = jest.fn();
-const mockSaveIndexedAt = jest.fn();
 
 jest.mock('../src/storage/eip7730Index', () => ({
   savePersistedIndex: (...args: any[]) => mockSavePersistedIndex(...args),
-  saveIndexedAt: (...args: any[]) => mockSaveIndexedAt(...args),
 }));
 
 const mockRestore = jest.fn();
@@ -38,7 +36,7 @@ jest.mock('../src/storage/eip7730Settings.online', () => ({
 
 const mockProcess = jest.fn();
 jest.mock('../src/utils/eip7730/zip', () => ({
-  processLedgerRegistryZip: (...args: any[]) => mockProcess(...args),
+  processRegistryZip: (...args: any[]) => mockProcess(...args),
   isEmptyIndex: (index: any) =>
     Object.keys(index.contracts).length === 0 &&
     Object.keys(index.eip712).length === 0,
@@ -52,8 +50,10 @@ const INDEX = {
 };
 
 const mockSetRuntimeIndex = jest.fn();
+const mockHasRuntimeIndex = jest.fn();
 jest.mock('../src/utils/eip7730/lookup', () => ({
   setRuntimeIndex: (...args: any[]) => mockSetRuntimeIndex(...args),
+  hasRuntimeIndex: () => mockHasRuntimeIndex(),
 }));
 
 const mockNetInfoFetch = jest.fn();
@@ -62,11 +62,18 @@ jest.mock('@react-native-community/netinfo', () => ({
   default: { fetch: (...args: any[]) => mockNetInfoFetch(...args) },
 }));
 
+const WIFI_ONLY_BLOCKED =
+  'Not on Wi-Fi, nothing downloaded. Turn off "Download on Wi-Fi only" to use mobile data.';
+
 function PhaseProbe() {
   const ctx = useContext(Eip7730Context);
   return (
     <View>
       <Text testID="phase">{ctx.phase}</Text>
+      <Text testID="error">{ctx.error ?? ''}</Text>
+      <Text testID="trigger" onPress={() => ctx.triggerDownload()}>
+        go
+      </Text>
     </View>
   );
 }
@@ -100,8 +107,8 @@ function buildResponse({
 beforeEach(() => {
   jest.clearAllMocks();
   mockRestore.mockResolvedValue(undefined);
+  mockHasRuntimeIndex.mockReturnValue(true);
   mockSavePersistedIndex.mockResolvedValue(undefined);
-  mockSaveIndexedAt.mockResolvedValue(undefined);
   mockLoadSource.mockResolvedValue('manual');
   mockLoadUrl.mockResolvedValue('https://example.test/registry.zip');
   mockLoadWifi.mockResolvedValue(false);
@@ -149,7 +156,6 @@ describe('Eip7730DownloadProvider', () => {
     );
     expect(mockProcess).toHaveBeenCalled();
     expect(mockSavePersistedIndex).toHaveBeenCalled();
-    expect(mockSaveIndexedAt).toHaveBeenCalled();
     expect(mockSaveEtag).toHaveBeenCalledWith('W/abc');
     expect(mockSetRuntimeIndex).toHaveBeenCalledWith(INDEX);
   });
@@ -195,7 +201,30 @@ describe('Eip7730DownloadProvider', () => {
     expect(mockSavePersistedIndex).not.toHaveBeenCalled();
   });
 
-  it('skips download when wifi-only and connection is cellular', async () => {
+  it('downloads in full when no saved index was restored, whatever the stored ETag', async () => {
+    mockLoadSource.mockResolvedValue('auto');
+    mockHasRuntimeIndex.mockReturnValue(false);
+    mockLoadEtag.mockResolvedValue('W/old');
+    mockLoadLastModified.mockResolvedValue('Sat, 10 Oct 2026 00:00:00 GMT');
+    (global as any).fetch.mockResolvedValue(buildResponse());
+
+    render(
+      <Eip7730DownloadProvider>
+        <PhaseProbe />
+      </Eip7730DownloadProvider>,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId('phase').children[0]).toBe('done');
+    });
+    expect((global as any).fetch).toHaveBeenCalledWith(
+      'https://example.test/registry.zip',
+      { headers: {} },
+    );
+    expect(mockSetRuntimeIndex).toHaveBeenCalledWith(INDEX);
+  });
+
+  it('says why when Wi-Fi only blocks the download', async () => {
     mockLoadSource.mockResolvedValue('auto');
     mockLoadWifi.mockResolvedValue(true);
     mockNetInfoFetch.mockResolvedValue({ type: 'cellular' });
@@ -207,9 +236,58 @@ describe('Eip7730DownloadProvider', () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByTestId('phase').children[0]).toBe('idle');
+      expect(screen.getByTestId('phase').children[0]).toBe('error');
+    });
+    expect(screen.getByTestId('error').children[0]).toBe(WIFI_ONLY_BLOCKED);
+    expect((global as any).fetch).not.toHaveBeenCalled();
+  });
+
+  it('keeps Wi-Fi only for Download now too', async () => {
+    mockLoadWifi.mockResolvedValue(true);
+    mockNetInfoFetch.mockResolvedValue({ type: 'cellular' });
+
+    render(
+      <Eip7730DownloadProvider>
+        <PhaseProbe />
+      </Eip7730DownloadProvider>,
+    );
+    await waitFor(() => {
+      expect(mockRestore).toHaveBeenCalled();
+    });
+    await act(async () => {
+      screen.getByTestId('trigger').props.onPress();
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId('error').children[0]).toBe(WIFI_ONLY_BLOCKED);
     });
     expect((global as any).fetch).not.toHaveBeenCalled();
+  });
+
+  it('clears the Wi-Fi message on the next attempt', async () => {
+    mockLoadSource.mockResolvedValue('auto');
+    mockLoadWifi.mockResolvedValue(true);
+    mockNetInfoFetch.mockResolvedValue({ type: 'cellular' });
+    (global as any).fetch.mockResolvedValue(buildResponse());
+
+    render(
+      <Eip7730DownloadProvider>
+        <PhaseProbe />
+      </Eip7730DownloadProvider>,
+    );
+    await waitFor(() => {
+      expect(screen.getByTestId('error').children[0]).toBe(WIFI_ONLY_BLOCKED);
+    });
+
+    mockNetInfoFetch.mockResolvedValue({ type: 'wifi' });
+    await act(async () => {
+      screen.getByTestId('trigger').props.onPress();
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId('phase').children[0]).toBe('done');
+    });
+    expect(screen.queryByText(WIFI_ONLY_BLOCKED)).toBeNull();
   });
 
   it('triggerDownload forces a download even when source is manual', async () => {

@@ -1,24 +1,9 @@
 import {
   clearPersistedIndex,
-  loadIndexedAt,
   loadPersistedIndex,
-  saveIndexedAt,
   savePersistedIndex,
 } from '../src/storage/eip7730Index';
 import { EIP7730_INDEX_VERSION } from '../src/utils/eip7730/zip';
-
-const mockGetItem = jest.fn();
-const mockSetItem = jest.fn();
-const mockRemoveItem = jest.fn();
-
-jest.mock('@react-native-async-storage/async-storage', () => ({
-  __esModule: true,
-  default: {
-    getItem: (...args: any[]) => mockGetItem(...args),
-    setItem: (...args: any[]) => mockSetItem(...args),
-    removeItem: (...args: any[]) => mockRemoveItem(...args),
-  },
-}));
 
 const mockExists = jest.fn();
 const mockReadFile = jest.fn();
@@ -60,11 +45,10 @@ describe('loadPersistedIndex', () => {
     expect(mockUnlink).not.toHaveBeenCalled();
   });
 
-  it('drops an index from an older parser, and its date, so the bundled one applies', async () => {
+  it('drops an index from an older parser so the bundled one applies', async () => {
     mockReadFile.mockResolvedValue(stored(EIP7730_INDEX_VERSION - 1));
     expect(await loadPersistedIndex()).toBeNull();
     expect(mockUnlink).toHaveBeenCalledWith(PATH);
-    expect(mockRemoveItem).toHaveBeenCalledWith('eip7730_indexed_at');
   });
 
   it('drops a file that is not an index', async () => {
@@ -73,11 +57,18 @@ describe('loadPersistedIndex', () => {
     expect(mockUnlink).toHaveBeenCalledWith(PATH);
   });
 
-  it('returns null without a file, or when reading fails', async () => {
+  it('returns null without a file', async () => {
     mockExists.mockResolvedValueOnce(false);
     expect(await loadPersistedIndex()).toBeNull();
+    expect(mockUnlink).not.toHaveBeenCalled();
+  });
+
+  it('drops a file it cannot read or parse', async () => {
     mockReadFile.mockRejectedValueOnce(new Error('io'));
     expect(await loadPersistedIndex()).toBeNull();
+    mockReadFile.mockResolvedValueOnce('{"version":2,"contr');
+    expect(await loadPersistedIndex()).toBeNull();
+    expect(mockUnlink).toHaveBeenCalledTimes(2);
   });
 });
 
@@ -98,17 +89,5 @@ describe('the rest of the storage', () => {
     expect(mockUnlink).not.toHaveBeenCalled();
     mockUnlink.mockRejectedValueOnce(new Error('io'));
     await expect(clearPersistedIndex()).resolves.toBeUndefined();
-  });
-
-  it('reads and writes the date of the last update', async () => {
-    mockGetItem.mockResolvedValueOnce('2026-10-11');
-    expect(await loadIndexedAt()).toBe('2026-10-11');
-    mockGetItem.mockRejectedValueOnce(new Error('io'));
-    expect(await loadIndexedAt()).toBeNull();
-    await saveIndexedAt('2026-10-12');
-    expect(mockSetItem).toHaveBeenCalledWith(
-      'eip7730_indexed_at',
-      '2026-10-12',
-    );
   });
 });

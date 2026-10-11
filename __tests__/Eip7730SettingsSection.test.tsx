@@ -1,5 +1,6 @@
 import React from 'react';
 import {
+  act,
   fireEvent,
   render,
   screen,
@@ -8,11 +9,13 @@ import {
 
 import Eip7730SettingsSectionOffline from '../src/components/settings/eip7730/Eip7730SettingsSection.offline';
 import Eip7730SettingsSectionOnline from '../src/components/settings/eip7730/Eip7730SettingsSection.online';
+import { setRuntimeIndex } from '../src/utils/eip7730/lookup';
 
-const mockLoadIndexedAt = jest.fn();
+const mockClearPersistedIndex = jest.fn();
 
 jest.mock('../src/storage/eip7730Index', () => ({
-  loadIndexedAt: (...args: any[]) => mockLoadIndexedAt(...args),
+  loadPersistedIndex: async () => null,
+  clearPersistedIndex: (...args: any[]) => mockClearPersistedIndex(...args),
 }));
 
 const mockLoadSource = jest.fn();
@@ -42,16 +45,26 @@ jest.mock('../src/hooks/useEip7730Download.online', () => ({
   useEip7730Download: () => mockUseDownload(),
 }));
 
+const mockImport = jest.fn();
 jest.mock('../src/utils/eip7730/import', () => ({
-  importLedgerRegistryZipFromPicker: jest.fn(),
+  importRegistryZipFromPicker: (...args: any[]) => mockImport(...args),
 }));
 
 const DEFAULT_URL =
   'https://github.com/ethereum/clear-signing-erc7730-registry/archive/refs/heads/master.zip';
 
+const INDEX = {
+  version: 2,
+  generatedAt: '2025-01-01T00:00:00.000Z',
+  contracts: { '1:0xabc': { '0xa9059cbb': { fields: [] } } },
+  eip712: {},
+};
+const INDEX_DATE = new Date(INDEX.generatedAt).toLocaleString();
+
 beforeEach(() => {
   jest.clearAllMocks();
-  mockLoadIndexedAt.mockResolvedValue(null);
+  setRuntimeIndex(null);
+  mockClearPersistedIndex.mockResolvedValue(undefined);
   mockLoadSource.mockResolvedValue('manual');
   mockLoadUrl.mockResolvedValue(DEFAULT_URL);
   mockLoadWifi.mockResolvedValue(false);
@@ -60,6 +73,7 @@ beforeEach(() => {
   mockSaveWifi.mockResolvedValue(undefined);
   mockClearEtag.mockResolvedValue(undefined);
   mockClearLastModified.mockResolvedValue(undefined);
+  mockImport.mockResolvedValue({ ok: false, reason: 'cancelled' });
   mockUseDownload.mockReturnValue({
     phase: 'idle',
     triggerDownload: mockTriggerDownload,
@@ -67,22 +81,83 @@ beforeEach(() => {
 });
 
 describe('Eip7730SettingsSection.offline', () => {
-  it('shows import button and Bundled default last updated', async () => {
+  it('shows the import button, the bundled index and the registry to download', () => {
     render(<Eip7730SettingsSectionOffline />);
-    await waitFor(() => {
-      expect(screen.getByTestId('eip7730-import-button')).toBeTruthy();
-    });
-    expect(screen.getByText(/Bundled/i)).toBeTruthy();
+    expect(screen.getByText('Import registry zip')).toBeTruthy();
+    expect(screen.getByText('Bundled (default)')).toBeTruthy();
+    expect(screen.queryByTestId('eip7730-use-bundled')).toBeNull();
+    expect(
+      screen.getByText(
+        'On another device, download the clear-signing registry zip from github.com/ethereum/clear-signing-erc7730-registry, then import it here.',
+      ),
+    ).toBeTruthy();
   });
 
-  it('shows formatted timestamp when persisted indexed-at exists', async () => {
-    mockLoadIndexedAt.mockResolvedValue('2025-01-01T00:00:00.000Z');
-    render(<Eip7730SettingsSectionOffline />);
-    await waitFor(() => {
-      expect(screen.getByTestId('eip7730-import-button')).toBeTruthy();
+  it('shows the date of an import as soon as it finishes', async () => {
+    mockImport.mockImplementation(async () => {
+      setRuntimeIndex(INDEX);
+      return { ok: true, index: INDEX };
     });
-    // formatted via toLocaleString — just check it's not the literal placeholder
-    expect(screen.queryByText(/Bundled/i)).toBeNull();
+    render(<Eip7730SettingsSectionOffline />);
+    fireEvent.press(screen.getByTestId('eip7730-import-button'));
+    await waitFor(() => {
+      expect(screen.getByText(INDEX_DATE)).toBeTruthy();
+    });
+  });
+
+  it('says when a file is not a registry zip, cannot be read or cannot be saved', async () => {
+    mockImport.mockResolvedValueOnce({ ok: false, reason: 'invalid' });
+    render(<Eip7730SettingsSectionOffline />);
+    fireEvent.press(screen.getByTestId('eip7730-import-button'));
+    await waitFor(() => {
+      expect(
+        screen.getByText('This file is not a clear-signing registry zip.'),
+      ).toBeTruthy();
+    });
+
+    mockImport.mockResolvedValueOnce({ ok: false, reason: 'unreadable' });
+    fireEvent.press(screen.getByTestId('eip7730-import-button'));
+    await waitFor(() => {
+      expect(
+        screen.getByText('Could not read the selected file.'),
+      ).toBeTruthy();
+    });
+
+    mockImport.mockResolvedValueOnce({ ok: false, reason: 'unsaved' });
+    fireEvent.press(screen.getByTestId('eip7730-import-button'));
+    await waitFor(() => {
+      expect(
+        screen.getByText(
+          'Could not save the descriptors. Check free storage and try again.',
+        ),
+      ).toBeTruthy();
+    });
+  });
+
+  it('says nothing when the pick is cancelled', async () => {
+    render(<Eip7730SettingsSectionOffline />);
+    fireEvent.press(screen.getByTestId('eip7730-import-button'));
+    // The label replaces the spinner once the import has settled.
+    await waitFor(() => {
+      expect(screen.getByText('Import registry zip')).toBeTruthy();
+    });
+    expect(mockImport).toHaveBeenCalled();
+    expect(screen.queryByText(/registry zip\./)).toBeNull();
+    expect(screen.queryByText(/Could not read/)).toBeNull();
+  });
+
+  it('goes back to the bundled index', async () => {
+    setRuntimeIndex(INDEX);
+    render(<Eip7730SettingsSectionOffline />);
+    expect(screen.getByText(INDEX_DATE)).toBeTruthy();
+
+    fireEvent.press(screen.getByText('Use bundled descriptors'));
+
+    await waitFor(() => {
+      expect(screen.getByText('Bundled (default)')).toBeTruthy();
+    });
+    expect(mockClearPersistedIndex).toHaveBeenCalled();
+    expect(screen.queryByTestId('eip7730-use-bundled')).toBeNull();
   });
 });
 
@@ -107,6 +182,33 @@ describe('Eip7730SettingsSection.online', () => {
     expect(screen.getByPlaceholderText(DEFAULT_URL)).toBeTruthy();
     expect(screen.getByText('Download on Wi-Fi only')).toBeTruthy();
     expect(mockSaveSource).toHaveBeenCalledWith('auto');
+  });
+
+  it('forgets the validators when Auto is chosen, so the next download is in full', async () => {
+    render(<Eip7730SettingsSectionOnline />);
+    await waitFor(() => {
+      expect(screen.getByTestId('eip7730-import-button')).toBeTruthy();
+    });
+    fireEvent.press(screen.getByText('Auto-download'));
+    await waitFor(() => {
+      expect(mockClearLastModified).toHaveBeenCalled();
+    });
+    expect(mockClearEtag).toHaveBeenCalled();
+  });
+
+  it('keeps the validators when Auto is pressed again, or Manual is chosen', async () => {
+    mockLoadSource.mockResolvedValue('auto');
+    render(<Eip7730SettingsSectionOnline />);
+    await waitFor(() => {
+      expect(screen.getByTestId('eip7730-download-now')).toBeTruthy();
+    });
+    fireEvent.press(screen.getByText('Auto-download'));
+    fireEvent.press(screen.getByText('Manual'));
+    await waitFor(() => {
+      expect(mockSaveSource).toHaveBeenCalledWith('manual');
+    });
+    expect(mockSaveSource).toHaveBeenCalledTimes(1);
+    expect(mockClearEtag).not.toHaveBeenCalled();
   });
 
   it('starts in Auto mode when persisted source is auto', async () => {
@@ -141,5 +243,131 @@ describe('Eip7730SettingsSection.online', () => {
     });
     fireEvent.press(screen.getByTestId('eip7730-download-now'));
     expect(mockTriggerDownload).not.toHaveBeenCalled();
+  });
+
+  it('shows why a download did not happen', async () => {
+    mockLoadSource.mockResolvedValue('auto');
+    mockUseDownload.mockReturnValue({
+      phase: 'error',
+      error: 'Not on Wi-Fi, nothing downloaded.',
+      triggerDownload: mockTriggerDownload,
+    });
+    render(<Eip7730SettingsSectionOnline />);
+    await waitFor(() => {
+      expect(
+        screen.getByText('Not on Wi-Fi, nothing downloaded.'),
+      ).toBeTruthy();
+    });
+  });
+
+  it('shows the date of a download as soon as it finishes', async () => {
+    mockLoadSource.mockResolvedValue('auto');
+    render(<Eip7730SettingsSectionOnline />);
+    await waitFor(() => {
+      expect(screen.getByText('Bundled (default)')).toBeTruthy();
+    });
+
+    act(() => setRuntimeIndex(INDEX));
+
+    expect(screen.getByText(INDEX_DATE)).toBeTruthy();
+  });
+
+  it('goes back to the bundled index and to Manual', async () => {
+    mockLoadSource.mockResolvedValue('auto');
+    setRuntimeIndex(INDEX);
+    render(<Eip7730SettingsSectionOnline />);
+    await waitFor(() => {
+      expect(screen.getByTestId('eip7730-use-bundled')).toBeTruthy();
+    });
+
+    fireEvent.press(screen.getByTestId('eip7730-use-bundled'));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('eip7730-import-button')).toBeTruthy();
+    });
+    expect(screen.getByText('Bundled (default)')).toBeTruthy();
+    expect(mockClearPersistedIndex).toHaveBeenCalled();
+    expect(mockSaveSource).toHaveBeenCalledWith('manual');
+  });
+
+  it('saves a trimmed URL and forgets the validators of the old one', async () => {
+    mockLoadSource.mockResolvedValue('auto');
+    render(<Eip7730SettingsSectionOnline />);
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText(DEFAULT_URL)).toBeTruthy();
+    });
+    fireEvent.changeText(
+      screen.getByPlaceholderText(DEFAULT_URL),
+      '  https://example.test/registry.zip  ',
+    );
+    fireEvent.press(screen.getByText('Save'));
+    await waitFor(() => {
+      expect(mockClearLastModified).toHaveBeenCalled();
+    });
+    expect(mockSaveUrl).toHaveBeenCalledWith(
+      'https://example.test/registry.zip',
+    );
+    expect(mockClearEtag).toHaveBeenCalled();
+  });
+
+  it('saves the default URL for an empty field, and reverts an edit', async () => {
+    mockLoadSource.mockResolvedValue('auto');
+    mockLoadUrl.mockResolvedValue('https://example.test/registry.zip');
+    render(<Eip7730SettingsSectionOnline />);
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText(DEFAULT_URL)).toBeTruthy();
+    });
+    const input = screen.getByPlaceholderText(DEFAULT_URL);
+
+    fireEvent.changeText(input, 'https://other.test/registry.zip');
+    fireEvent.press(screen.getByText('Revert'));
+    expect(input.props.value).toBe('https://example.test/registry.zip');
+
+    fireEvent.changeText(input, '   ');
+    fireEvent.press(screen.getByText('Save'));
+    await waitFor(() => {
+      expect(mockSaveUrl).toHaveBeenCalledWith(DEFAULT_URL);
+    });
+  });
+
+  it('saves the Wi-Fi only choice', async () => {
+    mockLoadSource.mockResolvedValue('auto');
+    render(<Eip7730SettingsSectionOnline />);
+    await waitFor(() => {
+      expect(screen.getByRole('switch')).toBeTruthy();
+    });
+    fireEvent(screen.getByRole('switch'), 'valueChange', true);
+    await waitFor(() => {
+      expect(mockSaveWifi).toHaveBeenCalledWith(true);
+    });
+  });
+
+  it('falls back to Manual when the settings cannot be read', async () => {
+    mockLoadSource.mockRejectedValue(new Error('io'));
+    render(<Eip7730SettingsSectionOnline />);
+    await waitFor(() => {
+      expect(screen.getByTestId('eip7730-import-button')).toBeTruthy();
+    });
+  });
+
+  it('keeps the index while a download is running', async () => {
+    setRuntimeIndex(INDEX);
+    mockUseDownload.mockReturnValue({
+      phase: 'processing',
+      triggerDownload: mockTriggerDownload,
+    });
+    render(<Eip7730SettingsSectionOnline />);
+    await waitFor(() => {
+      expect(screen.getByTestId('eip7730-use-bundled')).toBeTruthy();
+    });
+    fireEvent.press(screen.getByTestId('eip7730-use-bundled'));
+    fireEvent.press(screen.getByTestId('eip7730-import-button'));
+    // The reset is a promise chain; drain it before asserting it did not run.
+    await act(async () => {
+      for (let i = 0; i < 10; i += 1) await Promise.resolve();
+    });
+    expect(mockClearPersistedIndex).not.toHaveBeenCalled();
+    expect(mockImport).not.toHaveBeenCalled();
+    expect(screen.getByText(INDEX_DATE)).toBeTruthy();
   });
 });

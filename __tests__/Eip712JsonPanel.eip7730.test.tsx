@@ -204,7 +204,7 @@ describe('Eip712JsonPanel EIP-7730 integration', () => {
       <Eip712JsonPanel
         request={request}
         eip712={buildSummary({ spender: '0xabc', sigDeadline: '1' })}
-        chainId={1}
+        chainId={undefined}
       />,
     );
     expect(mockLookupEip712).toHaveBeenCalledWith(
@@ -279,12 +279,41 @@ describe('Eip712JsonPanel EIP-7730 integration', () => {
     expect(mockLookupEip712).not.toHaveBeenCalled();
   });
 
-  it('does not call lookup when chainId is undefined', () => {
+  it("looks up the domain's chain, not the request's", () => {
+    mockLookupEip712.mockReturnValue(null);
+    const payload = {
+      ...buildPayload({}),
+      domain: {
+        name: 'Permit2',
+        verifyingContract: VERIFYING,
+        chainId: '0x89',
+      },
+    };
     render(
       <Eip712JsonPanel
-        request={buildRequest(buildPayload({}))}
+        request={buildRequest(payload)}
         eip712={buildSummary({})}
-        chainId={undefined}
+        chainId={1}
+      />,
+    );
+    expect(mockLookupEip712).toHaveBeenCalledWith(
+      137,
+      VERIFYING,
+      expect.any(String),
+      payload.domain,
+    );
+  });
+
+  it('does not call lookup when the domain names no chain', () => {
+    const payload = {
+      ...buildPayload({}),
+      domain: { name: 'Permit2', verifyingContract: VERIFYING },
+    };
+    render(
+      <Eip712JsonPanel
+        request={buildRequest(payload)}
+        eip712={buildSummary({})}
+        chainId={1}
       />,
     );
     expect(mockLookupEip712).not.toHaveBeenCalled();

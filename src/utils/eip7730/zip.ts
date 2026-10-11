@@ -437,7 +437,7 @@ function readJsonFiles(zipBytes: Uint8Array): JsonFiles {
   return files;
 }
 
-export function processLedgerRegistryZip(zipBytes: Uint8Array): Eip7730Index {
+export function processRegistryZip(zipBytes: Uint8Array): Eip7730Index {
   const files = readJsonFiles(zipBytes);
   const descriptors: Json[] = [];
   for (const path of files.keys()) {

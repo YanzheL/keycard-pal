@@ -1,6 +1,8 @@
 const mockLoadPersistedIndex = jest.fn();
+const mockClearPersistedIndex = jest.fn();
 jest.mock('../src/storage/eip7730Index', () => ({
   loadPersistedIndex: (...args: any[]) => mockLoadPersistedIndex(...args),
+  clearPersistedIndex: (...args: any[]) => mockClearPersistedIndex(...args),
 }));
 
 const SAVED = { version: 2, generatedAt: '', contracts: {}, eip712: {} };
@@ -59,6 +61,31 @@ describe('restorePersistedIndex', () => {
     mockLoadPersistedIndex.mockResolvedValue(null);
     const { restore, lookup } = load();
     await restore.restorePersistedIndex();
+    expect(lookup.hasRuntimeIndex()).toBe(false);
+  });
+});
+
+describe('revertToBundledIndex', () => {
+  it('deletes the saved index and makes the bundled one active', async () => {
+    mockLoadPersistedIndex.mockResolvedValue(SAVED);
+    const { restore, lookup } = load();
+    await restore.restorePersistedIndex();
+    await restore.revertToBundledIndex();
+    expect(mockClearPersistedIndex).toHaveBeenCalled();
+    expect(lookup.hasRuntimeIndex()).toBe(false);
+  });
+
+  it('waits for a restore still reading, so it cannot bring the index back', async () => {
+    let finish: (value: unknown) => void = () => {};
+    mockLoadPersistedIndex.mockReturnValue(
+      new Promise(resolve => {
+        finish = resolve;
+      }),
+    );
+    const { restore, lookup } = load();
+    const pending = restore.revertToBundledIndex();
+    finish(SAVED);
+    await pending;
     expect(lookup.hasRuntimeIndex()).toBe(false);
   });
 });

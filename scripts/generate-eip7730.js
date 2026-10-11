@@ -13,7 +13,7 @@ const fs = require('fs');
 const https = require('https');
 const path = require('path');
 
-const { processLedgerRegistryZip, isEmptyIndex } = require('../src/utils/eip7730/zip.ts');
+const { processRegistryZip, isEmptyIndex } = require('../src/utils/eip7730/zip.ts');
 
 const ZIP_URL =
   process.env.EIP7730_REGISTRY_URL ||
@@ -59,7 +59,7 @@ async function main() {
   const buf = await get(ZIP_URL);
   console.log(`Downloaded ${buf.length} bytes. Building the index...`);
 
-  const index = processLedgerRegistryZip(new Uint8Array(buf));
+  const index = processRegistryZip(new Uint8Array(buf));
   if (isEmptyIndex(index)) {
     throw new Error('The registry zip yielded no descriptors; nothing written.');
   }

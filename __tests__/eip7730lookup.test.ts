@@ -26,10 +26,12 @@ jest.mock('../src/data/eip7730.json', () => ({
 
 import {
   getActiveIndex,
+  getRuntimeIndex,
   hasRuntimeIndex,
   lookupCalldata,
   lookupEip712,
   setRuntimeIndex,
+  subscribeRuntimeIndex,
 } from '../src/utils/eip7730/lookup';
 
 import type { Eip7730Index } from '../src/utils/eip7730/zip';
@@ -149,6 +151,19 @@ describe('eip7730 lookup', () => {
     expect(hasRuntimeIndex()).toBe(false);
     setRuntimeIndex({ version: 2, generatedAt: '', contracts: {}, eip712: {} });
     expect(hasRuntimeIndex()).toBe(true);
+  });
+
+  it('tells subscribers when the runtime index changes, until they leave', () => {
+    const listener = jest.fn();
+    const unsubscribe = subscribeRuntimeIndex(listener);
+    const runtime = { version: 2, generatedAt: '', contracts: {}, eip712: {} };
+    setRuntimeIndex(runtime);
+    expect(listener).toHaveBeenCalledTimes(1);
+    expect(getRuntimeIndex()).toBe(runtime);
+    unsubscribe();
+    setRuntimeIndex(null);
+    expect(listener).toHaveBeenCalledTimes(1);
+    expect(getRuntimeIndex()).toBeNull();
   });
 
   it('clears runtime index when null', () => {

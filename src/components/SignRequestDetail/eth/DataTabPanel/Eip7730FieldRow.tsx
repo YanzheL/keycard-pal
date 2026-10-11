@@ -29,7 +29,11 @@ export default function Eip7730FieldRow({
       </View>
     );
   }
-  const { text, warnings = [] } = formatEip7730Field(field, raw, format, ctx);
+  const {
+    text,
+    warnings = [],
+    unknownTokenAddress,
+  } = formatEip7730Field(field, raw, format, ctx);
   return (
     <>
       <View style={styles.row}>
@@ -43,6 +47,11 @@ export default function Eip7730FieldRow({
           </Text>
         </View>
       ))}
+      {unknownTokenAddress && (
+        <View style={styles.row}>
+          <AddressInfoRow label="Token contract" value={unknownTokenAddress} />
+        </View>
+      )}
     </>
   );
 }

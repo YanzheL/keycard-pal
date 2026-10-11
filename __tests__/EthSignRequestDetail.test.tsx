@@ -495,7 +495,10 @@ describe('EthSignRequestDetail — EIP-712 special renderers', () => {
     };
   }
 
-  function unlimitedPermitSingle(domainName: string): EthSignRequest {
+  function unlimitedPermitSingle(
+    domainName: string,
+    token = '0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48',
+  ): EthSignRequest {
     return {
       signData: typedDataHex({
         types: {
@@ -524,7 +527,7 @@ describe('EthSignRequestDetail — EIP-712 special renderers', () => {
         },
         message: {
           details: {
-            token: '0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48',
+            token,
             amount: (2n ** 160n - 1n).toString(),
             expiration: '1712345000',
             nonce: '1',
@@ -563,6 +566,21 @@ describe('EthSignRequestDetail — EIP-712 special renderers', () => {
     expect(screen.queryByText('EIP-712 Permit')).toBeNull();
   });
 
+  it('shows the registry descriptor for a WalletConnect Permit, which carries no chainId', () => {
+    const { signData, ...rest } = usdcPermit('2');
+    renderDetail({
+      ...rest,
+      chainId: undefined,
+      dataType: 0,
+      signData: `0x${'11'.repeat(32)}`,
+      reviewData: signData,
+      origin: 'WalletConnect',
+    });
+
+    expect(screen.getByText('Authorize spending of tokens')).toBeTruthy();
+    expect(screen.getByText('1 USDC')).toBeTruthy();
+  });
+
   it("flags an unlimited PermitSingle in the app's reviewer", () => {
     renderDetail(unlimitedPermitSingle('Not Permit2'));
 
@@ -577,6 +595,22 @@ describe('EthSignRequestDetail — EIP-712 special renderers', () => {
     expect(screen.getByText('Unlimited USDC')).toBeTruthy();
     expect(screen.getByText(UNLIMITED_APPROVAL_WARNING)).toBeTruthy();
     expect(screen.queryByText(/Unlimited permit/)).toBeNull();
+  });
+
+  it('names the token of a registry Permit2 approval the app does not know', () => {
+    renderDetail(
+      unlimitedPermitSingle(
+        'Permit2',
+        '0x000000000000000000000000000000000000dead',
+      ),
+    );
+
+    expect(screen.getByText('Unlimited')).toBeTruthy();
+    expect(screen.getByText('Unknown token')).toBeTruthy();
+    expect(screen.getByText('Token contract')).toBeTruthy();
+    expect(
+      screen.getByText('0x000000000000000000000000000000000000dead'),
+    ).toBeTruthy();
   });
 
   it('decodes SafeTx inner calldata through the selector database', () => {

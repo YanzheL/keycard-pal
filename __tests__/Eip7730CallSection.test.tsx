@@ -2,6 +2,7 @@ import React from 'react';
 import { render, screen } from '@testing-library/react-native';
 
 import Eip7730CallSection from '../src/components/SignRequestDetail/eth/DataTabPanel/DecodedCallSection/Eip7730CallSection';
+import { UNLIMITED_APPROVAL_WARNING } from '../src/constants/approval';
 
 import type { Eip7730DisplayFormat } from '../src/utils/eip7730/zip';
 import type { DecodedCall } from '../src/utils/txParser';
@@ -109,6 +110,35 @@ describe('Eip7730CallSection', () => {
       />,
     );
     expect(screen.getByText('1500000')).toBeTruthy();
+    expect(screen.getByText('Unknown token')).toBeTruthy();
+  });
+
+  it('shows both warnings for an unlimited amount of an unknown token', () => {
+    const format: Eip7730DisplayFormat = {
+      fields: [
+        {
+          path: 'amount',
+          label: 'Amount',
+          format: 'tokenAmount',
+          params: { threshold: '1000' },
+        },
+      ],
+    };
+    const call: DecodedCall = {
+      kind: 'erc20-transfer',
+      to: '0x0000000000000000000000000000000000000abc',
+      amount: 2n ** 256n - 1n,
+    };
+    render(
+      <Eip7730CallSection
+        format={format}
+        call={call}
+        contractAddress={TOKEN}
+        chainId={1}
+      />,
+    );
+    expect(screen.getByText('Unlimited')).toBeTruthy();
+    expect(screen.getByText(UNLIMITED_APPROVAL_WARNING)).toBeTruthy();
     expect(screen.getByText('Unknown token')).toBeTruthy();
   });
 

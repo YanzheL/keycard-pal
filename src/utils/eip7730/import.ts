@@ -2,20 +2,16 @@ import { Platform } from 'react-native';
 import { pick, types } from '@react-native-documents/picker';
 import RNFS from 'react-native-fs';
 
-import {
-  loadIndexedAt,
-  savePersistedIndex,
-  saveIndexedAt,
-} from '@/storage/eip7730Index';
+import { savePersistedIndex } from '@/storage/eip7730Index';
 
 import { setRuntimeIndex } from './lookup';
-import { isEmptyIndex, processLedgerRegistryZip } from './zip';
+import { isEmptyIndex, processRegistryZip } from './zip';
 
 import type { Eip7730Index } from './zip';
 
 export type ImportResult =
-  | { ok: true; index: Eip7730Index; indexedAt: string }
-  | { ok: false; reason: 'cancelled' | 'invalid' | 'unreadable' };
+  | { ok: true; index: Eip7730Index }
+  | { ok: false; reason: 'cancelled' | 'invalid' | 'unreadable' | 'unsaved' };
 
 function base64ToBytes(b64: string): Uint8Array {
   const binary =
@@ -27,7 +23,7 @@ function base64ToBytes(b64: string): Uint8Array {
   return out;
 }
 
-export async function importLedgerRegistryZipFromPicker(): Promise<ImportResult> {
+export async function importRegistryZipFromPicker(): Promise<ImportResult> {
   const type = [types.zip, 'application/zip'];
   let result;
   try {
@@ -52,19 +48,17 @@ export async function importLedgerRegistryZipFromPicker(): Promise<ImportResult>
 
   let index: Eip7730Index;
   try {
-    index = processLedgerRegistryZip(bytes);
+    index = processRegistryZip(bytes);
   } catch {
     return { ok: false, reason: 'invalid' };
   }
   if (isEmptyIndex(index)) return { ok: false, reason: 'invalid' };
 
-  const indexedAt = new Date().toISOString();
-  await savePersistedIndex(index);
-  await saveIndexedAt(indexedAt);
+  try {
+    await savePersistedIndex(index);
+  } catch {
+    return { ok: false, reason: 'unsaved' };
+  }
   setRuntimeIndex(index);
-  return { ok: true, index, indexedAt };
-}
-
-export async function getLastIndexedAt(): Promise<string | null> {
-  return loadIndexedAt();
+  return { ok: true, index };
 }

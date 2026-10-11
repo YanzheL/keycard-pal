@@ -1,18 +1,18 @@
 import { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 import { SegmentedButtons, Text } from 'react-native-paper';
 
+import { DEFAULT_EIP7730_REGISTRY_URL } from '@/constants/eip7730';
 import theme from '@/theme';
 
-import IndexedAtRow from './IndexedAtRow';
+import ActiveIndex from './ActiveIndex';
 import ImportRegistryButton from './ImportRegistryButton';
-
-import TextInputSetting from '../TextInputSetting';
-import SettingsToggleRow from '../SettingsToggleRow';
+import SettingsButton from './SettingsButton';
+import SettingsToggleRow from '@/components/settings/SettingsToggleRow';
+import TextInputSetting from '@/components/settings/TextInputSetting';
 
 import { useEip7730Download } from '@/hooks/useEip7730Download.online';
 
-import { loadIndexedAt } from '@/storage/eip7730Index';
 import {
   type Eip7730DescriptorSource,
   clearEtag,
@@ -25,33 +25,24 @@ import {
   saveWifiOnly,
 } from '@/storage/eip7730Settings.online';
 
-import { DEFAULT_EIP7730_REGISTRY_URL } from '@/constants/eip7730';
-
 export default function Eip7730SettingsSection() {
   const download = useEip7730Download();
 
   const [loaded, setLoaded] = useState(false);
   const [source, setSource] = useState<Eip7730DescriptorSource>('manual');
-  const [indexedAt, setIndexedAt] = useState<string | null>(null);
   const [wifiOnly, setWifiOnly] = useState(false);
   const [savedUrl, setSavedUrl] = useState(DEFAULT_EIP7730_REGISTRY_URL);
   const [urlInput, setUrlInput] = useState(DEFAULT_EIP7730_REGISTRY_URL);
 
   useEffect(() => {
     let cancelled = false;
-    Promise.all([
-      loadDescriptorSource(),
-      loadDescriptorUrl(),
-      loadWifiOnly(),
-      loadIndexedAt(),
-    ])
-      .then(([s, u, w, at]) => {
+    Promise.all([loadDescriptorSource(), loadDescriptorUrl(), loadWifiOnly()])
+      .then(([s, u, w]) => {
         if (cancelled) return;
         setSource(s);
         setSavedUrl(u);
         setUrlInput(u);
         setWifiOnly(w);
-        setIndexedAt(at);
         setLoaded(true);
       })
       .catch(() => {
@@ -62,11 +53,21 @@ export default function Eip7730SettingsSection() {
     };
   }, []);
 
-  const handleSourceChange = useCallback(async (value: string) => {
-    const next: Eip7730DescriptorSource = value === 'auto' ? 'auto' : 'manual';
-    setSource(next);
-    await saveDescriptorSource(next);
-  }, []);
+  const handleSourceChange = useCallback(
+    async (value: string) => {
+      const next: Eip7730DescriptorSource =
+        value === 'auto' ? 'auto' : 'manual';
+      if (next === source) return;
+      setSource(next);
+      await saveDescriptorSource(next);
+      // The validators describe the last download; an import or a reset may have replaced it since.
+      if (next === 'auto') {
+        await clearEtag();
+        await clearLastModified();
+      }
+    },
+    [source],
+  );
 
   const handleWifiToggle = useCallback(async (value: boolean) => {
     setWifiOnly(value);
@@ -88,8 +89,9 @@ export default function Eip7730SettingsSection() {
     await clearLastModified();
   }, [urlInput]);
 
-  const handleImported = useCallback((newIndexedAt: string) => {
-    setIndexedAt(newIndexedAt);
+  const handleReverted = useCallback(async () => {
+    setSource('manual');
+    await saveDescriptorSource('manual');
   }, []);
 
   const downloadInProgress =
@@ -113,7 +115,7 @@ export default function Eip7730SettingsSection() {
         ]}
       />
       {source === 'manual' ? (
-        <ImportRegistryButton onImported={handleImported} />
+        <ImportRegistryButton disabled={downloadInProgress} />
       ) : (
         <View style={styles.autoBlock}>
           <TextInputSetting
@@ -131,32 +133,18 @@ export default function Eip7730SettingsSection() {
             value={wifiOnly}
             onValueChange={handleWifiToggle}
           />
-          <Pressable
-            style={[
-              styles.downloadButton,
-              downloadInProgress && styles.downloadButtonDisabled,
-            ]}
-            android_ripple={{ color: 'rgba(255,255,255,0.2)' }}
-            onPress={
-              downloadInProgress ? undefined : () => download.triggerDownload()
-            }
-            disabled={downloadInProgress}
+          <SettingsButton
+            label="Download now"
+            onPress={download.triggerDownload}
+            busy={downloadInProgress}
             testID="eip7730-download-now"
-          >
-            {downloadInProgress ? (
-              <ActivityIndicator color={theme.colors.primary} />
-            ) : (
-              <Text variant="labelLarge" style={styles.downloadLabel}>
-                Download now
-              </Text>
-            )}
-          </Pressable>
+          />
           {download.phase === 'error' && download.error && (
             <Text style={styles.error}>{download.error}</Text>
           )}
         </View>
       )}
-      <IndexedAtRow indexedAt={indexedAt} />
+      <ActiveIndex onReverted={handleReverted} disabled={downloadInProgress} />
       <Text style={styles.helper}>
         Descriptors enrich review screens with human-readable intents and
         formatted values. Auto-download contacts the configured server on app
@@ -175,21 +163,6 @@ const styles = StyleSheet.create({
   },
   autoBlock: {
     gap: 8,
-  },
-  downloadButton: {
-    borderWidth: 1,
-    borderColor: theme.colors.primary,
-    borderRadius: 8,
-    paddingVertical: 10,
-    paddingHorizontal: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  downloadButtonDisabled: {
-    opacity: 0.4,
-  },
-  downloadLabel: {
-    color: theme.colors.primary,
   },
   error: {
     color: theme.colors.error,

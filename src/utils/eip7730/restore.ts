@@ -1,4 +1,7 @@
-import { loadPersistedIndex } from '@/storage/eip7730Index';
+import {
+  clearPersistedIndex,
+  loadPersistedIndex,
+} from '@/storage/eip7730Index';
 
 import { hasRuntimeIndex, setRuntimeIndex } from './lookup';
 
@@ -13,4 +16,11 @@ export function restorePersistedIndex(): Promise<void> {
     });
   }
   return restoring;
+}
+
+export async function revertToBundledIndex(): Promise<void> {
+  // A restore still reading would bring the saved index back.
+  await restorePersistedIndex();
+  await clearPersistedIndex();
+  setRuntimeIndex(null);
 }

@@ -1,9 +1,6 @@
 import { Platform } from 'react-native';
 
-import {
-  getLastIndexedAt,
-  importLedgerRegistryZipFromPicker,
-} from '../src/utils/eip7730/import';
+import { importRegistryZipFromPicker } from '../src/utils/eip7730/import';
 
 const mockPick = jest.fn();
 jest.mock('@react-native-documents/picker', () => ({
@@ -20,12 +17,8 @@ jest.mock('react-native-fs', () => ({
 }));
 
 const mockSavePersistedIndex = jest.fn();
-const mockSaveIndexedAt = jest.fn();
-const mockLoadIndexedAt = jest.fn();
 jest.mock('../src/storage/eip7730Index', () => ({
-  loadIndexedAt: (...args: any[]) => mockLoadIndexedAt(...args),
   savePersistedIndex: (...args: any[]) => mockSavePersistedIndex(...args),
-  saveIndexedAt: (...args: any[]) => mockSaveIndexedAt(...args),
 }));
 
 const mockSetRuntimeIndex = jest.fn();
@@ -36,7 +29,7 @@ jest.mock('../src/utils/eip7730/lookup', () => ({
 const mockProcess = jest.fn();
 jest.mock('../src/utils/eip7730/zip', () => ({
   ...jest.requireActual('../src/utils/eip7730/zip'),
-  processLedgerRegistryZip: (...args: any[]) => mockProcess(...args),
+  processRegistryZip: (...args: any[]) => mockProcess(...args),
 }));
 
 const INDEX = {
@@ -53,17 +46,17 @@ beforeEach(() => {
   mockProcess.mockReturnValue(INDEX);
 });
 
-describe('importLedgerRegistryZipFromPicker', () => {
+describe('importRegistryZipFromPicker', () => {
   it('saves and activates an index with descriptors', async () => {
-    const result = await importLedgerRegistryZipFromPicker();
-    expect(result).toMatchObject({ ok: true, index: INDEX });
+    const result = await importRegistryZipFromPicker();
+    expect(result).toEqual({ ok: true, index: INDEX });
     expect(mockSavePersistedIndex).toHaveBeenCalledWith(INDEX);
     expect(mockSetRuntimeIndex).toHaveBeenCalledWith(INDEX);
   });
 
   it("opens Android's system picker, which grants the file it returns", async () => {
     jest.replaceProperty(Platform, 'OS', 'android');
-    await importLedgerRegistryZipFromPicker();
+    await importRegistryZipFromPicker();
     expect(mockPick).toHaveBeenCalledWith({
       type: ['application/zip', 'application/zip'],
       mode: 'open',
@@ -72,7 +65,7 @@ describe('importLedgerRegistryZipFromPicker', () => {
 
   it('keeps import mode on iOS, where the picker copies the file', async () => {
     jest.replaceProperty(Platform, 'OS', 'ios');
-    await importLedgerRegistryZipFromPicker();
+    await importRegistryZipFromPicker();
     expect(mockPick).toHaveBeenCalledWith({
       type: ['application/zip', 'application/zip'],
     });
@@ -80,7 +73,7 @@ describe('importLedgerRegistryZipFromPicker', () => {
 
   it('refuses a zip with no descriptors and keeps the current index', async () => {
     mockProcess.mockReturnValue({ ...INDEX, contracts: {} });
-    expect(await importLedgerRegistryZipFromPicker()).toEqual({
+    expect(await importRegistryZipFromPicker()).toEqual({
       ok: false,
       reason: 'invalid',
     });
@@ -88,11 +81,20 @@ describe('importLedgerRegistryZipFromPicker', () => {
     expect(mockSetRuntimeIndex).not.toHaveBeenCalled();
   });
 
+  it('reports a failed save and keeps the current index', async () => {
+    mockSavePersistedIndex.mockRejectedValueOnce(new Error('ENOSPC'));
+    expect(await importRegistryZipFromPicker()).toEqual({
+      ok: false,
+      reason: 'unsaved',
+    });
+    expect(mockSetRuntimeIndex).not.toHaveBeenCalled();
+  });
+
   it('refuses a file that is not a zip', async () => {
     mockProcess.mockImplementation(() => {
       throw new Error('not a zip');
     });
-    expect(await importLedgerRegistryZipFromPicker()).toEqual({
+    expect(await importRegistryZipFromPicker()).toEqual({
       ok: false,
       reason: 'invalid',
     });
@@ -100,17 +102,17 @@ describe('importLedgerRegistryZipFromPicker', () => {
 
   it('reports a cancelled pick and an unreadable file', async () => {
     mockPick.mockRejectedValueOnce(new Error('cancelled'));
-    expect(await importLedgerRegistryZipFromPicker()).toEqual({
+    expect(await importRegistryZipFromPicker()).toEqual({
       ok: false,
       reason: 'cancelled',
     });
     mockPick.mockResolvedValueOnce([{}]);
-    expect(await importLedgerRegistryZipFromPicker()).toEqual({
+    expect(await importRegistryZipFromPicker()).toEqual({
       ok: false,
       reason: 'cancelled',
     });
     mockReadFile.mockRejectedValueOnce(new Error('io'));
-    expect(await importLedgerRegistryZipFromPicker()).toEqual({
+    expect(await importRegistryZipFromPicker()).toEqual({
       ok: false,
       reason: 'unreadable',
     });
@@ -120,7 +122,7 @@ describe('importLedgerRegistryZipFromPicker', () => {
     const atob = (global as any).atob;
     delete (global as any).atob;
     try {
-      expect(await importLedgerRegistryZipFromPicker()).toMatchObject({
+      expect(await importRegistryZipFromPicker()).toMatchObject({
         ok: true,
       });
       expect(Array.from(mockProcess.mock.calls[0][0])).toEqual([
@@ -129,10 +131,5 @@ describe('importLedgerRegistryZipFromPicker', () => {
     } finally {
       (global as any).atob = atob;
     }
-  });
-
-  it('reads the date of the last update', async () => {
-    mockLoadIndexedAt.mockResolvedValue('2026-10-11');
-    expect(await getLastIndexedAt()).toBe('2026-10-11');
   });
 });

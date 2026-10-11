@@ -1,10 +1,8 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import RNFS from 'react-native-fs';
 
 import { EIP7730_INDEX_VERSION, type Eip7730Index } from '@/utils/eip7730/zip';
 
 const INDEX_FILENAME = 'eip7730-index.json';
-const INDEXED_AT_KEY = 'eip7730_indexed_at';
 
 function indexPath(): string {
   return `${RNFS.DocumentDirectoryPath}/${INDEX_FILENAME}`;
@@ -26,13 +24,12 @@ export async function loadPersistedIndex(): Promise<Eip7730Index | null> {
     if (!(await RNFS.exists(path))) return null;
     const index: unknown = JSON.parse(await RNFS.readFile(path, 'utf8'));
     if (isCurrentIndex(index)) return index;
-    // Built by an older parser: drop it so the bundled index applies until the next import.
-    await clearPersistedIndex();
-    await AsyncStorage.removeItem(INDEXED_AT_KEY);
-    return null;
   } catch {
-    return null;
+    // Unreadable, for example cut short by a failed write: dropped like an outdated one.
   }
+  // The bundled index applies until the next import or download.
+  await clearPersistedIndex();
+  return null;
 }
 
 export async function savePersistedIndex(index: Eip7730Index): Promise<void> {
@@ -46,16 +43,4 @@ export async function clearPersistedIndex(): Promise<void> {
   } catch {
     // ignore
   }
-}
-
-export async function loadIndexedAt(): Promise<string | null> {
-  try {
-    return await AsyncStorage.getItem(INDEXED_AT_KEY);
-  } catch {
-    return null;
-  }
-}
-
-export async function saveIndexedAt(date: string): Promise<void> {
-  await AsyncStorage.setItem(INDEXED_AT_KEY, date);
 }

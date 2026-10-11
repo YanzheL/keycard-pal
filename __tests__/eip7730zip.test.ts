@@ -6,7 +6,7 @@ import {
   buildIndexFromDescriptors,
   EIP7730_INDEX_VERSION,
   isEmptyIndex,
-  processLedgerRegistryZip,
+  processRegistryZip,
 } from '../src/utils/eip7730/zip';
 
 const SCHEMA = 'specs/erc7730-v2.schema.json';
@@ -104,10 +104,10 @@ const garbageDescriptor = {
   display: {},
 };
 
-describe('processLedgerRegistryZip', () => {
+describe('processRegistryZip', () => {
   it('indexes calldata descriptors by chainId:address with normalised selector', () => {
     const zip = makeZip({ 'registry/usdc.json': usdcContractDescriptor });
-    const index = processLedgerRegistryZip(zip);
+    const index = processRegistryZip(zip);
     expect(index.version).toBe(EIP7730_INDEX_VERSION);
     const mainnetKey = '1:0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48';
     expect(index.contracts[mainnetKey]).toBeDefined();
@@ -118,7 +118,7 @@ describe('processLedgerRegistryZip', () => {
 
   it('normalises full signatures to 4-byte selectors', () => {
     const zip = makeZip({ 'registry/usdc.json': usdcContractDescriptor });
-    const index = processLedgerRegistryZip(zip);
+    const index = processRegistryZip(zip);
     const mainnetKey = '1:0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48';
     // transferFrom selector
     expect(index.contracts[mainnetKey]['0x23b872dd']).toBeDefined();
@@ -127,7 +127,7 @@ describe('processLedgerRegistryZip', () => {
 
   it('inserts an entry for every deployment', () => {
     const zip = makeZip({ 'registry/usdc.json': usdcContractDescriptor });
-    const index = processLedgerRegistryZip(zip);
+    const index = processRegistryZip(zip);
     expect(
       index.contracts['137:0xaaaaa1234567890aabbccddeeff001122334455'][
         '0xa9059cbb'
@@ -137,7 +137,7 @@ describe('processLedgerRegistryZip', () => {
 
   it('indexes EIP-712 descriptors by chainId:address and primary type', () => {
     const zip = makeZip({ 'registry/permit.json': permitEip712Descriptor });
-    const index = processLedgerRegistryZip(zip);
+    const index = processRegistryZip(zip);
     const key = '1:0xpermit000000000000000000000000000000perm';
     expect(index.eip712[key].Permit.intent).toBe('Sign permit');
     expect(index.eip712[key].Permit.fields[0].path).toBe('spender');
@@ -155,7 +155,7 @@ describe('processLedgerRegistryZip', () => {
         },
       },
     });
-    const index = processLedgerRegistryZip(zip);
+    const index = processRegistryZip(zip);
     const key = '1:0xpermit000000000000000000000000000000perm';
     expect(index.eip712[key].Permit.domain).toEqual({
       name: 'Permit2',
@@ -164,7 +164,7 @@ describe('processLedgerRegistryZip', () => {
   });
 
   it('leaves the domain out when the descriptor has none', () => {
-    const index = processLedgerRegistryZip(
+    const index = processRegistryZip(
       makeZip({ 'registry/permit.json': permitEip712Descriptor }),
     );
     const key = '1:0xpermit000000000000000000000000000000perm';
@@ -183,11 +183,11 @@ describe('processLedgerRegistryZip', () => {
         },
       },
     });
-    expect(processLedgerRegistryZip(zip).eip712).toEqual({});
+    expect(processRegistryZip(zip).eip712).toEqual({});
   });
 
   it('keeps string enum entries and drops the rest', () => {
-    const index = processLedgerRegistryZip(
+    const index = processRegistryZip(
       makeZip({
         'registry/usdc.json': {
           ...usdcContractDescriptor,
@@ -210,7 +210,7 @@ describe('processLedgerRegistryZip', () => {
   });
 
   it('skips a format key that is neither a selector nor a signature', () => {
-    const index = processLedgerRegistryZip(
+    const index = processRegistryZip(
       makeZip({
         'registry/usdc.json': {
           ...usdcContractDescriptor,
@@ -226,7 +226,7 @@ describe('processLedgerRegistryZip', () => {
   });
 
   it('skips a .json file that is not valid JSON', () => {
-    const index = processLedgerRegistryZip(
+    const index = processRegistryZip(
       makeZip({
         'registry/broken.json': '{ not json',
         'registry/usdc.json': usdcContractDescriptor,
@@ -304,7 +304,7 @@ describe('processLedgerRegistryZip', () => {
       'registry/garbage.json': garbageDescriptor,
       'registry/usdc.json': usdcContractDescriptor,
     });
-    const index = processLedgerRegistryZip(zip);
+    const index = processRegistryZip(zip);
     expect(Object.keys(index.contracts).length).toBeGreaterThan(0);
   });
 
@@ -313,7 +313,7 @@ describe('processLedgerRegistryZip', () => {
       'registry/README.md': '# not a descriptor',
       'registry/usdc.json': usdcContractDescriptor,
     });
-    const index = processLedgerRegistryZip(zip);
+    const index = processRegistryZip(zip);
     expect(
       index.contracts['1:0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48'],
     ).toBeDefined();
@@ -321,7 +321,7 @@ describe('processLedgerRegistryZip', () => {
 
   it('captures token metadata for tokenAmount formatting', () => {
     const zip = makeZip({ 'registry/usdc.json': usdcContractDescriptor });
-    const index = processLedgerRegistryZip(zip);
+    const index = processRegistryZip(zip);
     const entry =
       index.contracts['1:0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48'][
         '0xa9059cbb'
@@ -365,7 +365,7 @@ function transferFormat(
 }
 
 function fieldsOf(files: Record<string, unknown>) {
-  const index = processLedgerRegistryZip(makeZip(files));
+  const index = processRegistryZip(makeZip(files));
   return index.contracts[KEY]?.[TRANSFER_SELECTOR]?.fields;
 }
 
@@ -377,7 +377,7 @@ describe('schema version', () => {
   const schemaFile = (version: string) => ({ [SCHEMA]: { version } });
 
   it.each(['2.0.0', '2.1.0', '2.9.3'])('accepts schema %s', version => {
-    const index = processLedgerRegistryZip(
+    const index = processRegistryZip(
       rawZip({
         ...schemaFile(version),
         'registry/a.json': { $schema: `../${SCHEMA}`, ...descriptor },
@@ -387,7 +387,7 @@ describe('schema version', () => {
   });
 
   it.each(['1.0.0', '3.0.0-next', '3.0.0'])('rejects schema %s', version => {
-    const index = processLedgerRegistryZip(
+    const index = processRegistryZip(
       rawZip({
         ...schemaFile(version),
         'registry/a.json': { $schema: `../${SCHEMA}`, ...descriptor },
@@ -397,7 +397,7 @@ describe('schema version', () => {
   });
 
   it('rejects a descriptor without a $schema, or whose schema is missing or unversioned', () => {
-    const index = processLedgerRegistryZip(
+    const index = processRegistryZip(
       rawZip({
         [SCHEMA]: { title: 'no version key' },
         'registry/none.json': descriptor,
@@ -412,7 +412,7 @@ describe('schema version', () => {
   });
 
   it('finds a schema given as a URL in the zip specs folder', () => {
-    const index = processLedgerRegistryZip(
+    const index = processRegistryZip(
       rawZip({
         'repo/specs/erc7730-v2.schema.json': { version: '2.1.0' },
         'repo/registry/a.json': {
@@ -441,12 +441,11 @@ describe('which files are descriptors', () => {
       'a.json',
     ]) {
       expect(
-        processLedgerRegistryZip(makeZip({ [name]: descriptor })).contracts,
+        processRegistryZip(makeZip({ [name]: descriptor })).contracts,
       ).toEqual({});
     }
     expect(
-      processLedgerRegistryZip(makeZip({ 'ercs/a.json': descriptor }))
-        .contracts[KEY],
+      processRegistryZip(makeZip({ 'ercs/a.json': descriptor })).contracts[KEY],
     ).toBeDefined();
   });
 });
@@ -456,7 +455,7 @@ describe('includes', () => {
     const root = 'clear-signing-erc7730-registry-master';
     const fixtures = join(__dirname, 'fixtures', 'eip7730');
     const file = (path: string) => readFileSync(join(fixtures, path), 'utf8');
-    const index = processLedgerRegistryZip(
+    const index = processRegistryZip(
       rawZip({
         [`${root}/specs/erc7730-v2.schema.json`]: { version: '2.1.0' },
         [`${root}/registry/kiln/calldata-Vault-USDC-Morpho-MEV-Capital.json`]:
@@ -532,7 +531,7 @@ describe('includes', () => {
       { path: 'to', label: 'To', format: 'addressName' },
       { path: 'memo', label: 'Memo', format: 'raw' },
     ]);
-    const index = processLedgerRegistryZip(
+    const index = processRegistryZip(
       makeZip({
         'registry/acme/base.json': included,
         'registry/acme/token.json': { includes: 'base.json', ...contract() },

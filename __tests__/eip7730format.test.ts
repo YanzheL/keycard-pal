@@ -75,6 +75,25 @@ describe('formatEip7730Field', () => {
     expect(text).not.toBe('1700000000');
   });
 
+  it('keeps a timestamp past any date, such as a deadline that never expires', () => {
+    for (const value of [
+      (2n ** 256n - 1n).toString(),
+      (2n ** 48n - 1n).toString(),
+    ]) {
+      expect(formatEip7730Field(field('date'), value, FORMAT, ctx()).text).toBe(
+        value,
+      );
+    }
+  });
+
+  it('keeps a value that is not a timestamp', () => {
+    for (const value of ['0', 'soon', '-5']) {
+      expect(formatEip7730Field(field('date'), value, FORMAT, ctx()).text).toBe(
+        value,
+      );
+    }
+  });
+
   describe('enum', () => {
     const f = field('enum', { $ref: '$.metadata.enums.orderType' });
 
@@ -151,7 +170,26 @@ describe('formatEip7730Field', () => {
       ).toEqual({ text: '1.5 USDT' });
       expect(
         formatEip7730Field(f, '1500000', own, ctx({ token: OTHER }, extra)),
-      ).toEqual({ text: '1500000', warnings: [UNKNOWN_TOKEN_WARNING] });
+      ).toEqual({
+        text: '1500000',
+        warnings: [UNKNOWN_TOKEN_WARNING],
+        unknownTokenAddress: OTHER,
+      });
+    });
+
+    it('names the address of a token it does not know', () => {
+      expect(
+        formatEip7730Field(
+          field('tokenAmount', { tokenPath: 'token' }),
+          '1500000',
+          { fields: [] },
+          ctx({ token: OTHER.toUpperCase().replace('0X', '0x') }),
+        ),
+      ).toEqual({
+        text: '1500000',
+        warnings: [UNKNOWN_TOKEN_WARNING],
+        unknownTokenAddress: OTHER,
+      });
     });
 
     it('falls back to the bundled token list', () => {
@@ -194,6 +232,7 @@ describe('formatEip7730Field', () => {
       ).toEqual({
         text: '2000000000000000',
         warnings: [UNKNOWN_TOKEN_WARNING],
+        unknownTokenAddress: NATIVE,
       });
     });
 
@@ -268,6 +307,21 @@ describe('formatEip7730Field', () => {
         ).toEqual({
           text: 'Unlimited',
           warnings: [UNLIMITED_APPROVAL_WARNING, UNKNOWN_TOKEN_WARNING],
+        });
+      });
+
+      it('names the unknown token at the threshold too', () => {
+        expect(
+          formatEip7730Field(
+            field('tokenAmount', { token: OTHER, threshold }),
+            threshold,
+            FORMAT,
+            ctx(),
+          ),
+        ).toEqual({
+          text: 'Unlimited',
+          warnings: [UNLIMITED_APPROVAL_WARNING, UNKNOWN_TOKEN_WARNING],
+          unknownTokenAddress: OTHER,
         });
       });
 

@@ -16,6 +16,7 @@ export type Eip7730FieldContext = {
 export type Eip7730FieldDisplay = {
   text: string;
   warnings?: string[];
+  unknownTokenAddress?: string;
 };
 
 export const UNKNOWN_TOKEN_WARNING = 'Unknown token';
@@ -82,8 +83,8 @@ function resolveToken(
   format: Eip7730DisplayFormat,
   ctx: Eip7730FieldContext,
   params: Params,
+  address: string | null,
 ): TokenInfo | null {
-  const address = tokenAddress(params, ctx);
   if (!address) return null;
   if (literalAddresses(params?.nativeCurrencyAddress).includes(address)) {
     return nativeToken(ctx.chainId);
@@ -125,11 +126,14 @@ function formatTokenAmount(
 ): Eip7730FieldDisplay {
   const amount = toBigInt(value);
   if (amount === null) return { text: value };
-  const token = resolveToken(format, ctx, params);
+  const address = tokenAddress(params, ctx);
+  const token = resolveToken(format, ctx, params, address);
+  // Without a ticker the address is the only way to tell which token this is.
+  const unknown = !token && address ? { unknownTokenAddress: address } : {};
   if (!reachesThreshold(amount, params?.threshold)) {
     return token
       ? { text: amountText(amount, token) }
-      : { text: value, warnings: [UNKNOWN_TOKEN_WARNING] };
+      : { text: value, warnings: [UNKNOWN_TOKEN_WARNING], ...unknown };
   }
   const text = message(params, 'Unlimited');
   const warnings = UNLIMITED_MESSAGES.has(text)
@@ -139,6 +143,7 @@ function formatTokenAmount(
   return {
     text: token ? `${text} ${token.symbol}` : text,
     ...(warnings.length > 0 && { warnings }),
+    ...unknown,
   };
 }
 
@@ -157,13 +162,11 @@ function formatAmount(
 }
 
 function formatDate(value: string): string {
-  const num = Number(value);
-  if (!Number.isFinite(num) || num <= 0) return value;
-  try {
-    return new Date(num * 1000).toLocaleString();
-  } catch {
-    return value;
-  }
+  const date = new Date(Number(value) * 1000);
+  // A maximum value means "never expires"; it is past any date JS can show.
+  return Number(value) > 0 && !Number.isNaN(date.getTime())
+    ? date.toLocaleString()
+    : value;
 }
 
 function formatEnum(

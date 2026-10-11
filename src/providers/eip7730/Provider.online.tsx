@@ -16,17 +16,20 @@ import {
   saveEtag,
   saveLastModified,
 } from '@/storage/eip7730Settings.online';
-import { savePersistedIndex, saveIndexedAt } from '@/storage/eip7730Index';
+import { savePersistedIndex } from '@/storage/eip7730Index';
 
-import { setRuntimeIndex } from '@/utils/eip7730/lookup';
+import { hasRuntimeIndex, setRuntimeIndex } from '@/utils/eip7730/lookup';
 import { restorePersistedIndex } from '@/utils/eip7730/restore';
-import { isEmptyIndex, processLedgerRegistryZip } from '@/utils/eip7730/zip';
+import { isEmptyIndex, processRegistryZip } from '@/utils/eip7730/zip';
 
 import {
   Eip7730Context,
   type Eip7730DownloadPhase,
   type Eip7730DownloadState,
 } from './context';
+
+const WIFI_ONLY_BLOCKED =
+  'Not on Wi-Fi, nothing downloaded. Turn off "Download on Wi-Fi only" to use mobile data.';
 
 async function networkAllowed(wifiOnly: boolean): Promise<boolean> {
   if (!wifiOnly) return true;
@@ -133,14 +136,17 @@ export function Eip7730DownloadProvider({
       }
       const wifiOnly = await loadWifiOnly();
       if (!(await networkAllowed(wifiOnly))) {
-        setPhase('idle');
+        setError(WIFI_ONLY_BLOCKED);
+        setPhase('error');
         return;
       }
 
       setPhase('checking');
       const url = await loadDescriptorUrl();
-      const etag = options.force ? null : await loadEtag();
-      const lastModified = options.force ? null : await loadLastModified();
+      // The validators describe the saved index; without one a 304 would leave the bundled one.
+      const conditional = !options.force && hasRuntimeIndex();
+      const etag = conditional ? await loadEtag() : null;
+      const lastModified = conditional ? await loadLastModified() : null;
 
       setPhase('downloading');
       const result = await downloadZip(url, etag, lastModified, p =>
@@ -154,13 +160,11 @@ export function Eip7730DownloadProvider({
 
       setPhase('processing');
       setProgress(undefined);
-      const index = processLedgerRegistryZip(result.bytes);
+      const index = processRegistryZip(result.bytes);
       if (isEmptyIndex(index)) {
         throw new Error('The file has no descriptors this app can read.');
       }
       await savePersistedIndex(index);
-      const indexedAt = new Date().toISOString();
-      await saveIndexedAt(indexedAt);
       if (result.etag) await saveEtag(result.etag);
       if (result.lastModified) await saveLastModified(result.lastModified);
       setRuntimeIndex(index);

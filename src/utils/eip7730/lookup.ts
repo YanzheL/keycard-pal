@@ -2,14 +2,28 @@ import bundledIndex from '@/data/eip7730.json';
 
 import type { Eip7730DisplayFormat, Eip7730Index } from './zip';
 
+// An external store: imports, downloads and the startup restore all write it outside React.
 let runtimeIndex: Eip7730Index | null = null;
+const listeners = new Set<() => void>();
 
 export function setRuntimeIndex(index: Eip7730Index | null): void {
   runtimeIndex = index;
+  listeners.forEach(listener => listener());
 }
 
 export function hasRuntimeIndex(): boolean {
   return runtimeIndex !== null;
+}
+
+export function getRuntimeIndex(): Eip7730Index | null {
+  return runtimeIndex;
+}
+
+export function subscribeRuntimeIndex(listener: () => void): () => void {
+  listeners.add(listener);
+  return () => {
+    listeners.delete(listener);
+  };
 }
 
 export function getActiveIndex(): Eip7730Index {

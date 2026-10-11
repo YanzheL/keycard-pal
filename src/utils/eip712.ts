@@ -166,6 +166,15 @@ function toChainId(value: unknown): number | undefined {
   return Number.isSafeInteger(numeric) ? numeric : undefined;
 }
 
+export function eip712DomainChainId(
+  domain: Record<string, unknown>,
+): number | undefined {
+  const value = domain.chainId;
+  return typeof value === 'string' && /^0x[0-9a-fA-F]+$/.test(value)
+    ? toChainId(BigInt(value))
+    : toChainId(value);
+}
+
 function parsePermit(parsed: JsonObject): Eip712SpecialReview | null {
   if (parsed.primaryType !== 'Permit') return null;
   const domain = isJsonObject(parsed.domain) ? parsed.domain : {};
