@@ -167,16 +167,29 @@ function processDescriptor(raw, contracts, eip712) {
   }
 
   if (eip712Ctx) {
+    // The app cannot verify a domain separator, so such a binding never applies.
+    if (eip712Ctx.domainSeparator !== undefined) return;
     const deployments = extractDeployments(eip712Ctx.deployments);
     if (deployments.length === 0) return;
-    for (const [primaryType, rawFormat] of Object.entries(formats)) {
+    const domain = extractDomain(eip712Ctx.domain);
+    for (const [encodedType, rawFormat] of Object.entries(formats)) {
       const format = extractDisplayFormat(rawFormat, metadata);
       if (!format) continue;
+      if (domain) format.domain = domain;
       for (const d of deployments) {
-        insertEntry(eip712, d, primaryType, format);
+        insertEntry(eip712, d, encodedType, format);
       }
     }
   }
+}
+
+function extractDomain(raw) {
+  if (!isPlainObject(raw)) return undefined;
+  const out = {};
+  for (const [k, v] of Object.entries(raw)) {
+    if (typeof v === 'string' || typeof v === 'number') out[k] = String(v);
+  }
+  return Object.keys(out).length > 0 ? out : undefined;
 }
 
 async function main() {

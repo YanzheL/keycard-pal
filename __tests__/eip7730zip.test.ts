@@ -118,6 +118,162 @@ describe('processLedgerRegistryZip', () => {
     expect(index.eip712[key].Permit.fields[0].path).toBe('spender');
   });
 
+  it('stores the EIP-712 domain constraint on every format', () => {
+    const zip = makeZip({
+      'registry/permit.json': {
+        ...permitEip712Descriptor,
+        context: {
+          eip712: {
+            ...permitEip712Descriptor.context.eip712,
+            domain: { name: 'Permit2', chainId: 1, nested: { x: 1 } },
+          },
+        },
+      },
+    });
+    const index = processLedgerRegistryZip(zip);
+    const key = '1:0xpermit000000000000000000000000000000perm';
+    expect(index.eip712[key].Permit.domain).toEqual({
+      name: 'Permit2',
+      chainId: '1',
+    });
+  });
+
+  it('leaves the domain out when the descriptor has none', () => {
+    const index = processLedgerRegistryZip(
+      makeZip({ 'registry/permit.json': permitEip712Descriptor }),
+    );
+    const key = '1:0xpermit000000000000000000000000000000perm';
+    expect(index.eip712[key].Permit.domain).toBeUndefined();
+  });
+
+  it('skips an EIP-712 descriptor bound by a domain separator', () => {
+    const zip = makeZip({
+      'registry/permit.json': {
+        ...permitEip712Descriptor,
+        context: {
+          eip712: {
+            ...permitEip712Descriptor.context.eip712,
+            domainSeparator: `0x${'ab'.repeat(32)}`,
+          },
+        },
+      },
+    });
+    expect(processLedgerRegistryZip(zip).eip712).toEqual({});
+  });
+
+  it('keeps string enum entries and drops the rest', () => {
+    const index = processLedgerRegistryZip(
+      makeZip({
+        'registry/usdc.json': {
+          ...usdcContractDescriptor,
+          metadata: {
+            enums: {
+              rate: { 1: 'stable', 2: 'variable', 3: 7 },
+              broken: 'not a map',
+            },
+          },
+        },
+      }),
+    );
+    const entry =
+      index.contracts['1:0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48'][
+        '0xa9059cbb'
+      ];
+    expect(entry.metadata?.enums).toEqual({
+      rate: { 1: 'stable', 2: 'variable' },
+    });
+  });
+
+  it('skips a format key that is neither a selector nor a signature', () => {
+    const index = processLedgerRegistryZip(
+      makeZip({
+        'registry/usdc.json': {
+          ...usdcContractDescriptor,
+          display: {
+            formats: {
+              'not a signature': { intent: 'Never', fields: [] },
+            },
+          },
+        },
+      }),
+    );
+    expect(index.contracts).toEqual({});
+  });
+
+  it('skips a .json file that is not valid JSON', () => {
+    const index = processLedgerRegistryZip(
+      makeZip({
+        'registry/broken.json': '{ not json',
+        'registry/usdc.json': usdcContractDescriptor,
+      }),
+    );
+    expect(
+      index.contracts['1:0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48'],
+    ).toBeDefined();
+  });
+
+  it('tolerates malformed fields, deployments and metadata', () => {
+    const index = buildIndexFromDescriptors([
+      {
+        context: {
+          contract: {
+            deployments: [
+              'not an object',
+              {
+                chainId: '10',
+                address: '0x00000000000000000000000000000000000000aa',
+              },
+              { chainId: 1 },
+              {
+                chainId: 'x',
+                address: '0x00000000000000000000000000000000000000bb',
+              },
+            ],
+          },
+        },
+        metadata: { token: { decimals: 18 }, info: { legalName: 7 } },
+        display: {
+          formats: {
+            '0xa9059cbb': {
+              fields: [
+                'not an object',
+                { path: 'to', format: 'raw' },
+                { path: 'amount', label: 'Amount' },
+                { path: 'x', label: 'X', format: 'raw', params: 'bad' },
+              ],
+            },
+            '0x095ea7b3': { fields: [] },
+          },
+        },
+      },
+    ]);
+    const formats =
+      index.contracts['10:0x00000000000000000000000000000000000000aa'];
+    expect(Object.keys(index.contracts)).toEqual([
+      '10:0x00000000000000000000000000000000000000aa',
+    ]);
+    expect(formats['0x095ea7b3']).toBeUndefined();
+    expect(formats['0xa9059cbb'].fields).toEqual([
+      { path: 'to', label: 'to', format: 'raw', params: undefined },
+      { path: 'x', label: 'X', format: 'raw', params: undefined },
+    ]);
+    expect(formats['0xa9059cbb'].metadata).toEqual({
+      tokens: { '*': { decimals: 18, ticker: undefined } },
+    });
+  });
+
+  it('skips descriptors without deployments or formats', () => {
+    const index = buildIndexFromDescriptors([
+      'not an object',
+      { context: { contract: { deployments: [] } }, display: { formats: {} } },
+      { context: { eip712: {} }, display: { formats: { A: { intent: 'a' } } } },
+      { context: { contract: {} }, display: { notFormats: true } },
+      { context: { other: {} }, display: { formats: { A: { intent: 'a' } } } },
+    ]);
+    expect(index.contracts).toEqual({});
+    expect(index.eip712).toEqual({});
+  });
+
   it('silently skips descriptors without context/display', () => {
     const zip = makeZip({
       'registry/garbage.json': garbageDescriptor,
