@@ -5,14 +5,17 @@ import { act, render, screen, waitFor } from '@testing-library/react-native';
 import { Eip7730Context } from '../src/providers/eip7730/context';
 import { Eip7730DownloadProvider } from '../src/providers/eip7730/Provider.online';
 
-const mockLoadPersistedIndex = jest.fn();
 const mockSavePersistedIndex = jest.fn();
 const mockSaveIndexedAt = jest.fn();
 
 jest.mock('../src/storage/eip7730Index', () => ({
-  loadPersistedIndex: (...args: any[]) => mockLoadPersistedIndex(...args),
   savePersistedIndex: (...args: any[]) => mockSavePersistedIndex(...args),
   saveIndexedAt: (...args: any[]) => mockSaveIndexedAt(...args),
+}));
+
+const mockRestore = jest.fn();
+jest.mock('../src/utils/eip7730/restore', () => ({
+  restorePersistedIndex: (...args: any[]) => mockRestore(...args),
 }));
 
 const mockLoadSource = jest.fn();
@@ -36,7 +39,17 @@ jest.mock('../src/storage/eip7730Settings.online', () => ({
 const mockProcess = jest.fn();
 jest.mock('../src/utils/eip7730/zip', () => ({
   processLedgerRegistryZip: (...args: any[]) => mockProcess(...args),
+  isEmptyIndex: (index: any) =>
+    Object.keys(index.contracts).length === 0 &&
+    Object.keys(index.eip712).length === 0,
 }));
+
+const INDEX = {
+  version: 2,
+  generatedAt: '2025-01-01T00:00:00.000Z',
+  contracts: { '1:0xabc': { '0xa9059cbb': { intent: 'Send', fields: [] } } },
+  eip712: {},
+};
 
 const mockSetRuntimeIndex = jest.fn();
 jest.mock('../src/utils/eip7730/lookup', () => ({
@@ -86,7 +99,7 @@ function buildResponse({
 
 beforeEach(() => {
   jest.clearAllMocks();
-  mockLoadPersistedIndex.mockResolvedValue(null);
+  mockRestore.mockResolvedValue(undefined);
   mockSavePersistedIndex.mockResolvedValue(undefined);
   mockSaveIndexedAt.mockResolvedValue(undefined);
   mockLoadSource.mockResolvedValue('manual');
@@ -96,12 +109,7 @@ beforeEach(() => {
   mockLoadLastModified.mockResolvedValue(null);
   mockSaveEtag.mockResolvedValue(undefined);
   mockSaveLastModified.mockResolvedValue(undefined);
-  mockProcess.mockReturnValue({
-    version: 1,
-    generatedAt: '2025-01-01T00:00:00.000Z',
-    contracts: {},
-    eip712: {},
-  });
+  mockProcess.mockReturnValue(INDEX);
   mockNetInfoFetch.mockResolvedValue({ type: 'wifi' });
   (global as any).fetch = jest.fn();
 });
@@ -114,7 +122,7 @@ describe('Eip7730DownloadProvider', () => {
       </Eip7730DownloadProvider>,
     );
     await waitFor(() => {
-      expect(mockLoadPersistedIndex).toHaveBeenCalled();
+      expect(mockRestore).toHaveBeenCalled();
     });
     await waitFor(() => {
       expect(screen.getByTestId('phase').children[0]).toBe('idle');
@@ -143,7 +151,26 @@ describe('Eip7730DownloadProvider', () => {
     expect(mockSavePersistedIndex).toHaveBeenCalled();
     expect(mockSaveIndexedAt).toHaveBeenCalled();
     expect(mockSaveEtag).toHaveBeenCalledWith('W/abc');
-    expect(mockSetRuntimeIndex).toHaveBeenCalled();
+    expect(mockSetRuntimeIndex).toHaveBeenCalledWith(INDEX);
+  });
+
+  it('keeps the current index when the download has no descriptors', async () => {
+    mockLoadSource.mockResolvedValue('auto');
+    mockProcess.mockReturnValue({ ...INDEX, contracts: {} });
+    (global as any).fetch.mockResolvedValue(buildResponse({ etag: 'W/new' }));
+
+    render(
+      <Eip7730DownloadProvider>
+        <PhaseProbe />
+      </Eip7730DownloadProvider>,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId('phase').children[0]).toBe('error');
+    });
+    expect(mockSavePersistedIndex).not.toHaveBeenCalled();
+    expect(mockSaveEtag).not.toHaveBeenCalled();
+    expect(mockSetRuntimeIndex).not.toHaveBeenCalled();
   });
 
   it('skips processing when server returns 304', async () => {
@@ -205,7 +232,7 @@ describe('Eip7730DownloadProvider', () => {
       </Eip7730DownloadProvider>,
     );
     await waitFor(() => {
-      expect(mockLoadPersistedIndex).toHaveBeenCalled();
+      expect(mockRestore).toHaveBeenCalled();
     });
     // initial run: manual -> idle, no fetch
     expect((global as any).fetch).not.toHaveBeenCalled();
@@ -234,14 +261,26 @@ describe('Eip7730DownloadProvider', () => {
     });
   });
 
-  it('hydrates runtime index from persisted index on mount', async () => {
-    const persisted = {
-      version: 1,
-      generatedAt: '',
-      contracts: {},
-      eip712: {},
+  it('reads a streamed body in chunks and keeps Last-Modified', async () => {
+    mockLoadSource.mockResolvedValue('auto');
+    const chunks = [new Uint8Array([1, 2]), new Uint8Array([3])];
+    const headers: Record<string, string> = {
+      'content-length': '3',
+      'last-modified': 'Sat, 10 Oct 2026 00:00:00 GMT',
     };
-    mockLoadPersistedIndex.mockResolvedValue(persisted);
+    (global as any).fetch.mockResolvedValue({
+      ok: true,
+      status: 200,
+      headers: { get: (k: string) => headers[k.toLowerCase()] ?? null },
+      body: {
+        getReader: () => ({
+          read: async () =>
+            chunks.length > 0
+              ? { value: chunks.shift(), done: false }
+              : { value: undefined, done: true },
+        }),
+      },
+    });
 
     render(
       <Eip7730DownloadProvider>
@@ -250,7 +289,74 @@ describe('Eip7730DownloadProvider', () => {
     );
 
     await waitFor(() => {
-      expect(mockSetRuntimeIndex).toHaveBeenCalledWith(persisted);
+      expect(screen.getByTestId('phase').children[0]).toBe('done');
     });
+    expect(Array.from(mockProcess.mock.calls[0][0])).toEqual([1, 2, 3]);
+    expect(mockSaveLastModified).toHaveBeenCalledWith(
+      'Sat, 10 Oct 2026 00:00:00 GMT',
+    );
+  });
+
+  it('downloads when Wi-Fi only is on but the network state cannot be read', async () => {
+    mockLoadSource.mockResolvedValue('auto');
+    mockLoadWifi.mockResolvedValue(true);
+    mockNetInfoFetch.mockRejectedValue(new Error('unavailable'));
+    (global as any).fetch.mockResolvedValue(buildResponse());
+
+    render(
+      <Eip7730DownloadProvider>
+        <PhaseProbe />
+      </Eip7730DownloadProvider>,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId('phase').children[0]).toBe('done');
+    });
+  });
+
+  it('reports an HTTP error status', async () => {
+    mockLoadSource.mockResolvedValue('auto');
+    (global as any).fetch.mockResolvedValue(buildResponse({ status: 500 }));
+
+    render(
+      <Eip7730DownloadProvider>
+        <PhaseProbe />
+      </Eip7730DownloadProvider>,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId('phase').children[0]).toBe('error');
+    });
+    expect(mockProcess).not.toHaveBeenCalled();
+  });
+
+  it('waits for the saved index before the first auto-download', async () => {
+    mockLoadSource.mockResolvedValue('auto');
+    (global as any).fetch.mockResolvedValue(buildResponse());
+    let finishRestore: () => void = () => {};
+    mockRestore.mockReturnValue(
+      new Promise<void>(resolve => {
+        finishRestore = resolve;
+      }),
+    );
+
+    render(
+      <Eip7730DownloadProvider>
+        <PhaseProbe />
+      </Eip7730DownloadProvider>,
+    );
+
+    await waitFor(() => {
+      expect(mockRestore).toHaveBeenCalled();
+    });
+    expect((global as any).fetch).not.toHaveBeenCalled();
+
+    await act(async () => {
+      finishRestore();
+    });
+    await waitFor(() => {
+      expect(screen.getByTestId('phase').children[0]).toBe('done');
+    });
+    expect((global as any).fetch).toHaveBeenCalled();
   });
 });

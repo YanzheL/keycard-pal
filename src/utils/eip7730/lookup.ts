@@ -8,6 +8,10 @@ export function setRuntimeIndex(index: Eip7730Index | null): void {
   runtimeIndex = index;
 }
 
+export function hasRuntimeIndex(): boolean {
+  return runtimeIndex !== null;
+}
+
 export function getActiveIndex(): Eip7730Index {
   return runtimeIndex ?? (bundledIndex as unknown as Eip7730Index);
 }

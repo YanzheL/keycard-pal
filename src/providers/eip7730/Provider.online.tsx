@@ -16,14 +16,11 @@ import {
   saveEtag,
   saveLastModified,
 } from '@/storage/eip7730Settings.online';
-import {
-  loadPersistedIndex,
-  savePersistedIndex,
-  saveIndexedAt,
-} from '@/storage/eip7730Index';
+import { savePersistedIndex, saveIndexedAt } from '@/storage/eip7730Index';
 
 import { setRuntimeIndex } from '@/utils/eip7730/lookup';
-import { processLedgerRegistryZip } from '@/utils/eip7730/zip';
+import { restorePersistedIndex } from '@/utils/eip7730/restore';
+import { isEmptyIndex, processLedgerRegistryZip } from '@/utils/eip7730/zip';
 
 import {
   Eip7730Context,
@@ -120,7 +117,7 @@ export function Eip7730DownloadProvider({
   const [progress, setProgress] = useState<number | undefined>(undefined);
   const [error, setError] = useState<string | undefined>(undefined);
   const runningRef = useRef(false);
-  const persistedLoadedRef = useRef(false);
+  const startedRef = useRef(false);
 
   const run = useCallback(async (options: { force?: boolean }) => {
     if (runningRef.current) return;
@@ -158,6 +155,9 @@ export function Eip7730DownloadProvider({
       setPhase('processing');
       setProgress(undefined);
       const index = processLedgerRegistryZip(result.bytes);
+      if (isEmptyIndex(index)) {
+        throw new Error('The file has no descriptors this app can read.');
+      }
       await savePersistedIndex(index);
       const indexedAt = new Date().toISOString();
       await saveIndexedAt(indexedAt);
@@ -174,16 +174,9 @@ export function Eip7730DownloadProvider({
   }, []);
 
   useEffect(() => {
-    if (persistedLoadedRef.current) return;
-    persistedLoadedRef.current = true;
-    let cancelled = false;
-    loadPersistedIndex().then(index => {
-      if (!cancelled && index) setRuntimeIndex(index);
-      run({ force: false });
-    });
-    return () => {
-      cancelled = true;
-    };
+    if (startedRef.current) return;
+    startedRef.current = true;
+    restorePersistedIndex().then(() => run({ force: false }));
   }, [run]);
 
   const triggerDownload = useCallback(() => {

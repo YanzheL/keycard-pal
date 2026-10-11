@@ -21,7 +21,7 @@ export default function Eip7730FieldRow({
   format: Eip7730DisplayFormat;
   ctx: Eip7730FieldContext;
 }) {
-  const raw = ctx.resolvePath(field.path);
+  const raw = field.value ?? ctx.resolvePath(field.path);
   if (field.format === 'addressName' && raw?.startsWith('0x')) {
     return (
       <View style={styles.row}>

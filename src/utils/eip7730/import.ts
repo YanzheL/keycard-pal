@@ -1,3 +1,4 @@
+import { Platform } from 'react-native';
 import { pick, types } from '@react-native-documents/picker';
 import RNFS from 'react-native-fs';
 
@@ -8,7 +9,7 @@ import {
 } from '@/storage/eip7730Index';
 
 import { setRuntimeIndex } from './lookup';
-import { processLedgerRegistryZip } from './zip';
+import { isEmptyIndex, processLedgerRegistryZip } from './zip';
 
 import type { Eip7730Index } from './zip';
 
@@ -27,9 +28,14 @@ function base64ToBytes(b64: string): Uint8Array {
 }
 
 export async function importLedgerRegistryZipFromPicker(): Promise<ImportResult> {
+  const type = [types.zip, 'application/zip'];
   let result;
   try {
-    result = await pick({ type: [types.zip, 'application/zip'] });
+    // Only Android's system picker always answers with a link it grants read access to.
+    result =
+      Platform.OS === 'android'
+        ? await pick({ type, mode: 'open' })
+        : await pick({ type });
   } catch {
     return { ok: false, reason: 'cancelled' };
   }
@@ -50,6 +56,7 @@ export async function importLedgerRegistryZipFromPicker(): Promise<ImportResult>
   } catch {
     return { ok: false, reason: 'invalid' };
   }
+  if (isEmptyIndex(index)) return { ok: false, reason: 'invalid' };
 
   const indexedAt = new Date().toISOString();
   await savePersistedIndex(index);

@@ -120,7 +120,7 @@ function buildSummary(message: Record<string, string>): Eip712Summary {
 }
 
 describe('Eip712JsonPanel EIP-7730 integration', () => {
-  it('renders descriptor intent + fields when descriptor found, bypasses SpecialEip712Section', () => {
+  it('renders descriptor intent and fields when the app has no reviewer of its own', () => {
     mockLookupEip712.mockReturnValue({
       intent: 'Approve spender',
       fields: [
@@ -132,13 +132,10 @@ describe('Eip712JsonPanel EIP-7730 integration', () => {
       spender: '0xabc0000000000000000000000000000000000001',
       sigDeadline: '1700000000',
     });
-    const eip712 = {
-      ...buildSummary({
-        spender: '0xabc0000000000000000000000000000000000001',
-        sigDeadline: '1700000000',
-      }),
-      special: { kind: 'permit' } as any,
-    };
+    const eip712 = buildSummary({
+      spender: '0xabc0000000000000000000000000000000000001',
+      sigDeadline: '1700000000',
+    });
 
     render(
       <Eip712JsonPanel
@@ -155,6 +152,26 @@ describe('Eip712JsonPanel EIP-7730 integration', () => {
       ),
     ).toBeTruthy();
     expect(screen.queryByText('SpecialEip712Section')).toBeNull();
+  });
+
+  it("keeps the app's own Permit reviewer over a matching descriptor", () => {
+    mockLookupEip712.mockReturnValue({ intent: 'Approve spender', fields: [] });
+    const eip712 = {
+      ...buildSummary({ spender: '0xabc', sigDeadline: '1' }),
+      special: { kind: 'permit' } as any,
+    };
+    render(
+      <Eip712JsonPanel
+        request={buildRequest(
+          buildPayload({ spender: '0xabc', sigDeadline: '1' }),
+        )}
+        eip712={eip712}
+        chainId={1}
+      />,
+    );
+    expect(screen.getByText('SpecialEip712Section')).toBeTruthy();
+    expect(screen.queryByText('Approve spender')).toBeNull();
+    expect(mockLookupEip712).not.toHaveBeenCalled();
   });
 
   it('looks the descriptor up by encoded type and passes the message domain', () => {

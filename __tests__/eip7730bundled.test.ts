@@ -81,6 +81,44 @@ describe('bundled EIP-7730 descriptors', () => {
     expect(out['Interest Rate mode']).toBe('variable');
   });
 
+  it('Kiln vault: formats come through two includes, with constants and a fixed value', () => {
+    const vault = '0x2a4e2dacc45186bed96d9f766cb6be6b0f8a26f1';
+    const descriptor = lookupCalldata(1, vault, '0x6e553f65');
+    expect(descriptor?.intent).toBe('Deposit');
+    const call = {
+      kind: 'contract-call' as const,
+      selector: '0x6e553f65',
+      functionName: 'deposit',
+      signature: 'deposit(uint256,address)',
+      args: [
+        { name: 'assets', type: 'uint256', value: AMOUNT.toString() },
+        { name: 'receiver', type: 'address', value: RECIPIENT },
+      ],
+    };
+    const out = rows(descriptor!, {
+      chainId: 1,
+      contractAddress: vault,
+      resolvePath: buildCalldataPathResolver(call, { to: vault, chainId: 1 }),
+    });
+    expect(out['Deposit asset']).toBe('1.5 USDC');
+    expect(
+      descriptor!.fields.find(f => f.label === 'Share ticker')?.value,
+    ).toBe('kmmUSDC');
+  });
+
+  it('1inch v4 on BSC exists only through an include, its constants resolved', () => {
+    const swap = lookupCalldata(
+      56,
+      '0x1111111254fb6c44bac0bed2854e76f90643097d',
+      '0xbc80f1a8',
+    );
+    expect(swap?.intent).toBe('Swap');
+    expect(JSON.stringify(swap)).not.toContain('$.metadata.constants');
+    expect(swap!.fields[0].params?.nativeCurrencyAddress).toContain(
+      '0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE',
+    );
+  });
+
   describe('USDC TransferWithAuthorization', () => {
     const types = {
       EIP712Domain: [

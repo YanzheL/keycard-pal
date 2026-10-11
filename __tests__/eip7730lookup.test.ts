@@ -26,6 +26,7 @@ jest.mock('../src/data/eip7730.json', () => ({
 
 import {
   getActiveIndex,
+  hasRuntimeIndex,
   lookupCalldata,
   lookupEip712,
   setRuntimeIndex,
@@ -141,6 +142,13 @@ describe('eip7730 lookup', () => {
         '0xa9059cbb',
       )?.intent,
     ).toBe('Runtime transfer');
+  });
+
+  it('tells whether a runtime index is set', () => {
+    setRuntimeIndex(null);
+    expect(hasRuntimeIndex()).toBe(false);
+    setRuntimeIndex({ version: 2, generatedAt: '', contracts: {}, eip712: {} });
+    expect(hasRuntimeIndex()).toBe(true);
   });
 
   it('clears runtime index when null', () => {

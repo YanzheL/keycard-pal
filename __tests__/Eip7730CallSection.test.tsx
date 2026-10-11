@@ -134,6 +134,23 @@ describe('Eip7730CallSection', () => {
     expect(screen.getByText('0.002 ETH')).toBeTruthy();
   });
 
+  it('shows a fixed value without reading the call', () => {
+    const format: Eip7730DisplayFormat = {
+      fields: [
+        { path: '', label: 'Share ticker', format: 'raw', value: 'kmmUSDC' },
+      ],
+    };
+    const call: DecodedCall = {
+      kind: 'contract-call',
+      selector: '0x6e553f65',
+      functionName: 'deposit',
+      signature: 'deposit(uint256,address)',
+      args: [],
+    };
+    render(<Eip7730CallSection format={format} call={call} />);
+    expect(screen.getByText('kmmUSDC')).toBeTruthy();
+  });
+
   it('renders em-dash for unresolved field paths', () => {
     const format: Eip7730DisplayFormat = {
       fields: [{ path: 'missingField', label: 'Missing', format: 'raw' }],

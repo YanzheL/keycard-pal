@@ -25,7 +25,7 @@
     "generate:chains": "node scripts/generate-chains.js",
     "generate:logos": "node scripts/generate-logos.js",
     "generate:logos:clean": "node scripts/generate-logos.js --clean",
-    "generate:eip7730": "node scripts/generate-eip7730.js",
+    "generate:eip7730": "node --experimental-strip-types scripts/generate-eip7730.js",
     "generate": "npm run generate:tokens && npm run generate:chains && npm run generate:abi && npm run generate:selectors && npm run generate:eip7730",
     "check:offline-bundle": "node scripts/check-offline-bundle.js",
     "check:bundles": "node scripts/check-bundles.js",

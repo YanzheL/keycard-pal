@@ -47,7 +47,7 @@ jest.mock('../src/utils/eip7730/import', () => ({
 }));
 
 const DEFAULT_URL =
-  'https://github.com/LedgerHQ/clear-signing-erc7730-registry/archive/refs/heads/master.zip';
+  'https://github.com/ethereum/clear-signing-erc7730-registry/archive/refs/heads/master.zip';
 
 beforeEach(() => {
   jest.clearAllMocks();
