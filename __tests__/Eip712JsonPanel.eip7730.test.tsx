@@ -10,6 +10,7 @@ jest.mock('react-native-paper', () => {
   const { Text, TouchableOpacity, View } = require('react-native');
   return {
     Text: ({ children, ...props }: any) => <Text {...props}>{children}</Text>,
+    Icon: () => <View />,
     SegmentedButtons: ({
       buttons,
       onValueChange,
@@ -154,6 +155,73 @@ describe('Eip712JsonPanel EIP-7730 integration', () => {
       ),
     ).toBeTruthy();
     expect(screen.queryByText('SpecialEip712Section')).toBeNull();
+  });
+
+  it('looks the descriptor up by encoded type and passes the message domain', () => {
+    mockLookupEip712.mockReturnValue(null);
+    const payload = buildPayload({ spender: '0xabc', sigDeadline: '1' });
+    render(
+      <Eip712JsonPanel
+        request={buildRequest(payload)}
+        eip712={buildSummary({ spender: '0xabc', sigDeadline: '1' })}
+        chainId={1}
+      />,
+    );
+    expect(mockLookupEip712).toHaveBeenCalledWith(
+      1,
+      VERIFYING,
+      'PermitSingle(address spender,uint256 sigDeadline)',
+      payload.domain,
+    );
+  });
+
+  it('reads WalletConnect typed data from reviewData', () => {
+    mockLookupEip712.mockReturnValue(null);
+    const payload = buildPayload({ spender: '0xabc', sigDeadline: '1' });
+    const request: EthSignRequest = {
+      signData: `0x${'11'.repeat(32)}`,
+      dataType: 0,
+      derivationPath: "m/44'/60'/0'/0",
+      reviewData: buildRequest(payload).signData,
+    };
+    render(
+      <Eip712JsonPanel
+        request={request}
+        eip712={buildSummary({ spender: '0xabc', sigDeadline: '1' })}
+        chainId={1}
+      />,
+    );
+    expect(mockLookupEip712).toHaveBeenCalledWith(
+      1,
+      VERIFYING,
+      'PermitSingle(address spender,uint256 sigDeadline)',
+      payload.domain,
+    );
+  });
+
+  it('reads @. fields from the message container', () => {
+    mockLookupEip712.mockReturnValue({
+      intent: 'Sign',
+      fields: [
+        { path: '@.to', label: 'Contract', format: 'raw' },
+        { path: '@.from', label: 'Signer', format: 'raw' },
+      ],
+    });
+    const payload = buildPayload({ spender: '0xabc', sigDeadline: '1' });
+    render(
+      <Eip712JsonPanel
+        request={{
+          ...buildRequest(payload),
+          address: '0x00000000000000000000000000000000000000aa',
+        }}
+        eip712={buildSummary({ spender: '0xabc', sigDeadline: '1' })}
+        chainId={1}
+      />,
+    );
+    expect(screen.getByText(`Contract: ${VERIFYING}`)).toBeTruthy();
+    expect(
+      screen.getByText('Signer: 0x00000000000000000000000000000000000000aa'),
+    ).toBeTruthy();
   });
 
   it('falls back to SpecialEip712Section when descriptor not found', () => {

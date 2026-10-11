@@ -59,29 +59,79 @@ describe('Eip7730CallSection', () => {
     ).toBeTruthy();
   });
 
-  it('formats tokenAmount via descriptor metadata', () => {
+  const TOKEN = '0x000000000000000000000000000000000000feed';
+
+  it('formats tokenAmount with the token from the transaction', () => {
     const format: Eip7730DisplayFormat = {
-      fields: [{ path: 'amount', label: 'Amount', format: 'tokenAmount' }],
-      metadata: {
-        tokens: {
-          '0xtokenfeed': { decimals: 6, ticker: 'USDC' },
+      fields: [
+        {
+          path: 'amount',
+          label: 'Amount',
+          format: 'tokenAmount',
+          params: { tokenPath: '@.to' },
         },
-      },
+      ],
+      metadata: { tokens: { [TOKEN]: { decimals: 6, ticker: 'USDC' } } },
     };
     const call: DecodedCall = {
       kind: 'erc20-transfer',
-      to: '0xrecipient',
+      to: '0x0000000000000000000000000000000000000abc',
       amount: 1500000n,
     };
     render(
       <Eip7730CallSection
         format={format}
         call={call}
-        contractAddress="0xtokenfeed"
+        contractAddress={TOKEN}
         chainId={1}
+        container={{ to: TOKEN, chainId: 1 }}
       />,
     );
     expect(screen.getByText('1.5 USDC')).toBeTruthy();
+    expect(screen.queryByText('Unknown token')).toBeNull();
+  });
+
+  it('warns when the token is unknown', () => {
+    const format: Eip7730DisplayFormat = {
+      fields: [{ path: 'amount', label: 'Amount', format: 'tokenAmount' }],
+    };
+    const call: DecodedCall = {
+      kind: 'erc20-transfer',
+      to: '0x0000000000000000000000000000000000000abc',
+      amount: 1500000n,
+    };
+    render(
+      <Eip7730CallSection
+        format={format}
+        call={call}
+        contractAddress={TOKEN}
+        chainId={1}
+      />,
+    );
+    expect(screen.getByText('1500000')).toBeTruthy();
+    expect(screen.getByText('Unknown token')).toBeTruthy();
+  });
+
+  it('formats the transaction value from the container', () => {
+    const format: Eip7730DisplayFormat = {
+      fields: [{ path: '@.value', label: 'Value', format: 'amount' }],
+    };
+    const call: DecodedCall = {
+      kind: 'contract-call',
+      selector: '0xdeadbeef',
+      functionName: 'deposit',
+      signature: 'deposit()',
+      args: [],
+    };
+    render(
+      <Eip7730CallSection
+        format={format}
+        call={call}
+        chainId={1}
+        container={{ value: '2000000000000000', chainId: 1 }}
+      />,
+    );
+    expect(screen.getByText('0.002 ETH')).toBeTruthy();
   });
 
   it('renders em-dash for unresolved field paths', () => {

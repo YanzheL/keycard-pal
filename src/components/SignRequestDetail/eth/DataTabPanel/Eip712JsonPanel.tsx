@@ -9,12 +9,17 @@ import theme from '@/theme';
 import AddressInfoRow from '@/components/ens/AddressInfoRow.online';
 import InfoRow from '@/components/InfoRow';
 
-import { parseEip712RawTypedData, type Eip712Summary } from '@/utils/eip712';
-import { formatEip7730Field } from '@/utils/eip7730/format';
+import {
+  encodeEip712Type,
+  parseEip712RawTypedData,
+  type Eip712Summary,
+} from '@/utils/eip712';
+import type { Eip7730FieldContext } from '@/utils/eip7730/format';
 import { lookupEip712 } from '@/utils/eip7730/lookup';
 import { resolveEip712FieldValue } from '@/utils/eip7730/paths';
 import { classifyEthPayload } from '@/utils/ethPayload';
 
+import Eip7730FieldRow from './Eip7730FieldRow';
 import { DigestExplainer, DigestRow, SectionHeader } from './shared';
 import SpecialEip712Section from './SpecialEip712Section';
 
@@ -32,22 +37,47 @@ export default function Eip712JsonPanel({
   const [tab, setTab] = useState<Tab>('details');
   const specialEip712 = eip712.special;
 
+  // WalletConnect typed data is in reviewData; the app hashed it into signData itself.
   const rawTypedData = useMemo(
-    () => parseEip712RawTypedData(request.signData),
-    [request.signData],
+    () => parseEip712RawTypedData(request.reviewData ?? request.signData),
+    [request.reviewData, request.signData],
   );
+  const verifyingContract = eip712.domain?.verifyingContract;
 
   const eip7730Descriptor = useMemo(() => {
-    if (chainId === undefined) return null;
-    const verifyingContract = eip712.domain?.verifyingContract;
-    const primaryType = eip712.primaryType;
-    if (!verifyingContract || !primaryType) return null;
-    return lookupEip712(chainId, verifyingContract, primaryType);
-  }, [chainId, eip712.domain?.verifyingContract, eip712.primaryType]);
+    if (chainId === undefined || !verifyingContract || !rawTypedData) {
+      return null;
+    }
+    const encodedType = encodeEip712Type(
+      rawTypedData.primaryType,
+      rawTypedData.types,
+    );
+    if (!encodedType) return null;
+    return lookupEip712(
+      chainId,
+      verifyingContract,
+      encodedType,
+      rawTypedData.domain,
+    );
+  }, [chainId, verifyingContract, rawTypedData]);
+
+  const fieldContext = useMemo<Eip7730FieldContext>(() => {
+    const container = {
+      from: request.address,
+      to: verifyingContract,
+      value: '0',
+      chainId,
+    };
+    return {
+      chainId,
+      contractAddress: verifyingContract,
+      resolvePath: path =>
+        resolveEip712FieldValue(path, rawTypedData?.message, container),
+    };
+  }, [chainId, verifyingContract, rawTypedData, request.address]);
 
   const eip712Digest = useMemo(() => {
-    // Same classification that produces the bytes sent to the card
-    // (signingDigest) — the digest shown here is the digest signed.
+    // Same classification as the bytes sent to the card, so the digest shown is the one signed.
     const payload = classifyEthPayload(request.signData, request.dataType);
     return payload.kind === 'eip712-json' || payload.kind === 'raw-digest'
       ? payload.digest
@@ -95,46 +125,14 @@ export default function Eip712JsonPanel({
                 {eip7730Descriptor.fields.length > 0 && (
                   <SectionHeader title="Message" />
                 )}
-                {eip7730Descriptor.fields.map((field, index) => {
-                  const raw = rawTypedData
-                    ? resolveEip712FieldValue(field.path, rawTypedData.message)
-                    : null;
-                  const display = formatEip7730Field(
-                    field,
-                    raw,
-                    eip7730Descriptor,
-                    {
-                      chainId,
-                      contractAddress: eip712.domain?.verifyingContract,
-                      resolvePath: path =>
-                        rawTypedData
-                          ? resolveEip712FieldValue(path, rawTypedData.message)
-                          : null,
-                    },
-                  );
-                  if (
-                    field.format === 'addressName' &&
-                    raw &&
-                    raw.startsWith('0x')
-                  ) {
-                    return (
-                      <View
-                        key={`eip7730-${field.path}-${index}`}
-                        style={styles.row}
-                      >
-                        <AddressInfoRow label={field.label} value={raw} />
-                      </View>
-                    );
-                  }
-                  return (
-                    <View
-                      key={`eip7730-${field.path}-${index}`}
-                      style={styles.row}
-                    >
-                      <InfoRow label={field.label} value={display} />
-                    </View>
-                  );
-                })}
+                {eip7730Descriptor.fields.map((field, index) => (
+                  <Eip7730FieldRow
+                    key={`eip7730-${field.path}-${index}`}
+                    field={field}
+                    format={eip7730Descriptor}
+                    ctx={fieldContext}
+                  />
+                ))}
               </>
             ) : (
               <>

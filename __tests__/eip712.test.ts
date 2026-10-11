@@ -1,4 +1,5 @@
 import {
+  encodeEip712Type,
   parseEip712Prehashed,
   parseEip712RawTypedData,
   parseEip712Summary,
@@ -494,5 +495,66 @@ describe('parseEip712RawTypedData', () => {
     const hex = Buffer.from(JSON.stringify(payload), 'utf8').toString('hex');
     const result = parseEip712RawTypedData(hex);
     expect(result!.primaryType).toEqual('EIP712Domain');
+  });
+});
+
+describe('encodeEip712Type', () => {
+  const mailTypes = {
+    EIP712Domain: [{ name: 'name', type: 'string' }],
+    Person: [
+      { name: 'name', type: 'string' },
+      { name: 'wallet', type: 'address' },
+    ],
+    Mail: [
+      { name: 'from', type: 'Person' },
+      { name: 'to', type: 'Person' },
+      { name: 'contents', type: 'string' },
+    ],
+  };
+
+  it('matches the EIP-712 reference example', () => {
+    expect(encodeEip712Type('Mail', mailTypes)).toBe(
+      'Mail(Person from,Person to,string contents)Person(string name,address wallet)',
+    );
+  });
+
+  it('follows array members and sorts referenced types by name', () => {
+    const types = {
+      PermitBatch: [
+        { name: 'details', type: 'PermitDetails[]' },
+        { name: 'spender', type: 'address' },
+        { name: 'sigDeadline', type: 'uint256' },
+      ],
+      PermitDetails: [
+        { name: 'token', type: 'address' },
+        { name: 'amount', type: 'uint160' },
+        { name: 'expiration', type: 'uint48' },
+        { name: 'nonce', type: 'uint48' },
+      ],
+      Alpha: [{ name: 'x', type: 'uint8' }],
+    };
+    expect(encodeEip712Type('PermitBatch', types)).toBe(
+      'PermitBatch(PermitDetails[] details,address spender,uint256 sigDeadline)' +
+        'PermitDetails(address token,uint160 amount,uint48 expiration,uint48 nonce)',
+    );
+  });
+
+  it('lists each referenced type once and stops on cycles', () => {
+    const types = {
+      Node: [
+        { name: 'next', type: 'Node' },
+        { name: 'leaf', type: 'Leaf[2]' },
+        { name: 'other', type: 'Leaf' },
+      ],
+      Leaf: [{ name: 'v', type: 'uint256' }],
+    };
+    expect(encodeEip712Type('Node', types)).toBe(
+      'Node(Node next,Leaf[2] leaf,Leaf other)Leaf(uint256 v)',
+    );
+  });
+
+  it('returns null when the primary type is not a struct', () => {
+    expect(encodeEip712Type('Missing', mailTypes)).toBeNull();
+    expect(encodeEip712Type('Mail', { Mail: 'not a list' })).toBeNull();
   });
 });

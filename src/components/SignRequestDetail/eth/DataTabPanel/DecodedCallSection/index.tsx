@@ -3,6 +3,8 @@ import { StyleSheet, View } from 'react-native';
 import InfoRow from '@/components/InfoRow';
 
 import { lookupCalldata } from '@/utils/eip7730/lookup';
+import type { Eip7730Container } from '@/utils/eip7730/paths';
+import { lookupToken } from '@/utils/tokenMetadata';
 import type { DecodedCall } from '@/utils/txParser';
 
 import ContractCallSection from './ContractCallSection';
@@ -10,7 +12,16 @@ import Eip7730CallSection from './Eip7730CallSection';
 import Erc20ApproveSection from './Erc20ApproveSection';
 import Erc20TransferFromSection from './Erc20TransferFromSection';
 import Erc20TransferSection from './Erc20TransferSection';
+import TokenContractRows from './TokenContractRows';
 import UniversalRouterSection from './UniversalRouterSection';
+
+function isTokenCall(call: DecodedCall): boolean {
+  return (
+    call.kind === 'erc20-transfer' ||
+    call.kind === 'erc20-transferFrom' ||
+    call.kind === 'erc20-approve'
+  );
+}
 
 function selectorForCall(call: DecodedCall): string | null {
   switch (call.kind) {
@@ -33,10 +44,12 @@ export default function DecodedCallSection({
   call,
   tokenContract,
   chainId,
+  container,
 }: {
   call: DecodedCall;
   tokenContract?: string;
   chainId?: number;
+  container?: Eip7730Container;
 }) {
   const selector = selectorForCall(call);
   const descriptor =
@@ -46,12 +59,22 @@ export default function DecodedCallSection({
 
   if (descriptor) {
     return (
-      <Eip7730CallSection
-        format={descriptor}
-        call={call}
-        contractAddress={tokenContract}
-        chainId={chainId}
-      />
+      <>
+        {/* The header leaves out To for token calls, so the contract is shown here. */}
+        {isTokenCall(call) && (
+          <TokenContractRows
+            token={lookupToken(chainId, tokenContract)}
+            tokenContract={tokenContract}
+          />
+        )}
+        <Eip7730CallSection
+          format={descriptor}
+          call={call}
+          contractAddress={tokenContract}
+          chainId={chainId}
+          container={container}
+        />
+      </>
     );
   }
 

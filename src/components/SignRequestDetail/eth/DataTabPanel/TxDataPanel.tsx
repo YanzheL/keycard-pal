@@ -74,6 +74,12 @@ export default function TxDataPanel({
             call={tx.decodedCall}
             tokenContract={tx.to}
             chainId={chainId}
+            container={{
+              from: request.address,
+              to: tx.to,
+              value: tx.valueWei,
+              chainId,
+            }}
           />
         )}
         {tab === 'digests' && calldataDigest && (

@@ -3,12 +3,12 @@ import { Text } from 'react-native-paper';
 
 import theme from '@/theme';
 
-import AddressInfoRow from '@/components/ens/AddressInfoRow.online';
-import InfoRow from '@/components/InfoRow';
+import Eip7730FieldRow from '@/components/SignRequestDetail/eth/DataTabPanel/Eip7730FieldRow';
 
-import { formatEip7730Field } from '@/utils/eip7730/format';
-import { buildCalldataPathResolver } from '@/utils/eip7730/paths';
-
+import {
+  buildCalldataPathResolver,
+  type Eip7730Container,
+} from '@/utils/eip7730/paths';
 import type { Eip7730DisplayFormat } from '@/utils/eip7730/zip';
 import type { DecodedCall } from '@/utils/txParser';
 
@@ -17,6 +17,7 @@ type Props = {
   call: DecodedCall;
   contractAddress?: string;
   chainId?: number;
+  container?: Eip7730Container;
 };
 
 export default function Eip7730CallSection({
@@ -24,9 +25,13 @@ export default function Eip7730CallSection({
   call,
   contractAddress,
   chainId,
+  container,
 }: Props) {
-  const resolvePath = buildCalldataPathResolver(call);
-  const ctx = { chainId, contractAddress, resolvePath };
+  const ctx = {
+    chainId,
+    contractAddress,
+    resolvePath: buildCalldataPathResolver(call, container),
+  };
 
   return (
     <View>
@@ -37,22 +42,14 @@ export default function Eip7730CallSection({
           </Text>
         </View>
       )}
-      {format.fields.map((field, index) => {
-        const raw = resolvePath(field.path);
-        const display = formatEip7730Field(field, raw, format, ctx);
-        if (field.format === 'addressName' && raw && raw.startsWith('0x')) {
-          return (
-            <View key={`${field.path}-${index}`} style={styles.row}>
-              <AddressInfoRow label={field.label} value={raw} />
-            </View>
-          );
-        }
-        return (
-          <View key={`${field.path}-${index}`} style={styles.row}>
-            <InfoRow label={field.label} value={display} />
-          </View>
-        );
-      })}
+      {format.fields.map((field, index) => (
+        <Eip7730FieldRow
+          key={`${field.path}-${index}`}
+          field={field}
+          format={format}
+          ctx={ctx}
+        />
+      ))}
     </View>
   );
 }
@@ -64,8 +61,5 @@ const styles = StyleSheet.create({
   intent: {
     color: theme.colors.primary,
     fontWeight: '600',
-  },
-  row: {
-    paddingVertical: 8,
   },
 });

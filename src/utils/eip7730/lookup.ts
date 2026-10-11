@@ -26,13 +26,27 @@ export function lookupCalldata(
   return getActiveIndex().contracts[key]?.[selector.toLowerCase()] ?? null;
 }
 
+function domainMatches(
+  required: Record<string, string> | undefined,
+  domain: Record<string, unknown>,
+): boolean {
+  if (!required) return true;
+  return Object.entries(required).every(
+    ([key, value]) =>
+      domain[key] !== undefined && String(domain[key]) === value,
+  );
+}
+
+// The spec keys EIP-712 formats by `encodeType`, never by the bare primary type.
 export function lookupEip712(
   chainId: number,
   verifyingContract: string,
-  primaryType: string,
+  encodedType: string,
+  domain: Record<string, unknown>,
 ): Eip7730DisplayFormat | null {
-  if (!Number.isFinite(chainId) || !verifyingContract || !primaryType)
+  if (!Number.isFinite(chainId) || !verifyingContract || !encodedType)
     return null;
   const key = indexKey(chainId, verifyingContract);
-  return getActiveIndex().eip712[key]?.[primaryType] ?? null;
+  const format = getActiveIndex().eip712[key]?.[encodedType] ?? null;
+  return format && domainMatches(format.domain, domain) ? format : null;
 }

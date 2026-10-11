@@ -400,4 +400,47 @@ describe('DecodedCallSection', () => {
       expect(screen.getByText('Amount (raw units): 999')).toBeTruthy();
     });
   });
+
+  describe('with a clear-signing descriptor in the bundled index', () => {
+    const USDT_ADDRESS = '0xdac17f958d2ee523a2206206994597c13d831ec7';
+
+    it('keeps the token contract row and renders the descriptor', () => {
+      const call: DecodedCall = {
+        kind: 'erc20-transfer',
+        to: ADDR_A,
+        amount: 1_500_000n,
+      };
+      render(
+        <DecodedCallSection
+          call={call}
+          tokenContract={USDT_ADDRESS}
+          chainId={MAINNET}
+          container={{ to: USDT_ADDRESS, chainId: MAINNET }}
+        />,
+      );
+      expect(screen.getByText('Send')).toBeTruthy();
+      expect(screen.getByText(`Token contract: ${USDT_ADDRESS}`)).toBeTruthy();
+      expect(screen.getByText('Amount: 1.5 USDT')).toBeTruthy();
+      expect(screen.queryByText('ERC-20 Transfer')).toBeNull();
+    });
+
+    it('leaves the contract row to the header for other calls', () => {
+      const call: DecodedCall = {
+        kind: 'contract-call',
+        selector: '0xa415bcad',
+        functionName: 'borrow',
+        signature: 'borrow(address,uint256,uint256,uint16,address)',
+        args: [],
+      };
+      render(
+        <DecodedCallSection
+          call={call}
+          tokenContract="0x7d2768de32b0b80b7a3454c06bdac94a69ddc7a9"
+          chainId={MAINNET}
+        />,
+      );
+      expect(screen.getByText('Borrow')).toBeTruthy();
+      expect(screen.queryByText(/Token contract/)).toBeNull();
+    });
+  });
 });

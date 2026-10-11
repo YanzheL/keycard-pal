@@ -9,7 +9,7 @@ import InfoRow from '@/components/InfoRow';
 import type { DecodedCall } from '@/utils/txParser';
 import { formatTokenAmount, lookupToken } from '@/utils/tokenMetadata';
 
-import TokenSymbolRow from './TokenSymbolRow';
+import TokenContractRows from './TokenContractRows';
 
 const UINT256_MAX = 2n ** 256n - 1n;
 
@@ -43,12 +43,7 @@ export default function Erc20ApproveSection({
           ERC-20 Approve
         </Text>
       </View>
-      {token && <TokenSymbolRow token={token} />}
-      {tokenContract && (
-        <View style={styles.row}>
-          <AddressInfoRow label="Token contract" value={tokenContract} />
-        </View>
-      )}
+      <TokenContractRows token={token} tokenContract={tokenContract} />
       <View style={styles.row}>
         <AddressInfoRow label="Spender" value={call.spender} />
       </View>

@@ -11,9 +11,14 @@ jest.mock('../src/data/eip7730.json', () => ({
   },
   eip712: {
     '1:0x0000000000000000000000000000000000000777': {
-      Permit: {
+      'Permit(address owner)': {
         intent: 'Bundled permit',
         fields: [],
+      },
+      'Bound(uint256 x)': {
+        intent: 'Bound to a domain',
+        fields: [],
+        domain: { name: 'Permit2', chainId: '1' },
       },
     },
   },
@@ -70,19 +75,47 @@ describe('eip7730 lookup', () => {
     ).toBeNull();
   });
 
-  it('finds EIP-712 descriptor by chain + verifying contract + primary type', () => {
-    const entry = lookupEip712(
-      1,
-      '0x0000000000000000000000000000000000000777',
-      'Permit',
-    );
-    expect(entry?.intent).toBe('Bundled permit');
+  const VERIFYING = '0x0000000000000000000000000000000000000777';
+
+  it('finds an EIP-712 descriptor by chain, verifying contract and encoded type', () => {
+    expect(
+      lookupEip712(1, VERIFYING, 'Permit(address owner)', {})?.intent,
+    ).toBe('Bundled permit');
   });
 
-  it('returns null for unknown primary type', () => {
-    expect(
-      lookupEip712(1, '0x0000000000000000000000000000000000000777', 'Other'),
-    ).toBeNull();
+  it('does not match the bare primary type', () => {
+    expect(lookupEip712(1, VERIFYING, 'Permit', {})).toBeNull();
+  });
+
+  it('returns null for an unknown encoded type', () => {
+    expect(lookupEip712(1, VERIFYING, 'Other(uint256 y)', {})).toBeNull();
+  });
+
+  describe('domain binding', () => {
+    it('matches when the message domain carries every required value', () => {
+      expect(
+        lookupEip712(1, VERIFYING, 'Bound(uint256 x)', {
+          name: 'Permit2',
+          chainId: 1,
+          version: '1',
+        })?.intent,
+      ).toBe('Bound to a domain');
+    });
+
+    it('rejects a different value', () => {
+      expect(
+        lookupEip712(1, VERIFYING, 'Bound(uint256 x)', {
+          name: 'Fake',
+          chainId: 1,
+        }),
+      ).toBeNull();
+    });
+
+    it('rejects a missing value', () => {
+      expect(
+        lookupEip712(1, VERIFYING, 'Bound(uint256 x)', { chainId: 1 }),
+      ).toBeNull();
+    });
   });
 
   it('runtime index overrides bundled when set', () => {
@@ -131,6 +164,7 @@ describe('eip7730 lookup', () => {
     expect(lookupCalldata(NaN, '0xabc', '0xdef')).toBeNull();
     expect(lookupCalldata(1, '', '0xdef')).toBeNull();
     expect(lookupCalldata(1, '0xabc', '')).toBeNull();
-    expect(lookupEip712(NaN, '0xabc', 'Permit')).toBeNull();
+    expect(lookupEip712(NaN, '0xabc', 'Permit(address owner)', {})).toBeNull();
+    expect(lookupEip712(1, VERIFYING, '', {})).toBeNull();
   });
 });

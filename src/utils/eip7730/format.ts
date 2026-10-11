@@ -1,5 +1,6 @@
 import { formatUnits } from 'viem';
 
+import { getNativeCurrencySymbol } from '@/utils/chainMetadata';
 import { lookupToken } from '@/utils/tokenMetadata';
 
 import type { Eip7730DisplayFormat, Eip7730Field } from './zip';
@@ -10,54 +11,93 @@ export type Eip7730FieldContext = {
   resolvePath: (path: string) => string | null;
 };
 
-function descriptorTokenInfo(
-  format: Eip7730DisplayFormat,
-  address: string,
-): { decimals?: number; ticker?: string } | null {
-  const tokens = format.metadata?.tokens;
-  if (!tokens) return null;
-  return tokens[address.toLowerCase()] ?? tokens['*'] ?? null;
+export type Eip7730FieldDisplay = {
+  text: string;
+  warning?: string;
+};
+
+export const UNKNOWN_TOKEN_WARNING = 'Unknown token';
+
+const ADDRESS_RE = /^0x[0-9a-fA-F]{40}$/;
+const ENUM_REF_PREFIX = '$.metadata.enums.';
+const NATIVE_DECIMALS = 18;
+
+type Params = Record<string, unknown> | undefined;
+type TokenInfo = { decimals: number; symbol: string };
+
+function toBigInt(value: string): bigint | null {
+  try {
+    return BigInt(value);
+  } catch {
+    return null;
+  }
 }
 
-function resolveTokenDecimals(
+// `$.metadata.constants` references are not resolved yet, so only literal addresses count.
+function literalAddresses(value: unknown): string[] {
+  const list = Array.isArray(value) ? value : [value];
+  return list
+    .filter((v): v is string => typeof v === 'string' && ADDRESS_RE.test(v))
+    .map(v => v.toLowerCase());
+}
+
+function nativeToken(chainId: number | undefined): TokenInfo | null {
+  if (chainId === undefined) return null;
+  return {
+    decimals: NATIVE_DECIMALS,
+    symbol: getNativeCurrencySymbol(chainId),
+  };
+}
+
+function tokenAddress(params: Params, ctx: Eip7730FieldContext): string | null {
+  const address =
+    typeof params?.tokenPath === 'string'
+      ? ctx.resolvePath(params.tokenPath)
+      : typeof params?.token === 'string'
+      ? params.token
+      : null;
+  return address && ADDRESS_RE.test(address) ? address.toLowerCase() : null;
+}
+
+function descriptorToken(
+  format: Eip7730DisplayFormat,
+  address: string,
+  ctx: Eip7730FieldContext,
+): TokenInfo | null {
+  const tokens = format.metadata?.tokens;
+  if (!tokens) return null;
+  // `*` is the described contract's own metadata, never another token's.
+  const own =
+    ctx.contractAddress?.toLowerCase() === address ? tokens['*'] : undefined;
+  const info = tokens[address] ?? own;
+  if (info?.decimals === undefined || info.ticker === undefined) return null;
+  return { decimals: info.decimals, symbol: info.ticker };
+}
+
+function resolveToken(
   format: Eip7730DisplayFormat,
   ctx: Eip7730FieldContext,
-  params: Record<string, unknown> | undefined,
-): { decimals?: number; symbol?: string; address?: string } {
-  let tokenAddress: string | undefined;
-  if (params) {
-    const tokenPath =
-      typeof params.tokenPath === 'string'
-        ? params.tokenPath
-        : typeof params.token === 'string'
-        ? params.token
-        : undefined;
-    if (tokenPath) {
-      const resolved = ctx.resolvePath(tokenPath);
-      if (resolved && resolved.startsWith('0x')) tokenAddress = resolved;
-    }
+  params: Params,
+): TokenInfo | null {
+  const address = tokenAddress(params, ctx);
+  if (!address) return null;
+  if (literalAddresses(params?.nativeCurrencyAddress).includes(address)) {
+    return nativeToken(ctx.chainId);
   }
-  if (!tokenAddress) tokenAddress = ctx.contractAddress;
-  if (!tokenAddress) return {};
+  const fromDescriptor = descriptorToken(format, address, ctx);
+  if (fromDescriptor) return fromDescriptor;
+  const bundled = lookupToken(ctx.chainId, address);
+  return bundled
+    ? { decimals: bundled.decimals, symbol: bundled.symbol }
+    : null;
+}
 
-  const descriptorInfo = descriptorTokenInfo(format, tokenAddress);
-  if (descriptorInfo?.decimals !== undefined) {
-    return {
-      decimals: descriptorInfo.decimals,
-      symbol: descriptorInfo.ticker,
-      address: tokenAddress,
-    };
+function reachesThreshold(amount: bigint, threshold: unknown): boolean {
+  if (typeof threshold !== 'string' && typeof threshold !== 'number') {
+    return false;
   }
-
-  const bundled = lookupToken(ctx.chainId, tokenAddress);
-  if (bundled) {
-    return {
-      decimals: bundled.decimals,
-      symbol: bundled.symbol,
-      address: tokenAddress,
-    };
-  }
-  return { address: tokenAddress };
+  const limit = toBigInt(String(threshold));
+  return limit !== null && amount >= limit;
 }
 
 function trimAmount(raw: string): string {
@@ -65,25 +105,49 @@ function trimAmount(raw: string): string {
   return raw.replace(/0+$/, '').replace(/\.$/, '');
 }
 
-function formatTokenAmountValue(
+function amountText(amount: bigint, token: TokenInfo): string {
+  return `${trimAmount(formatUnits(amount, token.decimals))} ${token.symbol}`;
+}
+
+function message(params: Params, fallback: string): string {
+  return typeof params?.message === 'string' ? params.message : fallback;
+}
+
+function formatTokenAmount(
   value: string,
   format: Eip7730DisplayFormat,
   ctx: Eip7730FieldContext,
-  params: Record<string, unknown> | undefined,
-): string {
-  let amount: bigint;
-  try {
-    amount = BigInt(value);
-  } catch {
-    return value;
+  params: Params,
+): Eip7730FieldDisplay {
+  const amount = toBigInt(value);
+  if (amount === null) return { text: value };
+  const token = resolveToken(format, ctx, params);
+  if (reachesThreshold(amount, params?.threshold)) {
+    const text = message(params, 'Unlimited');
+    return token
+      ? { text: `${text} ${token.symbol}` }
+      : { text, warning: UNKNOWN_TOKEN_WARNING };
   }
-  const info = resolveTokenDecimals(format, ctx, params);
-  if (info.decimals === undefined) return value;
-  const formatted = trimAmount(formatUnits(amount, info.decimals));
-  return info.symbol ? `${formatted} ${info.symbol}` : formatted;
+  return token
+    ? { text: amountText(amount, token) }
+    : { text: value, warning: UNKNOWN_TOKEN_WARNING };
 }
 
-function formatDateValue(value: string): string {
+function formatAmount(
+  value: string,
+  ctx: Eip7730FieldContext,
+  params: Params,
+): Eip7730FieldDisplay {
+  const amount = toBigInt(value);
+  if (amount === null) return { text: value };
+  if (reachesThreshold(amount, params?.threshold)) {
+    return { text: message(params, 'All') };
+  }
+  const native = nativeToken(ctx.chainId);
+  return { text: native ? amountText(amount, native) : value };
+}
+
+function formatDate(value: string): string {
   const num = Number(value);
   if (!Number.isFinite(num) || num <= 0) return value;
   try {
@@ -93,21 +157,17 @@ function formatDateValue(value: string): string {
   }
 }
 
-function formatEnumValue(
+function formatEnum(
   value: string,
   format: Eip7730DisplayFormat,
-  params: Record<string, unknown> | undefined,
+  params: Params,
 ): string {
-  const enumId =
-    params && typeof params.$ref === 'string'
-      ? params.$ref
-      : params && typeof params.enumId === 'string'
-      ? params.enumId
-      : undefined;
-  if (!enumId) return value;
-  const map = format.metadata?.enums?.[enumId];
-  if (!map) return value;
-  return map[value] ?? value;
+  const ref = typeof params?.$ref === 'string' ? params.$ref : undefined;
+  if (!ref) return value;
+  const id = ref.startsWith(ENUM_REF_PREFIX)
+    ? ref.slice(ENUM_REF_PREFIX.length)
+    : ref;
+  return format.metadata?.enums?.[id]?.[value] ?? value;
 }
 
 export function formatEip7730Field(
@@ -115,19 +175,18 @@ export function formatEip7730Field(
   value: string | null,
   format: Eip7730DisplayFormat,
   ctx: Eip7730FieldContext,
-): string {
-  if (value === null) return '—';
+): Eip7730FieldDisplay {
+  if (value === null) return { text: '—' };
   switch (field.format) {
     case 'tokenAmount':
-      return formatTokenAmountValue(value, format, ctx, field.params);
+      return formatTokenAmount(value, format, ctx, field.params);
+    case 'amount':
+      return formatAmount(value, ctx, field.params);
     case 'date':
-      return formatDateValue(value);
+      return { text: formatDate(value) };
     case 'enum':
-      return formatEnumValue(value, format, field.params);
-    case 'addressName':
-    case 'raw':
-    case 'calldata':
+      return { text: formatEnum(value, format, field.params) };
     default:
-      return value;
+      return { text: value };
   }
 }

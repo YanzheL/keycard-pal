@@ -279,6 +279,47 @@ export function parseEip712RawTypedData(
   }
 }
 
+type Eip712Member = { name: string; type: string };
+
+function structMembers(
+  types: Record<string, unknown>,
+  name: string,
+): Eip712Member[] | null {
+  const members = types[name];
+  if (!Array.isArray(members)) return null;
+  return members.filter(
+    (m): m is Eip712Member =>
+      isJsonObject(m) &&
+      typeof m.name === 'string' &&
+      typeof m.type === 'string',
+  );
+}
+
+export function encodeEip712Type(
+  primaryType: string,
+  types: Record<string, unknown>,
+): string | null {
+  const referenced = new Set<string>();
+  const visit = (name: string) => {
+    if (referenced.has(name)) return;
+    const members = structMembers(types, name);
+    if (!members) return;
+    referenced.add(name);
+    members.forEach(m => visit(m.type.replace(/\[\d*\]/g, '')));
+  };
+  visit(primaryType);
+  if (!referenced.has(primaryType)) return null;
+  referenced.delete(primaryType);
+  return [primaryType, ...[...referenced].sort()]
+    .map(
+      name =>
+        `${name}(${structMembers(types, name)!
+          .map(m => `${m.type} ${m.name}`)
+          .join(',')})`,
+    )
+    .join('');
+}
+
 export function parseEip712Summary(signDataHex: string): Eip712Summary | null {
   const json = decodeUtf8(signDataHex);
   if (!json) {
