@@ -16,7 +16,16 @@ import { getChainName, getNativeCurrencySymbol } from '@/utils/chainMetadata';
 import { parseEip712Prehashed, parseEip712Summary } from '@/utils/eip712';
 import { classifyEthPayload } from '@/utils/ethPayload';
 import { checksumEthAddress } from '@/utils/ethereumAddress';
-import { getTxLabel, parseTx } from '@/utils/txParser';
+import { getTxLabel, parseTx, type DecodedCall } from '@/utils/txParser';
+
+// The ERC-20 sections name the contract themselves, as "Token contract".
+function sectionShowsContract(call: DecodedCall | undefined): boolean {
+  return (
+    call?.kind === 'erc20-transfer' ||
+    call?.kind === 'erc20-transferFrom' ||
+    call?.kind === 'erc20-approve'
+  );
+}
 
 export default function SignRequestDetail({
   request,
@@ -80,12 +89,11 @@ export default function SignRequestDetail({
         </View>
       )}
 
-      {tx?.to &&
-        (!tx.decodedCall || tx.decodedCall.kind === 'contract-call') && (
-          <View style={styles.row}>
-            <AddressInfoRow label="To" value={tx.to} />
-          </View>
-        )}
+      {tx?.to && !sectionShowsContract(tx.decodedCall) && (
+        <View style={styles.row}>
+          <AddressInfoRow label="To" value={tx.to} />
+        </View>
+      )}
 
       {request.chainId !== undefined && (
         <View style={styles.row}>
