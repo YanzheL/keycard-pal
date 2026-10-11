@@ -1,4 +1,3 @@
-import NetInfo from '@react-native-community/netinfo';
 import React, {
   useCallback,
   useEffect,
@@ -18,6 +17,7 @@ import {
 } from '@/storage/eip7730Settings.online';
 import { savePersistedIndex } from '@/storage/eip7730Index';
 
+import { isOnWifi } from '@/utils/connectivity.online';
 import { hasRuntimeIndex, setRuntimeIndex } from '@/utils/eip7730/lookup';
 import { restorePersistedIndex } from '@/utils/eip7730/restore';
 import { isEmptyIndex, processRegistryZip } from '@/utils/eip7730/zip';
@@ -30,16 +30,6 @@ import {
 
 const WIFI_ONLY_BLOCKED =
   'Not on Wi-Fi, nothing downloaded. Turn off "Download on Wi-Fi only" to use mobile data.';
-
-async function networkAllowed(wifiOnly: boolean): Promise<boolean> {
-  if (!wifiOnly) return true;
-  try {
-    const state = await NetInfo.fetch();
-    return state.type === 'wifi';
-  } catch {
-    return true;
-  }
-}
 
 function asString(headerValue: string | null | undefined): string | null {
   return typeof headerValue === 'string' && headerValue.length > 0
@@ -135,7 +125,7 @@ export function Eip7730DownloadProvider({
         return;
       }
       const wifiOnly = await loadWifiOnly();
-      if (!(await networkAllowed(wifiOnly))) {
+      if (wifiOnly && !(await isOnWifi())) {
         setError(WIFI_ONLY_BLOCKED);
         setPhase('error');
         return;

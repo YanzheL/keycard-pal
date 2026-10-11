@@ -56,10 +56,9 @@ jest.mock('../src/utils/eip7730/lookup', () => ({
   hasRuntimeIndex: () => mockHasRuntimeIndex(),
 }));
 
-const mockNetInfoFetch = jest.fn();
-jest.mock('@react-native-community/netinfo', () => ({
-  __esModule: true,
-  default: { fetch: (...args: any[]) => mockNetInfoFetch(...args) },
+const mockIsOnWifi = jest.fn();
+jest.mock('../src/utils/connectivity.online', () => ({
+  isOnWifi: () => mockIsOnWifi(),
 }));
 
 const WIFI_ONLY_BLOCKED =
@@ -117,7 +116,7 @@ beforeEach(() => {
   mockSaveEtag.mockResolvedValue(undefined);
   mockSaveLastModified.mockResolvedValue(undefined);
   mockProcess.mockReturnValue(INDEX);
-  mockNetInfoFetch.mockResolvedValue({ type: 'wifi' });
+  mockIsOnWifi.mockResolvedValue(true);
   (global as any).fetch = jest.fn();
 });
 
@@ -227,7 +226,7 @@ describe('Eip7730DownloadProvider', () => {
   it('says why when Wi-Fi only blocks the download', async () => {
     mockLoadSource.mockResolvedValue('auto');
     mockLoadWifi.mockResolvedValue(true);
-    mockNetInfoFetch.mockResolvedValue({ type: 'cellular' });
+    mockIsOnWifi.mockResolvedValue(false);
 
     render(
       <Eip7730DownloadProvider>
@@ -244,7 +243,7 @@ describe('Eip7730DownloadProvider', () => {
 
   it('keeps Wi-Fi only for Download now too', async () => {
     mockLoadWifi.mockResolvedValue(true);
-    mockNetInfoFetch.mockResolvedValue({ type: 'cellular' });
+    mockIsOnWifi.mockResolvedValue(false);
 
     render(
       <Eip7730DownloadProvider>
@@ -267,7 +266,7 @@ describe('Eip7730DownloadProvider', () => {
   it('clears the Wi-Fi message on the next attempt', async () => {
     mockLoadSource.mockResolvedValue('auto');
     mockLoadWifi.mockResolvedValue(true);
-    mockNetInfoFetch.mockResolvedValue({ type: 'cellular' });
+    mockIsOnWifi.mockResolvedValue(false);
     (global as any).fetch.mockResolvedValue(buildResponse());
 
     render(
@@ -279,7 +278,7 @@ describe('Eip7730DownloadProvider', () => {
       expect(screen.getByTestId('error').children[0]).toBe(WIFI_ONLY_BLOCKED);
     });
 
-    mockNetInfoFetch.mockResolvedValue({ type: 'wifi' });
+    mockIsOnWifi.mockResolvedValue(true);
     await act(async () => {
       screen.getByTestId('trigger').props.onPress();
     });
@@ -375,10 +374,9 @@ describe('Eip7730DownloadProvider', () => {
     );
   });
 
-  it('downloads when Wi-Fi only is on but the network state cannot be read', async () => {
+  it('downloads on any network when Wi-Fi only is off', async () => {
     mockLoadSource.mockResolvedValue('auto');
-    mockLoadWifi.mockResolvedValue(true);
-    mockNetInfoFetch.mockRejectedValue(new Error('unavailable'));
+    mockIsOnWifi.mockResolvedValue(false);
     (global as any).fetch.mockResolvedValue(buildResponse());
 
     render(
@@ -390,6 +388,7 @@ describe('Eip7730DownloadProvider', () => {
     await waitFor(() => {
       expect(screen.getByTestId('phase').children[0]).toBe('done');
     });
+    expect(mockIsOnWifi).not.toHaveBeenCalled();
   });
 
   it('reports an HTTP error status', async () => {
