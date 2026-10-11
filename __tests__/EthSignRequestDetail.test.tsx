@@ -1,6 +1,7 @@
 import React from 'react';
 import { fireEvent, render, screen } from '@testing-library/react-native';
 import { RLP } from '@ethereumjs/rlp';
+import { encodeFunctionData, parseAbi } from 'viem';
 
 import SimulationAddressProvider from '../src/components/SignRequestDetail/SimulationAddressProvider';
 import EthSignRequestDetail from '../src/components/SignRequestDetail/eth/SignRequestDetail';
@@ -726,5 +727,97 @@ describe('EthSignRequestDetail — invalid payload banner', () => {
       derivationPath: "m/44'/60'/0'/0",
     });
     expect(screen.queryByText(/This request cannot be signed/)).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The destination row
+// ---------------------------------------------------------------------------
+
+describe('EthSignRequestDetail — destination', () => {
+  const DEST = '0x1111111254eeb25477b68fb85ed929f73a960582';
+  const ACCOUNT = '0xd3cda913deb6f4967b2ef3aa68f5a843da74c4ef';
+
+  function callTx(data: string): EthSignRequest {
+    const hex = Buffer.from(
+      RLP.encode([
+        bn(1n),
+        bn(20_000_000_000n),
+        bn(100_000n),
+        addr(DEST),
+        bn(0n),
+        Buffer.from(data.replace('0x', ''), 'hex'),
+      ]),
+    ).toString('hex');
+    return {
+      signData: hex,
+      dataType: 1,
+      derivationPath: "m/44'/60'/0'/0",
+      chainId: 1,
+    };
+  }
+
+  const encode = (signature: string, name: string, args: unknown[]) =>
+    encodeFunctionData({
+      abi: parseAbi([signature]),
+      functionName: name,
+      args,
+    } as never);
+
+  it.each([
+    ['a plain transfer of ether', '0x'],
+    [
+      'a call whose selector the app cannot decode',
+      `0xdeadbeef${'00'.repeat(32)}`,
+    ],
+    [
+      'a Uniswap Universal Router execute',
+      encode(
+        'function execute(bytes commands, bytes[] inputs, uint256 deadline)',
+        'execute',
+        ['0x08', ['0xdeadbeef'], 1712345678n],
+      ),
+    ],
+    [
+      'a decoded contract call',
+      encode(
+        'function borrow(address asset, uint256 amount, uint256 interestRateMode, uint16 referralCode, address onBehalfOf)',
+        'borrow',
+        [ACCOUNT, 1n, 2n, 0, ACCOUNT],
+      ),
+    ],
+  ])('shows To for %s', (_name, data) => {
+    renderDetail(callTx(data));
+    expect(screen.getByText('To')).toBeTruthy();
+    expect(screen.getByText(new RegExp(DEST, 'i'))).toBeTruthy();
+  });
+
+  it.each([
+    [
+      'transfer',
+      encode('function transfer(address to, uint256 amount)', 'transfer', [
+        ACCOUNT,
+        1n,
+      ]),
+    ],
+    [
+      'approve',
+      encode('function approve(address spender, uint256 amount)', 'approve', [
+        ACCOUNT,
+        1n,
+      ]),
+    ],
+    [
+      'transferFrom',
+      encode(
+        'function transferFrom(address from, address to, uint256 amount)',
+        'transferFrom',
+        [ACCOUNT, ACCOUNT, 1n],
+      ),
+    ],
+  ])('leaves an ERC-20 %s to its own Token contract row', (_name, data) => {
+    renderDetail(callTx(data));
+    expect(screen.queryByText('To')).toBeNull();
+    expect(screen.getAllByText('Token contract')).toHaveLength(1);
   });
 });
