@@ -5,9 +5,14 @@ import { strToU8, zipSync } from 'fflate';
 import {
   buildIndexFromDescriptors,
   EIP7730_INDEX_VERSION,
+  indexedFormat,
   isEmptyIndex,
   processRegistryZip,
+  sliceIndex,
+  sliceName,
 } from '../src/utils/eip7730/zip';
+
+import { nested } from './eip7730Index.testUtils';
 
 const SCHEMA = 'specs/erc7730-v2.schema.json';
 
@@ -110,10 +115,14 @@ describe('processRegistryZip', () => {
     const index = processRegistryZip(zip);
     expect(index.version).toBe(EIP7730_INDEX_VERSION);
     const mainnetKey = '1:0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48';
-    expect(index.contracts[mainnetKey]).toBeDefined();
-    expect(index.contracts[mainnetKey]['0xa9059cbb']).toBeDefined();
-    expect(index.contracts[mainnetKey]['0xa9059cbb'].intent).toBe('Send USDC');
-    expect(index.contracts[mainnetKey]['0xa9059cbb'].fields).toHaveLength(2);
+    expect(nested(index).contracts[mainnetKey]).toBeDefined();
+    expect(nested(index).contracts[mainnetKey]['0xa9059cbb']).toBeDefined();
+    expect(nested(index).contracts[mainnetKey]['0xa9059cbb'].intent).toBe(
+      'Send USDC',
+    );
+    expect(
+      nested(index).contracts[mainnetKey]['0xa9059cbb'].fields,
+    ).toHaveLength(2);
   });
 
   it('normalises full signatures to 4-byte selectors', () => {
@@ -121,15 +130,17 @@ describe('processRegistryZip', () => {
     const index = processRegistryZip(zip);
     const mainnetKey = '1:0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48';
     // transferFrom selector
-    expect(index.contracts[mainnetKey]['0x23b872dd']).toBeDefined();
-    expect(index.contracts[mainnetKey]['0x23b872dd'].intent).toBe('Pull USDC');
+    expect(nested(index).contracts[mainnetKey]['0x23b872dd']).toBeDefined();
+    expect(nested(index).contracts[mainnetKey]['0x23b872dd'].intent).toBe(
+      'Pull USDC',
+    );
   });
 
   it('inserts an entry for every deployment', () => {
     const zip = makeZip({ 'registry/usdc.json': usdcContractDescriptor });
     const index = processRegistryZip(zip);
     expect(
-      index.contracts['137:0xaaaaa1234567890aabbccddeeff001122334455'][
+      nested(index).contracts['137:0xaaaaa1234567890aabbccddeeff001122334455'][
         '0xa9059cbb'
       ],
     ).toBeDefined();
@@ -139,8 +150,8 @@ describe('processRegistryZip', () => {
     const zip = makeZip({ 'registry/permit.json': permitEip712Descriptor });
     const index = processRegistryZip(zip);
     const key = '1:0xpermit000000000000000000000000000000perm';
-    expect(index.eip712[key].Permit.intent).toBe('Sign permit');
-    expect(index.eip712[key].Permit.fields[0].path).toBe('spender');
+    expect(nested(index).eip712[key].Permit.intent).toBe('Sign permit');
+    expect(nested(index).eip712[key].Permit.fields[0].path).toBe('spender');
   });
 
   it('stores the EIP-712 domain constraint on every format', () => {
@@ -157,7 +168,7 @@ describe('processRegistryZip', () => {
     });
     const index = processRegistryZip(zip);
     const key = '1:0xpermit000000000000000000000000000000perm';
-    expect(index.eip712[key].Permit.domain).toEqual({
+    expect(nested(index).eip712[key].Permit.domain).toEqual({
       name: 'Permit2',
       chainId: '1',
     });
@@ -168,7 +179,7 @@ describe('processRegistryZip', () => {
       makeZip({ 'registry/permit.json': permitEip712Descriptor }),
     );
     const key = '1:0xpermit000000000000000000000000000000perm';
-    expect(index.eip712[key].Permit.domain).toBeUndefined();
+    expect(nested(index).eip712[key].Permit.domain).toBeUndefined();
   });
 
   it('skips an EIP-712 descriptor bound by a domain separator', () => {
@@ -201,7 +212,7 @@ describe('processRegistryZip', () => {
       }),
     );
     const entry =
-      index.contracts['1:0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48'][
+      nested(index).contracts['1:0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48'][
         '0xa9059cbb'
       ];
     expect(entry.metadata?.enums).toEqual({
@@ -233,7 +244,7 @@ describe('processRegistryZip', () => {
       }),
     );
     expect(
-      index.contracts['1:0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48'],
+      nested(index).contracts['1:0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48'],
     ).toBeDefined();
   });
 
@@ -273,8 +284,8 @@ describe('processRegistryZip', () => {
       },
     ]);
     const formats =
-      index.contracts['10:0x00000000000000000000000000000000000000aa'];
-    expect(Object.keys(index.contracts)).toEqual([
+      nested(index).contracts['10:0x00000000000000000000000000000000000000aa'];
+    expect(Object.keys(nested(index).contracts)).toEqual([
       '10:0x00000000000000000000000000000000000000aa',
     ]);
     expect(formats['0x095ea7b3']).toBeUndefined();
@@ -315,7 +326,7 @@ describe('processRegistryZip', () => {
     });
     const index = processRegistryZip(zip);
     expect(
-      index.contracts['1:0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48'],
+      nested(index).contracts['1:0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48'],
     ).toBeDefined();
   });
 
@@ -323,7 +334,7 @@ describe('processRegistryZip', () => {
     const zip = makeZip({ 'registry/usdc.json': usdcContractDescriptor });
     const index = processRegistryZip(zip);
     const entry =
-      index.contracts['1:0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48'][
+      nested(index).contracts['1:0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48'][
         '0xa9059cbb'
       ];
     expect(entry.metadata?.tokens).toBeDefined();
@@ -366,7 +377,7 @@ function transferFormat(
 
 function fieldsOf(files: Record<string, unknown>) {
   const index = processRegistryZip(makeZip(files));
-  return index.contracts[KEY]?.[TRANSFER_SELECTOR]?.fields;
+  return nested(index).contracts[KEY]?.[TRANSFER_SELECTOR]?.fields;
 }
 
 describe('schema version', () => {
@@ -383,7 +394,7 @@ describe('schema version', () => {
         'registry/a.json': { $schema: `../${SCHEMA}`, ...descriptor },
       }),
     );
-    expect(index.contracts[KEY]).toBeDefined();
+    expect(nested(index).contracts[KEY]).toBeDefined();
   });
 
   it.each(['1.0.0', '3.0.0-next', '3.0.0'])('rejects schema %s', version => {
@@ -422,7 +433,7 @@ describe('schema version', () => {
         },
       }),
     );
-    expect(index.contracts[KEY]).toBeDefined();
+    expect(nested(index).contracts[KEY]).toBeDefined();
   });
 });
 
@@ -445,7 +456,8 @@ describe('which files are descriptors', () => {
       ).toEqual({});
     }
     expect(
-      processRegistryZip(makeZip({ 'ercs/a.json': descriptor })).contracts[KEY],
+      nested(processRegistryZip(makeZip({ 'ercs/a.json': descriptor })))
+        .contracts[KEY],
     ).toBeDefined();
   });
 });
@@ -469,7 +481,7 @@ describe('includes', () => {
       }),
     );
     const vault =
-      index.contracts['1:0x2a4e2dacc45186bed96d9f766cb6be6b0f8a26f1'];
+      nested(index).contracts['1:0x2a4e2dacc45186bed96d9f766cb6be6b0f8a26f1'];
     expect(Object.keys(vault)).toHaveLength(4);
     const deposit = Object.values(vault).find(f => f.intent === 'Deposit')!;
     expect(deposit.fields).toEqual([
@@ -537,9 +549,9 @@ describe('includes', () => {
         'registry/acme/token.json': { includes: 'base.json', ...contract() },
       }),
     );
-    expect(index.contracts[KEY][TRANSFER_SELECTOR].metadata?.owner).toBe(
-      'Base Inc',
-    );
+    expect(
+      nested(index).contracts[KEY][TRANSFER_SELECTOR].metadata?.owner,
+    ).toBe('Base Inc');
   });
 
   it('skips a descriptor whose include is missing or circular', () => {
@@ -701,8 +713,102 @@ describe('field expansion', () => {
 });
 
 describe('index shape', () => {
-  it('is version 2', () => {
-    expect(EIP7730_INDEX_VERSION).toBe(2);
+  it('is version 4', () => {
+    expect(EIP7730_INDEX_VERSION).toBe(4);
+  });
+
+  it('stores each key once per contract, its chains under it', () => {
+    const index = buildIndexFromDescriptors([
+      {
+        context: {
+          contract: {
+            deployments: [
+              { chainId: 1, address: ADDR },
+              { chainId: 10, address: ADDR },
+            ],
+          },
+        },
+        ...transferFormat([{ path: 'to', label: 'To', format: 'raw' }]),
+      },
+    ]);
+    expect(index.contracts).toEqual({
+      [ADDR.toLowerCase()]: { [TRANSFER_SELECTOR]: { 1: 0, 10: 0 } },
+    });
+  });
+
+  it('stores a format once, however many deployments and descriptors share it', () => {
+    const transfer = transferFormat([
+      { path: 'to', label: 'To', format: 'raw' },
+    ]);
+    const deployments = [
+      { chainId: 1, address: '0x00000000000000000000000000000000000000aa' },
+      { chainId: 10, address: '0x00000000000000000000000000000000000000aa' },
+    ];
+    const index = buildIndexFromDescriptors([
+      { context: { contract: { deployments } }, ...transfer },
+      {
+        context: {
+          contract: {
+            deployments: [
+              {
+                chainId: 1,
+                address: '0x00000000000000000000000000000000000000bb',
+              },
+            ],
+          },
+        },
+        ...transfer,
+      },
+    ]);
+    expect(index.formats).toHaveLength(1);
+    const keys = Object.keys(nested(index).contracts);
+    expect(keys).toHaveLength(3);
+    for (const key of keys) {
+      const [chainId, address] = key.split(':');
+      expect(
+        indexedFormat(
+          index,
+          'contracts',
+          Number(chainId),
+          address,
+          TRANSFER_SELECTOR,
+        ),
+      ).toBe(index.formats[0]);
+    }
+  });
+
+  it('keeps the function signature a format is keyed by, and none for a bare selector', () => {
+    const index = buildIndexFromDescriptors([
+      {
+        ...contract(),
+        display: {
+          formats: {
+            [TRANSFER]: { intent: 'Send', fields: [] },
+            '0x095ea7b3': { intent: 'Approve', fields: [] },
+          },
+        },
+      },
+    ]);
+    expect(
+      indexedFormat(index, 'contracts', 1, ADDR, TRANSFER_SELECTOR)?.signature,
+    ).toBe(TRANSFER);
+    expect(
+      indexedFormat(index, 'contracts', 1, ADDR, '0x095ea7b3')?.signature,
+    ).toBeUndefined();
+  });
+
+  it('finds nothing for an unknown deployment or key', () => {
+    const index = buildIndexFromDescriptors([
+      {
+        ...contract(),
+        ...transferFormat([{ path: 'to', label: 'To', format: 'raw' }]),
+      },
+    ]);
+    expect(
+      indexedFormat(index, 'contracts', 1, '0xdead', TRANSFER_SELECTOR),
+    ).toBeNull();
+    expect(indexedFormat(index, 'contracts', 1, ADDR, '0x00000000')).toBeNull();
+    expect(indexedFormat(index, 'eip712', 1, ADDR, 'Permit()')).toBeNull();
   });
 
   it('tells an empty index apart', () => {
@@ -717,5 +823,57 @@ describe('index shape', () => {
         ]),
       ),
     ).toBe(false);
+  });
+});
+
+describe('slices', () => {
+  const A = '0xab00000000000000000000000000000000000001';
+  const B = '0xAB00000000000000000000000000000000000002';
+  const C = '0x0100000000000000000000000000000000000003';
+
+  it("names a slice by the address's first byte", () => {
+    expect(sliceName(A)).toBe('ab');
+    expect(sliceName(B)).toBe('ab');
+    expect(sliceName(C)).toBe('01');
+  });
+
+  it('puts every deployment in its slice with only the formats it uses', () => {
+    const send = { intent: 'Send', fields: [] };
+    const sign = { intent: 'Sign', fields: [] };
+    const index = buildIndexFromDescriptors([
+      {
+        context: {
+          contract: {
+            deployments: [
+              { chainId: 1, address: A },
+              { chainId: 10, address: A },
+              { chainId: 1, address: C },
+            ],
+          },
+        },
+        display: { formats: { [TRANSFER]: send } },
+      },
+      {
+        context: { eip712: { deployments: [{ chainId: 1, address: B }] } },
+        display: { formats: { 'Mail(string body)': sign } },
+      },
+    ]);
+    const slices = sliceIndex(index);
+
+    expect([...slices.keys()].sort()).toEqual(['01', 'ab']);
+    const ab = slices.get('ab')!;
+    expect(ab.formats.map(f => f.intent)).toEqual(['Send', 'Sign']);
+    expect(ab.contracts).toEqual({
+      [A.toLowerCase()]: { [TRANSFER_SELECTOR]: { 1: 0, 10: 0 } },
+    });
+    expect(
+      indexedFormat(ab, 'eip712', 1, B.toLowerCase(), 'Mail(string body)')
+        ?.intent,
+    ).toBe('Sign');
+    expect(slices.get('01')!.formats.map(f => f.intent)).toEqual(['Send']);
+  });
+
+  it('gives an empty index no slices', () => {
+    expect(sliceIndex(buildIndexFromDescriptors([])).size).toBe(0);
   });
 });

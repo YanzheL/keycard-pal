@@ -1,46 +1,86 @@
 import RNFS from 'react-native-fs';
 
-import { EIP7730_INDEX_VERSION, type Eip7730Index } from '@/utils/eip7730/zip';
+import {
+  EIP7730_INDEX_VERSION,
+  sliceIndex,
+  type Eip7730Index,
+  type Eip7730IndexSlice,
+} from '@/utils/eip7730/zip';
 
-const INDEX_FILENAME = 'eip7730-index.json';
+const FOLDER = 'eip7730';
+const STAGING = 'eip7730-next';
+const MANIFEST = 'manifest.json';
 
-function indexPath(): string {
-  return `${RNFS.DocumentDirectoryPath}/${INDEX_FILENAME}`;
+export type SavedIndexManifest = { version: number; generatedAt: string };
+
+function folder(name = FOLDER): string {
+  return `${RNFS.DocumentDirectoryPath}/${name}`;
 }
 
-function isCurrentIndex(value: unknown): value is Eip7730Index {
+function isManifest(value: unknown): value is SavedIndexManifest {
   if (typeof value !== 'object' || value === null) return false;
-  const index = value as Partial<Eip7730Index>;
+  const manifest = value as Partial<SavedIndexManifest>;
   return (
-    index.version === EIP7730_INDEX_VERSION &&
-    typeof index.contracts === 'object' &&
-    typeof index.eip712 === 'object'
+    manifest.version === EIP7730_INDEX_VERSION &&
+    typeof manifest.generatedAt === 'string'
   );
 }
 
-export async function loadPersistedIndex(): Promise<Eip7730Index | null> {
+/** Startup reads only this; a review reads the one slice it needs. */
+export async function loadManifest(): Promise<SavedIndexManifest | null> {
   try {
-    const path = indexPath();
-    if (!(await RNFS.exists(path))) return null;
-    const index: unknown = JSON.parse(await RNFS.readFile(path, 'utf8'));
-    if (isCurrentIndex(index)) return index;
+    if (!(await RNFS.exists(folder()))) return null;
+    const manifest: unknown = JSON.parse(
+      await RNFS.readFile(`${folder()}/${MANIFEST}`, 'utf8'),
+    );
+    if (isManifest(manifest)) return manifest;
   } catch {
-    // Unreadable, for example cut short by a failed write: dropped like an outdated one.
+    // No manifest or an unreadable one: dropped like an outdated index.
   }
   // The bundled index applies until the next import or download.
-  await clearPersistedIndex();
+  await clearSavedIndex();
   return null;
 }
 
-export async function savePersistedIndex(index: Eip7730Index): Promise<void> {
-  await RNFS.writeFile(indexPath(), JSON.stringify(index), 'utf8');
+export async function loadSlice(
+  name: string,
+): Promise<Eip7730IndexSlice | null> {
+  try {
+    const path = `${folder()}/${name}.json`;
+    if (!(await RNFS.exists(path))) return null;
+    return JSON.parse(await RNFS.readFile(path, 'utf8'));
+  } catch {
+    return null;
+  }
 }
 
-export async function clearPersistedIndex(): Promise<void> {
+export async function saveIndex(
+  index: Eip7730Index,
+): Promise<SavedIndexManifest> {
+  const staging = folder(STAGING);
+  if (await RNFS.exists(staging)) await RNFS.unlink(staging);
+  await RNFS.mkdir(staging);
+  await Promise.all(
+    [...sliceIndex(index)].map(([name, slice]) =>
+      RNFS.writeFile(`${staging}/${name}.json`, JSON.stringify(slice), 'utf8'),
+    ),
+  );
+  const manifest = { version: index.version, generatedAt: index.generatedAt };
+  // Written last, so a folder cut short by a failure has none and is ignored.
+  await RNFS.writeFile(
+    `${staging}/${MANIFEST}`,
+    JSON.stringify(manifest),
+    'utf8',
+  );
+  await clearSavedIndex();
+  await RNFS.moveFile(staging, folder());
+  return manifest;
+}
+
+export async function clearSavedIndex(): Promise<void> {
   try {
-    const path = indexPath();
-    if (await RNFS.exists(path)) await RNFS.unlink(path);
+    if (await RNFS.exists(folder())) await RNFS.unlink(folder());
   } catch {
-    // ignore
+    // Nothing to do: the next save replaces it.
   }
 }

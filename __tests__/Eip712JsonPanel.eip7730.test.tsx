@@ -1,5 +1,5 @@
 import React from 'react';
-import { render, screen } from '@testing-library/react-native';
+import { act, render, screen } from '@testing-library/react-native';
 
 import Eip712JsonPanel from '../src/components/SignRequestDetail/eth/DataTabPanel/Eip712JsonPanel';
 
@@ -69,6 +69,8 @@ jest.mock(
 const mockLookupEip712 = jest.fn();
 jest.mock('../src/utils/eip7730/lookup', () => ({
   lookupEip712: (...args: any[]) => mockLookupEip712(...args),
+  getSavedIndex: () => null,
+  subscribeSavedIndex: () => () => {},
 }));
 
 beforeEach(() => jest.clearAllMocks());
@@ -254,6 +256,31 @@ describe('Eip712JsonPanel EIP-7730 integration', () => {
       />,
     );
     expect(screen.getByText('SpecialEip712Section')).toBeTruthy();
+  });
+
+  it('shows neither reviewer while a saved slice is read', async () => {
+    let finish: (format: unknown) => void = () => {};
+    mockLookupEip712.mockReturnValue(
+      new Promise(resolve => {
+        finish = resolve;
+      }),
+    );
+    const eip712 = {
+      ...buildSummary({ spender: '0xabc' }),
+      special: { kind: 'permit' } as any,
+    };
+    render(
+      <Eip712JsonPanel
+        request={buildRequest(buildPayload({ spender: '0xabc' }))}
+        eip712={eip712}
+        chainId={1}
+      />,
+    );
+    expect(screen.queryByText('SpecialEip712Section')).toBeNull();
+
+    await act(async () => finish({ intent: 'Approve spender', fields: [] }));
+    expect(screen.getByText('Approve spender')).toBeTruthy();
+    expect(screen.queryByText('SpecialEip712Section')).toBeNull();
   });
 
   it('does not call lookup when verifyingContract is missing', () => {

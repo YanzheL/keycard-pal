@@ -9,13 +9,15 @@ import {
 
 import Eip7730SettingsSectionOffline from '../src/components/settings/eip7730/Eip7730SettingsSection.offline';
 import Eip7730SettingsSectionOnline from '../src/components/settings/eip7730/Eip7730SettingsSection.online';
-import { setRuntimeIndex } from '../src/utils/eip7730/lookup';
+import { setSavedIndex } from '../src/utils/eip7730/lookup';
 
-const mockClearPersistedIndex = jest.fn();
+import { testIndex } from './eip7730Index.testUtils';
+
+const mockClearSavedIndex = jest.fn();
 
 jest.mock('../src/storage/eip7730Index', () => ({
-  loadPersistedIndex: async () => null,
-  clearPersistedIndex: (...args: any[]) => mockClearPersistedIndex(...args),
+  loadManifest: async () => null,
+  clearSavedIndex: (...args: any[]) => mockClearSavedIndex(...args),
 }));
 
 const mockLoadSource = jest.fn();
@@ -53,18 +55,16 @@ jest.mock('../src/utils/eip7730/import', () => ({
 const DEFAULT_URL =
   'https://github.com/ethereum/clear-signing-erc7730-registry/archive/refs/heads/master.zip';
 
-const INDEX = {
-  version: 2,
+const INDEX = testIndex({
   generatedAt: '2025-01-01T00:00:00.000Z',
   contracts: { '1:0xabc': { '0xa9059cbb': { fields: [] } } },
-  eip712: {},
-};
+});
 const INDEX_DATE = new Date(INDEX.generatedAt).toLocaleString();
 
 beforeEach(() => {
   jest.clearAllMocks();
-  setRuntimeIndex(null);
-  mockClearPersistedIndex.mockResolvedValue(undefined);
+  setSavedIndex(null);
+  mockClearSavedIndex.mockResolvedValue(undefined);
   mockLoadSource.mockResolvedValue('manual');
   mockLoadUrl.mockResolvedValue(DEFAULT_URL);
   mockLoadWifi.mockResolvedValue(false);
@@ -95,7 +95,7 @@ describe('Eip7730SettingsSection.offline', () => {
 
   it('shows the date of an import as soon as it finishes', async () => {
     mockImport.mockImplementation(async () => {
-      setRuntimeIndex(INDEX);
+      setSavedIndex(INDEX);
       return { ok: true, index: INDEX };
     });
     render(<Eip7730SettingsSectionOffline />);
@@ -147,7 +147,7 @@ describe('Eip7730SettingsSection.offline', () => {
   });
 
   it('goes back to the bundled index', async () => {
-    setRuntimeIndex(INDEX);
+    setSavedIndex(INDEX);
     render(<Eip7730SettingsSectionOffline />);
     expect(screen.getByText(INDEX_DATE)).toBeTruthy();
 
@@ -156,7 +156,7 @@ describe('Eip7730SettingsSection.offline', () => {
     await waitFor(() => {
       expect(screen.getByText('Bundled (default)')).toBeTruthy();
     });
-    expect(mockClearPersistedIndex).toHaveBeenCalled();
+    expect(mockClearSavedIndex).toHaveBeenCalled();
     expect(screen.queryByTestId('eip7730-use-bundled')).toBeNull();
   });
 });
@@ -267,14 +267,14 @@ describe('Eip7730SettingsSection.online', () => {
       expect(screen.getByText('Bundled (default)')).toBeTruthy();
     });
 
-    act(() => setRuntimeIndex(INDEX));
+    act(() => setSavedIndex(INDEX));
 
     expect(screen.getByText(INDEX_DATE)).toBeTruthy();
   });
 
   it('goes back to the bundled index and to Manual', async () => {
     mockLoadSource.mockResolvedValue('auto');
-    setRuntimeIndex(INDEX);
+    setSavedIndex(INDEX);
     render(<Eip7730SettingsSectionOnline />);
     await waitFor(() => {
       expect(screen.getByTestId('eip7730-use-bundled')).toBeTruthy();
@@ -286,7 +286,7 @@ describe('Eip7730SettingsSection.online', () => {
       expect(screen.getByTestId('eip7730-import-button')).toBeTruthy();
     });
     expect(screen.getByText('Bundled (default)')).toBeTruthy();
-    expect(mockClearPersistedIndex).toHaveBeenCalled();
+    expect(mockClearSavedIndex).toHaveBeenCalled();
     expect(mockSaveSource).toHaveBeenCalledWith('manual');
   });
 
@@ -351,7 +351,7 @@ describe('Eip7730SettingsSection.online', () => {
   });
 
   it('keeps the index while a download is running', async () => {
-    setRuntimeIndex(INDEX);
+    setSavedIndex(INDEX);
     mockUseDownload.mockReturnValue({
       phase: 'processing',
       triggerDownload: mockTriggerDownload,
@@ -366,7 +366,7 @@ describe('Eip7730SettingsSection.online', () => {
     await act(async () => {
       for (let i = 0; i < 10; i += 1) await Promise.resolve();
     });
-    expect(mockClearPersistedIndex).not.toHaveBeenCalled();
+    expect(mockClearSavedIndex).not.toHaveBeenCalled();
     expect(mockImport).not.toHaveBeenCalled();
     expect(screen.getByText(INDEX_DATE)).toBeTruthy();
   });

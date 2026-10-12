@@ -6,7 +6,7 @@ import theme from '@/theme';
 
 import SettingsButton from './SettingsButton';
 
-import { getRuntimeIndex, subscribeRuntimeIndex } from '@/utils/eip7730/lookup';
+import { getSavedIndex, subscribeSavedIndex } from '@/utils/eip7730/lookup';
 import { revertToBundledIndex } from '@/utils/eip7730/restore';
 
 type Props = {
@@ -15,7 +15,7 @@ type Props = {
 };
 
 export default function ActiveIndex({ onReverted, disabled }: Props) {
-  const index = useSyncExternalStore(subscribeRuntimeIndex, getRuntimeIndex);
+  const index = useSyncExternalStore(subscribeSavedIndex, getSavedIndex);
   const [busy, setBusy] = useState(false);
 
   const handleRevert = useCallback(async () => {

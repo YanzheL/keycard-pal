@@ -2,7 +2,7 @@
 import { UNLIMITED_APPROVAL_WARNING } from '../src/constants/approval';
 import { encodeEip712Type } from '../src/utils/eip712';
 import { formatEip7730Field } from '../src/utils/eip7730/format';
-import { lookupCalldata, lookupEip712 } from '../src/utils/eip7730/lookup';
+import * as lookup from '../src/utils/eip7730/lookup';
 import {
   buildCalldataPathResolver,
   resolveEip712FieldValue,
@@ -10,6 +10,17 @@ import {
 } from '../src/utils/eip7730/paths';
 import type { Eip7730DisplayFormat } from '../src/utils/eip7730/zip';
 import { decodeCalldata } from '../src/utils/txParser';
+
+// The bundled index answers at once; a promise here would make every review screen wait.
+function now(result: lookup.FormatLookup): Eip7730DisplayFormat | null {
+  if (result instanceof Promise)
+    throw new Error('bundled lookup returned a promise');
+  return result;
+}
+const lookupCalldata = (...args: Parameters<typeof lookup.lookupCalldata>) =>
+  now(lookup.lookupCalldata(...args));
+const lookupEip712 = (...args: Parameters<typeof lookup.lookupEip712>) =>
+  now(lookup.lookupEip712(...args));
 
 const USDT = '0xdac17f958d2ee523a2206206994597c13d831ec7';
 const USDC = '0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48';

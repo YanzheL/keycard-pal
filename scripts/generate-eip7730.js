@@ -19,6 +19,8 @@ const ZIP_URL =
   process.env.EIP7730_REGISTRY_URL ||
   'https://github.com/ethereum/clear-signing-erc7730-registry/archive/refs/heads/master.zip';
 const OUT = path.join(__dirname, '..', 'src', 'data', 'eip7730.json');
+// The startup check compares a saved index with this, without building the bundled one.
+const META = path.join(__dirname, '..', 'src', 'data', 'eip7730.meta.json');
 
 function get(url, redirects = 0) {
   return new Promise((resolve, reject) => {
@@ -51,7 +53,11 @@ function get(url, redirects = 0) {
 }
 
 function entryCount(bucket) {
-  return Object.values(bucket).reduce((sum, m) => sum + Object.keys(m).length, 0);
+  let sum = 0;
+  for (const byKey of Object.values(bucket)) {
+    for (const byChain of Object.values(byKey)) sum += Object.keys(byChain).length;
+  }
+  return sum;
 }
 
 async function main() {
@@ -66,13 +72,18 @@ async function main() {
 
   fs.mkdirSync(path.dirname(OUT), { recursive: true });
   fs.writeFileSync(OUT, JSON.stringify(index, null, 2) + '\n');
+  fs.writeFileSync(
+    META,
+    JSON.stringify({ generatedAt: index.generatedAt }, null, 2) + '\n',
+  );
 
   console.log(
-    `Index v${index.version}: ${entryCount(index.contracts)} calldata entries across ` +
+    `Index v${index.version}: ${index.formats.length} formats for ` +
+      `${entryCount(index.contracts)} calldata entries across ` +
       `${Object.keys(index.contracts).length} contracts and ${entryCount(index.eip712)} ` +
       `EIP-712 entries across ${Object.keys(index.eip712).length} verifying contracts.`,
   );
-  console.log(`Wrote ${OUT}`);
+  console.log(`Wrote ${OUT} and ${META}`);
 }
 
 main().catch(err => {

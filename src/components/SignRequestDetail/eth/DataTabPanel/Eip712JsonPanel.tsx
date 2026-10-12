@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { SegmentedButtons, Text } from 'react-native-paper';
 
@@ -8,6 +8,8 @@ import theme from '@/theme';
 
 import AddressInfoRow from '@/components/ens/AddressInfoRow.online';
 import InfoRow from '@/components/InfoRow';
+
+import { useEip7730Format } from '@/hooks/useEip7730Format';
 
 import {
   eip712DomainChainId,
@@ -49,7 +51,7 @@ export default function Eip712JsonPanel({
     ? eip712DomainChainId(rawTypedData.domain)
     : undefined;
 
-  const eip7730Descriptor = useMemo(() => {
+  const lookup = useCallback(() => {
     if (domainChainId === undefined || !verifyingContract || !rawTypedData) {
       return null;
     }
@@ -65,6 +67,7 @@ export default function Eip712JsonPanel({
       rawTypedData.domain,
     );
   }, [domainChainId, verifyingContract, rawTypedData]);
+  const { format: eip7730Descriptor, loading } = useEip7730Format(lookup);
 
   const fieldContext = useMemo<Eip7730FieldContext>(() => {
     const container = {
@@ -118,7 +121,7 @@ export default function Eip712JsonPanel({
                 ))}
               </>
             )}
-            {eip7730Descriptor ? (
+            {loading ? null : eip7730Descriptor ? (
               <>
                 {eip7730Descriptor.intent && (
                   <View style={styles.row}>

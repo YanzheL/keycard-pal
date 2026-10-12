@@ -5,10 +5,12 @@ import { act, render, screen, waitFor } from '@testing-library/react-native';
 import { Eip7730Context } from '../src/providers/eip7730/context';
 import { Eip7730DownloadProvider } from '../src/providers/eip7730/Provider.online';
 
-const mockSavePersistedIndex = jest.fn();
+import { testIndex } from './eip7730Index.testUtils';
+
+const mockSaveIndex = jest.fn();
 
 jest.mock('../src/storage/eip7730Index', () => ({
-  savePersistedIndex: (...args: any[]) => mockSavePersistedIndex(...args),
+  saveIndex: (...args: any[]) => mockSaveIndex(...args),
 }));
 
 const mockRestore = jest.fn();
@@ -42,18 +44,16 @@ jest.mock('../src/utils/eip7730/zip', () => ({
     Object.keys(index.eip712).length === 0,
 }));
 
-const INDEX = {
-  version: 2,
+const INDEX = testIndex({
   generatedAt: '2025-01-01T00:00:00.000Z',
   contracts: { '1:0xabc': { '0xa9059cbb': { intent: 'Send', fields: [] } } },
-  eip712: {},
-};
+});
 
-const mockSetRuntimeIndex = jest.fn();
-const mockHasRuntimeIndex = jest.fn();
+const mockSetSavedIndex = jest.fn();
+const mockGetSavedIndex = jest.fn();
 jest.mock('../src/utils/eip7730/lookup', () => ({
-  setRuntimeIndex: (...args: any[]) => mockSetRuntimeIndex(...args),
-  hasRuntimeIndex: () => mockHasRuntimeIndex(),
+  setSavedIndex: (...args: any[]) => mockSetSavedIndex(...args),
+  getSavedIndex: () => mockGetSavedIndex(),
 }));
 
 const mockIsOnWifi = jest.fn();
@@ -106,8 +106,13 @@ function buildResponse({
 beforeEach(() => {
   jest.clearAllMocks();
   mockRestore.mockResolvedValue(undefined);
-  mockHasRuntimeIndex.mockReturnValue(true);
-  mockSavePersistedIndex.mockResolvedValue(undefined);
+  mockGetSavedIndex.mockReturnValue({
+    generatedAt: '2025-01-01T00:00:00.000Z',
+  });
+  mockSaveIndex.mockResolvedValue({
+    version: 3,
+    generatedAt: '2026-10-12T00:00:00.000Z',
+  });
   mockLoadSource.mockResolvedValue('manual');
   mockLoadUrl.mockResolvedValue('https://example.test/registry.zip');
   mockLoadWifi.mockResolvedValue(false);
@@ -154,9 +159,11 @@ describe('Eip7730DownloadProvider', () => {
       { headers: {} },
     );
     expect(mockProcess).toHaveBeenCalled();
-    expect(mockSavePersistedIndex).toHaveBeenCalled();
+    expect(mockSaveIndex).toHaveBeenCalled();
     expect(mockSaveEtag).toHaveBeenCalledWith('W/abc');
-    expect(mockSetRuntimeIndex).toHaveBeenCalledWith(INDEX);
+    expect(mockSetSavedIndex).toHaveBeenCalledWith({
+      generatedAt: '2026-10-12T00:00:00.000Z',
+    });
   });
 
   it('keeps the current index when the download has no descriptors', async () => {
@@ -173,9 +180,9 @@ describe('Eip7730DownloadProvider', () => {
     await waitFor(() => {
       expect(screen.getByTestId('phase').children[0]).toBe('error');
     });
-    expect(mockSavePersistedIndex).not.toHaveBeenCalled();
+    expect(mockSaveIndex).not.toHaveBeenCalled();
     expect(mockSaveEtag).not.toHaveBeenCalled();
-    expect(mockSetRuntimeIndex).not.toHaveBeenCalled();
+    expect(mockSetSavedIndex).not.toHaveBeenCalled();
   });
 
   it('skips processing when server returns 304', async () => {
@@ -197,12 +204,12 @@ describe('Eip7730DownloadProvider', () => {
       { headers: { 'If-None-Match': 'W/old' } },
     );
     expect(mockProcess).not.toHaveBeenCalled();
-    expect(mockSavePersistedIndex).not.toHaveBeenCalled();
+    expect(mockSaveIndex).not.toHaveBeenCalled();
   });
 
   it('downloads in full when no saved index was restored, whatever the stored ETag', async () => {
     mockLoadSource.mockResolvedValue('auto');
-    mockHasRuntimeIndex.mockReturnValue(false);
+    mockGetSavedIndex.mockReturnValue(null);
     mockLoadEtag.mockResolvedValue('W/old');
     mockLoadLastModified.mockResolvedValue('Sat, 10 Oct 2026 00:00:00 GMT');
     (global as any).fetch.mockResolvedValue(buildResponse());
@@ -220,7 +227,9 @@ describe('Eip7730DownloadProvider', () => {
       'https://example.test/registry.zip',
       { headers: {} },
     );
-    expect(mockSetRuntimeIndex).toHaveBeenCalledWith(INDEX);
+    expect(mockSetSavedIndex).toHaveBeenCalledWith({
+      generatedAt: '2026-10-12T00:00:00.000Z',
+    });
   });
 
   it('says why when Wi-Fi only blocks the download', async () => {

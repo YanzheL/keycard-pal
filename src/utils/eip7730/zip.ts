@@ -26,6 +26,8 @@ export type Eip7730TokenMetadata = {
 
 export type Eip7730DisplayFormat = {
   intent?: string;
+  /** The descriptor's function signature, parameter names included, when it keys the format by one. */
+  signature?: string;
   fields: Eip7730Field[];
   /** The spec binds an EIP-712 format to these domain values. */
   domain?: Record<string, string>;
@@ -36,14 +38,28 @@ export type Eip7730DisplayFormat = {
   };
 };
 
+/** Address, then selector or encodeType, then chain ID, to a position in `formats`. */
+export type Eip7730Positions = Record<
+  string,
+  Record<string, Record<string, number>>
+>;
+
+// Formats and keys are stored once: deployments repeat both, often across dozens of chains.
 export type Eip7730Index = {
   version: number;
   generatedAt: string;
-  contracts: Record<string, Record<string, Eip7730DisplayFormat>>;
-  eip712: Record<string, Record<string, Eip7730DisplayFormat>>;
+  formats: Eip7730DisplayFormat[];
+  contracts: Eip7730Positions;
+  eip712: Eip7730Positions;
 };
 
-export const EIP7730_INDEX_VERSION = 2;
+/** Part of an index: what one saved slice file holds, read on its own. */
+export type Eip7730IndexSlice = Pick<
+  Eip7730Index,
+  'formats' | 'contracts' | 'eip712'
+>;
+
+export const EIP7730_INDEX_VERSION = 4;
 
 const SCHEMA_MAJOR = 2;
 const SELECTOR_RE = /^0x[0-9a-f]{8}$/i;
@@ -52,6 +68,10 @@ const DEFINITION_REF = '$.display.definitions.';
 
 type Json = Record<string, unknown>;
 type JsonFiles = Map<string, unknown>;
+type FormatsByDeployment = Record<
+  string,
+  Record<string, Record<string, Eip7730DisplayFormat>>
+>;
 type FieldSources = { definitions: Json; constants: Json };
 
 function isPlainObject(value: unknown): value is Json {
@@ -228,20 +248,19 @@ function extractDomain(raw: unknown): Record<string, string> | undefined {
 }
 
 function insertEntry(
-  bucket: Record<string, Record<string, Eip7730DisplayFormat>>,
+  bucket: FormatsByDeployment,
   deployment: Deployment,
   key: string,
   value: Eip7730DisplayFormat,
 ): void {
-  const indexKey = `${deployment.chainId}:${deployment.address}`;
-  if (!bucket[indexKey]) bucket[indexKey] = {};
-  bucket[indexKey][key] = value;
+  const byKey = (bucket[deployment.address] ??= {});
+  (byKey[key] ??= {})[deployment.chainId] = value;
 }
 
 function processDescriptor(
   raw: unknown,
-  contracts: Record<string, Record<string, Eip7730DisplayFormat>>,
-  eip712: Record<string, Record<string, Eip7730DisplayFormat>>,
+  contracts: FormatsByDeployment,
+  eip712: FormatsByDeployment,
 ): void {
   if (!isPlainObject(raw)) return;
   const context = isPlainObject(raw.context) ? raw.context : null;
@@ -270,6 +289,7 @@ function processDescriptor(
       if (!selector) continue;
       const format = extractDisplayFormat(rawFormat, metadata, sources);
       if (!format) continue;
+      if (!SELECTOR_RE.test(rawKey)) format.signature = rawKey;
       for (const d of deployments) {
         insertEntry(contracts, d, selector, format);
       }
@@ -294,20 +314,64 @@ function processDescriptor(
   }
 }
 
+function pointAtFormats(
+  byDeployment: FormatsByDeployment,
+  formats: Eip7730DisplayFormat[],
+  seen: { byObject: Map<object, number>; byContent: Map<string, number> },
+): Eip7730Positions {
+  const out: Eip7730Positions = {};
+  for (const [address, byKey] of Object.entries(byDeployment)) {
+    out[address] = {};
+    for (const [key, byChain] of Object.entries(byKey)) {
+      out[address][key] = {};
+      for (const [chainId, format] of Object.entries(byChain)) {
+        let position = seen.byObject.get(format);
+        if (position === undefined) {
+          // Different descriptors repeat the same format, an ERC-20 transfer for one.
+          const content = JSON.stringify(format);
+          position = seen.byContent.get(content);
+          if (position === undefined) {
+            position = formats.length;
+            formats.push(format);
+            seen.byContent.set(content, position);
+          }
+          seen.byObject.set(format, position);
+        }
+        out[address][key][chainId] = position;
+      }
+    }
+  }
+  return out;
+}
+
 export function buildIndexFromDescriptors(
   descriptors: unknown[],
 ): Eip7730Index {
-  const contracts: Record<string, Record<string, Eip7730DisplayFormat>> = {};
-  const eip712: Record<string, Record<string, Eip7730DisplayFormat>> = {};
+  const contracts: FormatsByDeployment = {};
+  const eip712: FormatsByDeployment = {};
   for (const raw of descriptors) {
     processDescriptor(raw, contracts, eip712);
   }
+  const formats: Eip7730DisplayFormat[] = [];
+  const seen = { byObject: new Map<object, number>(), byContent: new Map() };
   return {
     version: EIP7730_INDEX_VERSION,
     generatedAt: new Date().toISOString(),
-    contracts,
-    eip712,
+    formats,
+    contracts: pointAtFormats(contracts, formats, seen),
+    eip712: pointAtFormats(eip712, formats, seen),
   };
+}
+
+export function indexedFormat(
+  index: Eip7730IndexSlice,
+  bucket: 'contracts' | 'eip712',
+  chainId: number,
+  address: string,
+  key: string,
+): Eip7730DisplayFormat | null {
+  const position = index[bucket][address]?.[key]?.[chainId];
+  return position === undefined ? null : index.formats[position] ?? null;
 }
 
 export function isEmptyIndex(index: Eip7730Index): boolean {
@@ -448,4 +512,43 @@ export function processRegistryZip(zipBytes: Uint8Array): Eip7730Index {
     if (resolved) descriptors.push(resolved);
   }
   return buildIndexFromDescriptors(descriptors);
+}
+
+/** A saved index is split by the address's first byte, so a review reads one small file. */
+export function sliceName(address: string): string {
+  return address.toLowerCase().slice(2, 4);
+}
+
+export function sliceIndex(
+  index: Eip7730Index,
+): Map<string, Eip7730IndexSlice> {
+  const slices = new Map<string, Eip7730IndexSlice>();
+  const local = new Map<string, Map<number, number>>();
+  for (const bucket of ['contracts', 'eip712'] as const) {
+    for (const [address, byKey] of Object.entries(index[bucket])) {
+      const name = sliceName(address);
+      let slice = slices.get(name);
+      let positions = local.get(name);
+      if (!slice || !positions) {
+        slice = { formats: [], contracts: {}, eip712: {} };
+        positions = new Map();
+        slices.set(name, slice);
+        local.set(name, positions);
+      }
+      const keys: Record<string, Record<string, number>> = {};
+      for (const [key, byChain] of Object.entries(byKey)) {
+        keys[key] = {};
+        for (const [chainId, position] of Object.entries(byChain)) {
+          let at = positions.get(position);
+          if (at === undefined) {
+            at = slice.formats.push(index.formats[position]) - 1;
+            positions.set(position, at);
+          }
+          keys[key][chainId] = at;
+        }
+      }
+      slice[bucket][address] = keys;
+    }
+  }
+  return slices;
 }

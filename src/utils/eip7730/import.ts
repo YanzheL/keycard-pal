@@ -2,9 +2,9 @@ import { Platform } from 'react-native';
 import { pick, types } from '@react-native-documents/picker';
 import RNFS from 'react-native-fs';
 
-import { savePersistedIndex } from '@/storage/eip7730Index';
+import { saveIndex } from '@/storage/eip7730Index';
 
-import { setRuntimeIndex } from './lookup';
+import { setSavedIndex } from './lookup';
 import { isEmptyIndex, processRegistryZip } from './zip';
 
 import type { Eip7730Index } from './zip';
@@ -54,11 +54,12 @@ export async function importRegistryZipFromPicker(): Promise<ImportResult> {
   }
   if (isEmptyIndex(index)) return { ok: false, reason: 'invalid' };
 
+  let generatedAt: string;
   try {
-    await savePersistedIndex(index);
+    ({ generatedAt } = await saveIndex(index));
   } catch {
     return { ok: false, reason: 'unsaved' };
   }
-  setRuntimeIndex(index);
+  setSavedIndex({ generatedAt });
   return { ok: true, index };
 }

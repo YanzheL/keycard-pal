@@ -1,8 +1,9 @@
-import { render, screen } from '@testing-library/react-native';
+import { act, render, screen } from '@testing-library/react-native';
 import React from 'react';
 
 import DecodedCallSection from '../src/components/SignRequestDetail/eth/DataTabPanel/DecodedCallSection';
 
+import { setSavedIndex } from '../src/utils/eip7730/lookup';
 import type { DecodedCall } from '../src/utils/txParser';
 
 jest.mock('react-native-paper', () => {
@@ -77,6 +78,26 @@ describe('DecodedCallSection', () => {
     it('omits token contract row when not provided', () => {
       render(<DecodedCallSection call={call} />);
       expect(screen.queryByText(/Token contract/)).toBeNull();
+    });
+
+    it('shows nothing while a saved slice is read, so no section swaps under the reader', async () => {
+      setSavedIndex({ generatedAt: '2026-10-12T00:00:00.000Z' });
+      try {
+        render(
+          <DecodedCallSection
+            call={call}
+            tokenContract={ADDR_B}
+            chainId={MAINNET}
+          />,
+        );
+        expect(screen.queryByText('ERC-20 Transfer')).toBeNull();
+
+        // No slice file here, so no descriptor: the app's own section follows.
+        await act(async () => {});
+        expect(screen.getByText('ERC-20 Transfer')).toBeTruthy();
+      } finally {
+        setSavedIndex(null);
+      }
     });
   });
 

@@ -1,6 +1,9 @@
+import { useCallback } from 'react';
 import { StyleSheet, View } from 'react-native';
 
 import InfoRow from '@/components/InfoRow';
+
+import { useEip7730Format } from '@/hooks/useEip7730Format';
 
 import { lookupCalldata } from '@/utils/eip7730/lookup';
 import type { Eip7730Container } from '@/utils/eip7730/paths';
@@ -52,10 +55,17 @@ export default function DecodedCallSection({
   container?: Eip7730Container;
 }) {
   const selector = selectorForCall(call);
-  const descriptor =
-    chainId !== undefined && tokenContract && selector
-      ? lookupCalldata(chainId, tokenContract, selector)
-      : null;
+  const lookup = useCallback(
+    () =>
+      chainId !== undefined && tokenContract && selector
+        ? lookupCalldata(chainId, tokenContract, selector)
+        : null,
+    [chainId, tokenContract, selector],
+  );
+  const { format: descriptor, loading } = useEip7730Format(lookup);
+
+  // A saved slice takes milliseconds; the app's own section first would swap under the reader.
+  if (loading) return null;
 
   if (descriptor) {
     return (

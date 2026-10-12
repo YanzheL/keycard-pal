@@ -57,6 +57,8 @@ console.log(`Bumping ${pkg.version} → ${newVersion} (code: ${versionCode})`);
 
 const GENERATED = [
   'src/data/contributors.json',
+  'src/data/eip7730.json',
+  'src/data/eip7730.meta.json',
   'src/data/token-logos-index.json',
   'android/app/src/offline/assets/token-logos',
 ];
@@ -66,6 +68,7 @@ execSync('node scripts/generate-contributors.js', {
   cwd: ROOT,
 });
 execSync('node scripts/generate-logos.js', { stdio: 'inherit', cwd: ROOT });
+execSync('npm run generate:eip7730', { stdio: 'inherit', cwd: ROOT });
 
 // ---------------------------------------------------------------------------
 // src/constants/app.ts

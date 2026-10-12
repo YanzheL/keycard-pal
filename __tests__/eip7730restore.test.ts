@@ -1,11 +1,16 @@
-const mockLoadPersistedIndex = jest.fn();
-const mockClearPersistedIndex = jest.fn();
+const mockLoadManifest = jest.fn();
+const mockClearSavedIndex = jest.fn();
 jest.mock('../src/storage/eip7730Index', () => ({
-  loadPersistedIndex: (...args: any[]) => mockLoadPersistedIndex(...args),
-  clearPersistedIndex: (...args: any[]) => mockClearPersistedIndex(...args),
+  loadManifest: (...args: any[]) => mockLoadManifest(...args),
+  clearSavedIndex: (...args: any[]) => mockClearSavedIndex(...args),
 }));
 
-const SAVED = { version: 2, generatedAt: '', contracts: {}, eip712: {} };
+jest.mock('../src/data/eip7730.meta.json', () => ({
+  generatedAt: '2026-10-10T00:00:00.000Z',
+}));
+
+const SAVED = { version: 3, generatedAt: '2026-10-11T00:00:00.000Z' };
+const OLDER = { version: 3, generatedAt: '2026-10-09T00:00:00.000Z' };
 
 function load() {
   let modules: {
@@ -21,71 +26,84 @@ function load() {
   return modules!;
 }
 
-beforeEach(() => jest.clearAllMocks());
+function deferred<T>() {
+  let resolve: (value: T) => void = () => {};
+  const promise = new Promise<T>(r => {
+    resolve = r;
+  });
+  return { promise, resolve };
+}
+
+beforeEach(() => {
+  jest.clearAllMocks();
+  mockClearSavedIndex.mockResolvedValue(undefined);
+});
 
 describe('restorePersistedIndex', () => {
-  it('makes the saved index the active one', async () => {
-    mockLoadPersistedIndex.mockResolvedValue(SAVED);
+  it('makes a saved index the source, from its manifest alone', async () => {
+    mockLoadManifest.mockResolvedValue(SAVED);
     const { restore, lookup } = load();
     await restore.restorePersistedIndex();
-    expect(lookup.getActiveIndex()).toBe(SAVED);
+    expect(lookup.getSavedIndex()).toEqual({ generatedAt: SAVED.generatedAt });
   });
 
-  it('reads the file once per app run', async () => {
-    mockLoadPersistedIndex.mockResolvedValue(SAVED);
+  it('reads the manifest once per app run', async () => {
+    mockLoadManifest.mockResolvedValue(SAVED);
     const { restore } = load();
     await Promise.all([
       restore.restorePersistedIndex(),
       restore.restorePersistedIndex(),
     ]);
-    expect(mockLoadPersistedIndex).toHaveBeenCalledTimes(1);
+    expect(mockLoadManifest).toHaveBeenCalledTimes(1);
   });
 
-  it('does not replace an index set while it was reading', async () => {
-    let finish: (value: unknown) => void = () => {};
-    mockLoadPersistedIndex.mockReturnValue(
-      new Promise(resolve => {
-        finish = resolve;
-      }),
-    );
+  it('drops a saved index older than the bundled one an update brought', async () => {
+    mockLoadManifest.mockResolvedValue(OLDER);
+    const { restore, lookup } = load();
+    await restore.restorePersistedIndex();
+    expect(mockClearSavedIndex).toHaveBeenCalled();
+    expect(lookup.getSavedIndex()).toBeNull();
+  });
+
+  it('leaves an import that finished while it was reading alone', async () => {
+    const reading = deferred<typeof OLDER>();
+    mockLoadManifest.mockReturnValue(reading.promise);
     const { restore, lookup } = load();
     const pending = restore.restorePersistedIndex();
-    const fresh = { ...SAVED, generatedAt: 'fresh' };
-    lookup.setRuntimeIndex(fresh);
-    finish(SAVED);
+    const fresh = { generatedAt: '2026-10-12T00:00:00.000Z' };
+    lookup.setSavedIndex(fresh);
+    reading.resolve(OLDER);
     await pending;
-    expect(lookup.getActiveIndex()).toBe(fresh);
+    expect(lookup.getSavedIndex()).toBe(fresh);
+    expect(mockClearSavedIndex).not.toHaveBeenCalled();
   });
 
   it('keeps the bundled index when nothing is saved', async () => {
-    mockLoadPersistedIndex.mockResolvedValue(null);
+    mockLoadManifest.mockResolvedValue(null);
     const { restore, lookup } = load();
     await restore.restorePersistedIndex();
-    expect(lookup.hasRuntimeIndex()).toBe(false);
+    expect(lookup.getSavedIndex()).toBeNull();
+    expect(mockClearSavedIndex).not.toHaveBeenCalled();
   });
 });
 
 describe('revertToBundledIndex', () => {
-  it('deletes the saved index and makes the bundled one active', async () => {
-    mockLoadPersistedIndex.mockResolvedValue(SAVED);
+  it('deletes the saved index and makes the bundled one the source', async () => {
+    mockLoadManifest.mockResolvedValue(SAVED);
     const { restore, lookup } = load();
     await restore.restorePersistedIndex();
     await restore.revertToBundledIndex();
-    expect(mockClearPersistedIndex).toHaveBeenCalled();
-    expect(lookup.hasRuntimeIndex()).toBe(false);
+    expect(mockClearSavedIndex).toHaveBeenCalled();
+    expect(lookup.getSavedIndex()).toBeNull();
   });
 
   it('waits for a restore still reading, so it cannot bring the index back', async () => {
-    let finish: (value: unknown) => void = () => {};
-    mockLoadPersistedIndex.mockReturnValue(
-      new Promise(resolve => {
-        finish = resolve;
-      }),
-    );
+    const reading = deferred<typeof SAVED>();
+    mockLoadManifest.mockReturnValue(reading.promise);
     const { restore, lookup } = load();
     const pending = restore.revertToBundledIndex();
-    finish(SAVED);
+    reading.resolve(SAVED);
     await pending;
-    expect(lookup.hasRuntimeIndex()).toBe(false);
+    expect(lookup.getSavedIndex()).toBeNull();
   });
 });

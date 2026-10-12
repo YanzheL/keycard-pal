@@ -15,10 +15,10 @@ import {
   saveEtag,
   saveLastModified,
 } from '@/storage/eip7730Settings.online';
-import { savePersistedIndex } from '@/storage/eip7730Index';
+import { saveIndex } from '@/storage/eip7730Index';
 
 import { isOnWifi } from '@/utils/connectivity.online';
-import { hasRuntimeIndex, setRuntimeIndex } from '@/utils/eip7730/lookup';
+import { getSavedIndex, setSavedIndex } from '@/utils/eip7730/lookup';
 import { restorePersistedIndex } from '@/utils/eip7730/restore';
 import { isEmptyIndex, processRegistryZip } from '@/utils/eip7730/zip';
 
@@ -134,7 +134,7 @@ export function Eip7730DownloadProvider({
       setPhase('checking');
       const url = await loadDescriptorUrl();
       // The validators describe the saved index; without one a 304 would leave the bundled one.
-      const conditional = !options.force && hasRuntimeIndex();
+      const conditional = !options.force && getSavedIndex() !== null;
       const etag = conditional ? await loadEtag() : null;
       const lastModified = conditional ? await loadLastModified() : null;
 
@@ -154,10 +154,10 @@ export function Eip7730DownloadProvider({
       if (isEmptyIndex(index)) {
         throw new Error('The file has no descriptors this app can read.');
       }
-      await savePersistedIndex(index);
+      const { generatedAt } = await saveIndex(index);
       if (result.etag) await saveEtag(result.etag);
       if (result.lastModified) await saveLastModified(result.lastModified);
-      setRuntimeIndex(index);
+      setSavedIndex({ generatedAt });
       setPhase('done');
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
