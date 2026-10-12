@@ -3,7 +3,10 @@ import React from 'react';
 
 import DecodedCallSection from '../src/components/SignRequestDetail/eth/DataTabPanel/DecodedCallSection';
 
-import { buildArgsPathResolver } from '../src/utils/eip7730/paths';
+import {
+  buildArgsEachResolver,
+  buildArgsPathResolver,
+} from '../src/utils/eip7730/paths';
 import type { DecodedCall } from '../src/utils/txParser';
 
 jest.mock('react-native-paper', () => {
@@ -432,6 +435,7 @@ describe('DecodedCallSection', () => {
               { to: ADDR_A, amount: 1_500_000n },
               { to: USDT_ADDRESS, chainId: MAINNET },
             ),
+            resolveEach: buildArgsEachResolver({}),
           }}
         />,
       );
@@ -450,6 +454,7 @@ describe('DecodedCallSection', () => {
           descriptor={{
             format: { intent: 'Swap', fields: [] },
             resolvePath: buildArgsPathResolver({}),
+            resolveEach: buildArgsEachResolver({}),
           }}
         />,
       );

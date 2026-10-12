@@ -1,9 +1,11 @@
 import { encodeFunctionData, parseAbiItem, type AbiFunction } from 'viem';
 
 import {
+  buildArgsEachResolver,
   buildArgsPathResolver,
   decodeArgsBySignature,
   resolveEip712FieldValue,
+  resolveEip712FieldValues,
 } from '../src/utils/eip7730/paths';
 
 const SWAP =
@@ -105,6 +107,47 @@ describe('buildArgsPathResolver', () => {
     expect(r('$.metadata.constants.max')).toBeNull();
     expect(r('constructor')).toBeNull();
     expect(buildArgsPathResolver({})('@.to')).toBeNull();
+  });
+});
+
+describe('every value a path selects', () => {
+  const args = {
+    calls: [
+      { to: '0xaa', data: '0x01', value: 1n },
+      { to: '0xbb', data: '0x02', value: 2n },
+    ],
+    data: ['0x0a', '0x0b', '0x0c'],
+  };
+  const each = buildArgsEachResolver(args, { to: '0xrouter' });
+
+  it('takes each element of `[]` and `[*]`, in order', () => {
+    expect(each('data.[]')).toEqual(['0x0a', '0x0b', '0x0c']);
+    expect(each('data[*]')).toEqual(['0x0a', '0x0b', '0x0c']);
+    expect(each('calls.[].to')).toEqual(['0xaa', '0xbb']);
+    expect(each('#.calls.[].value')).toEqual(['1', '2']);
+  });
+
+  it('takes one element by index, and nothing past the end', () => {
+    expect(each('data[1]')).toEqual(['0x0b']);
+    expect(each('data[9]')).toEqual([]);
+    expect(each('data[-1]')).toEqual([]);
+  });
+
+  it('reads a container value once, and nothing it does not hold', () => {
+    expect(each('@.to')).toEqual(['0xrouter']);
+    expect(each('@.from')).toEqual([]);
+    expect(each('$.metadata.constants.x')).toEqual([]);
+    expect(each('')).toEqual([]);
+    expect(each('calls.[].missing')).toEqual([]);
+  });
+
+  it('walks an EIP-712 message the same way', () => {
+    const message = { calls: [{ data: '0x01' }, { data: '0x02' }] };
+    expect(resolveEip712FieldValues('calls.[].data', message)).toEqual([
+      '0x01',
+      '0x02',
+    ]);
+    expect(resolveEip712FieldValue('calls.[].data', message)).toBe('0x01');
   });
 });
 

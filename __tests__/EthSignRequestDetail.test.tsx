@@ -704,6 +704,52 @@ describe('EthSignRequestDetail — registry entries for calls the app cannot dec
     ).toString('hex');
   }
 
+  it('shows every call a multicall holds, each through its own entry', () => {
+    const AAVE_V3_POOL = '0x87870bca3f3fd6335c3f4ce8392d69350b4fa4e2';
+    const inner = (signature: string, args: unknown[]) =>
+      encodeFunctionData({
+        abi: [parseAbiItem(`function ${signature}`) as AbiFunction],
+        args,
+      });
+    const data = encodeFunctionData({
+      abi: [parseAbiItem('function multicall(bytes[] data)') as AbiFunction],
+      args: [
+        [
+          inner('withdraw(address asset, uint256 amount, address to)', [
+            '0xdAC17F958D2ee523a2206206994597C13D831ec7',
+            1_500_000n,
+            RECIPIENT,
+          ]),
+          inner(
+            'setUserUseReserveAsCollateral(address asset, bool useAsCollateral)',
+            ['0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48', false],
+          ),
+        ],
+      ],
+    });
+    renderDetail({
+      signData: Buffer.from(
+        RLP.encode([
+          bn(1n),
+          bn(20_000_000_000n),
+          bn(300_000n),
+          addr(AAVE_V3_POOL),
+          bn(0n),
+          Buffer.from(data.slice(2), 'hex'),
+        ]),
+      ).toString('hex'),
+      dataType: 1,
+      derivationPath: "m/44'/60'/0'/0",
+      chainId: 1,
+    });
+
+    expect(screen.getByText('Call 1 of 2')).toBeTruthy();
+    expect(screen.getByText('Call 2 of 2')).toBeTruthy();
+    expect(screen.getByText('Withdraw')).toBeTruthy();
+    expect(screen.getByText('1.5 USDT')).toBeTruthy();
+    expect(screen.getByText('Manage collateral')).toBeTruthy();
+  });
+
   it("decodes the call by the entry's own signature and shows its fields", () => {
     renderDetail({
       signData: swapTxHex(),

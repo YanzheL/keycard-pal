@@ -52,51 +52,72 @@ function indexOfClosingBracket(s: string, start: number): number {
   return -1;
 }
 
-function valueAt(path: string, root: unknown): string | null {
-  let current: unknown = root;
+/** Every value a path selects; `[]` and `[*]` take each element, which only inner calls use so far. */
+function valuesAt(path: string, root: unknown): unknown[] {
+  let current: unknown[] = [root];
   let i = 0;
-  while (i < path.length && current !== null && current !== undefined) {
+  while (i < path.length && current.length > 0) {
     if (path[i] === '.') {
       i += 1;
       continue;
     }
     if (path[i] === '[') {
       const end = indexOfClosingBracket(path, i + 1);
-      if (end === -1) return null;
+      if (end === -1) return [];
       const inner = path.slice(i + 1, end);
-      if (inner === ']' || inner === '' || inner === '*') {
-        if (Array.isArray(current) && current.length > 0) current = current[0];
-        else return null;
-      } else {
-        const idx = Number(inner);
-        if (!Number.isFinite(idx)) return null;
-        if (Array.isArray(current)) current = current[idx];
-        else return null;
-      }
+      current = current.flatMap(value => {
+        if (!Array.isArray(value)) return [];
+        if (inner === '' || inner === '*') return value;
+        const index = Number(inner);
+        return Number.isInteger(index) && index >= 0 && index < value.length
+          ? [value[index]]
+          : [];
+      });
       i = end + 1;
       continue;
     }
     let j = i;
     while (j < path.length && path[j] !== '.' && path[j] !== '[') j += 1;
     const key = path.slice(i, j);
-    if (
-      current &&
-      typeof current === 'object' &&
-      Object.prototype.hasOwnProperty.call(current, key)
-    ) {
-      current = (current as Record<string, unknown>)[key];
-    } else {
-      return null;
-    }
+    current = current.flatMap(value =>
+      value &&
+      typeof value === 'object' &&
+      Object.prototype.hasOwnProperty.call(value, key)
+        ? [(value as Record<string, unknown>)[key]]
+        : [],
+    );
     i = j;
   }
-  if (current === null || current === undefined) return null;
-  if (typeof current === 'object') {
-    return JSON.stringify(current, (_key, v) =>
+  return current.filter(value => value !== null && value !== undefined);
+}
+
+function toText(value: unknown): string {
+  if (typeof value === 'object' && value !== null) {
+    return JSON.stringify(value, (_key, v) =>
       typeof v === 'bigint' ? v.toString() : v,
     );
   }
-  return String(current);
+  return String(value);
+}
+
+function valueAt(path: string, root: unknown): string | null {
+  const [first] = valuesAt(path, root);
+  return first === undefined ? null : toText(first);
+}
+
+function resolveEach(
+  path: string,
+  root: unknown,
+  container: Eip7730Container,
+): string[] {
+  if (!path) return [];
+  const split = splitRoot(path);
+  if (split.root === '@') {
+    const value = containerValue(split.rest, container);
+    return value === null ? [] : [value];
+  }
+  if (split.root === '$') return [];
+  return valuesAt(split.rest, root).map(toText);
 }
 
 export function resolveEip712FieldValue(
@@ -131,6 +152,21 @@ export function decodeArgsBySignature(
   } catch {
     return null;
   }
+}
+
+export function resolveEip712FieldValues(
+  path: string,
+  message: unknown,
+  container: Eip7730Container = {},
+): string[] {
+  return resolveEach(path, message, container);
+}
+
+export function buildArgsEachResolver(
+  args: Record<string, unknown>,
+  container: Eip7730Container = {},
+): (path: string) => string[] {
+  return (path: string) => resolveEach(path, args, container);
 }
 
 export function buildArgsPathResolver(

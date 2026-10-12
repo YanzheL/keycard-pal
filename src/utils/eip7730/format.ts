@@ -15,6 +15,10 @@ export type Eip7730FieldContext = {
   chainId?: number;
   contractAddress?: string;
   resolvePath: (path: string) => string | null;
+  /** Every value a path selects, for inner-call fields over arrays. */
+  resolveEach?: (path: string) => string[];
+  /** How many inner calls deep this field sits; the top-level call is 0. */
+  depth?: number;
 };
 
 export type Eip7730FieldDisplay = {

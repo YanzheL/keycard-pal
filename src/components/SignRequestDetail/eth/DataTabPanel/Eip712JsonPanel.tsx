@@ -19,7 +19,10 @@ import {
 } from '@/utils/eip712';
 import type { Eip7730FieldContext } from '@/utils/eip7730/format';
 import { lookupEip712 } from '@/utils/eip7730/lookup';
-import { resolveEip712FieldValue } from '@/utils/eip7730/paths';
+import {
+  resolveEip712FieldValue,
+  resolveEip712FieldValues,
+} from '@/utils/eip7730/paths';
 import { classifyEthPayload } from '@/utils/ethPayload';
 
 import Eip7730FieldRow from './Eip7730FieldRow';
@@ -81,6 +84,9 @@ export default function Eip712JsonPanel({
       contractAddress: verifyingContract,
       resolvePath: path =>
         resolveEip712FieldValue(path, rawTypedData?.message, container),
+      resolveEach: path =>
+        resolveEip712FieldValues(path, rawTypedData?.message, container),
+      depth: 0,
     };
   }, [domainChainId, verifyingContract, rawTypedData, request.address]);
 

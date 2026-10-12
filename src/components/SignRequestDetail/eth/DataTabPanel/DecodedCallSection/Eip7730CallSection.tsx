@@ -10,17 +10,21 @@ import type { Eip7730DisplayFormat } from '@/utils/eip7730/zip';
 type Props = {
   format: Eip7730DisplayFormat;
   resolvePath: (path: string) => string | null;
+  resolveEach?: (path: string) => string[];
   contractAddress?: string;
   chainId?: number;
+  depth?: number;
 };
 
 export default function Eip7730CallSection({
   format,
   resolvePath,
+  resolveEach,
   contractAddress,
   chainId,
+  depth = 0,
 }: Props) {
-  const ctx = { chainId, contractAddress, resolvePath };
+  const ctx = { chainId, contractAddress, resolvePath, resolveEach, depth };
 
   return (
     <View>

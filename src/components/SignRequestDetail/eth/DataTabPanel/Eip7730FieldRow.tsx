@@ -13,6 +13,8 @@ import {
 import type { Eip7730DisplayFormat, Eip7730Field } from '@/utils/eip7730/zip';
 import { checksumEthAddress } from '@/utils/ethereumAddress';
 
+import Eip7730InnerCalls from './Eip7730InnerCalls';
+
 export default function Eip7730FieldRow({
   field,
   format,
@@ -22,6 +24,9 @@ export default function Eip7730FieldRow({
   format: Eip7730DisplayFormat;
   ctx: Eip7730FieldContext;
 }) {
+  if (field.format === 'calldata') {
+    return <Eip7730InnerCalls field={field} ctx={ctx} />;
+  }
   const raw = field.value ?? ctx.resolvePath(field.path);
   if (field.format === 'addressName' && raw?.startsWith('0x')) {
     return (

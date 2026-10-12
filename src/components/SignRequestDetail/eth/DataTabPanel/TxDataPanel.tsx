@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { SegmentedButtons } from 'react-native-paper';
 
@@ -7,20 +7,13 @@ import type { EthSignRequest } from '@/types';
 
 import InfoRow from '@/components/InfoRow';
 
-import { useEip7730Format } from '@/hooks/useEip7730Format';
+import { useCalldataDescriptor } from '@/hooks/useCalldataDescriptor';
 
-import { lookupCalldata } from '@/utils/eip7730/lookup';
-import {
-  buildArgsPathResolver,
-  decodeArgsBySignature,
-} from '@/utils/eip7730/paths';
 import { computeCalldataDigest } from '@/utils/erc8213';
 import type { ParsedTx } from '@/utils/txParser';
 
 import { DigestExplainer, DigestRow } from './shared';
-import DecodedCallSection, {
-  type MatchedDescriptor,
-} from './DecodedCallSection';
+import DecodedCallSection from './DecodedCallSection';
 import SimulationPanel from './SimulationPanel';
 import { useSimulation } from './useSimulation';
 
@@ -36,30 +29,16 @@ export default function TxDataPanel({
   chainId: number | undefined;
 }) {
   const calldata = tx.data ?? '';
-  const selector = calldata.length >= 10 ? calldata.slice(0, 10) : null;
-
-  const lookup = useCallback(
-    () =>
-      chainId !== undefined && tx.to && selector
-        ? lookupCalldata(chainId, tx.to, selector)
-        : null,
-    [chainId, tx.to, selector],
+  const container = useMemo(
+    () => ({ from: request.address, to: tx.to, value: tx.valueWei, chainId }),
+    [request.address, tx.to, tx.valueWei, chainId],
   );
-  const { format, loading } = useEip7730Format(lookup);
-
-  const descriptor = useMemo<MatchedDescriptor | null>(() => {
-    if (!format?.signature) return null;
-    // An entry whose signature does not fit the bytes is not describing this call.
-    const args = decodeArgsBySignature(format.signature, calldata);
-    if (!args) return null;
-    const container = {
-      from: request.address,
-      to: tx.to,
-      value: tx.valueWei,
-      chainId,
-    };
-    return { format, resolvePath: buildArgsPathResolver(args, container) };
-  }, [format, calldata, request.address, tx.to, tx.valueWei, chainId]);
+  const { descriptor, loading } = useCalldataDescriptor({
+    chainId,
+    contract: tx.to,
+    data: calldata,
+    container,
+  });
 
   const hasDecodedCall =
     descriptor !== null ||
