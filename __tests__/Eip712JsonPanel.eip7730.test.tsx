@@ -148,7 +148,7 @@ describe('Eip712JsonPanel EIP-7730 integration', () => {
     expect(screen.getByText('Approve spender')).toBeTruthy();
     expect(
       screen.getByText(
-        'ADDR Spender: 0xabc0000000000000000000000000000000000001',
+        'ADDR Spender: 0xABC0000000000000000000000000000000000001',
       ),
     ).toBeTruthy();
     expect(screen.queryByText('SpecialEip712Section')).toBeNull();

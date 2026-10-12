@@ -609,7 +609,7 @@ describe('EthSignRequestDetail — EIP-712 special renderers', () => {
     expect(screen.getByText('Unknown token')).toBeTruthy();
     expect(screen.getByText('Token contract')).toBeTruthy();
     expect(
-      screen.getByText('0x000000000000000000000000000000000000dead'),
+      screen.getByText('0x000000000000000000000000000000000000dEaD'),
     ).toBeTruthy();
   });
 

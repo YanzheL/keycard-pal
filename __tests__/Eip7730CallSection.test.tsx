@@ -56,7 +56,7 @@ describe('Eip7730CallSection', () => {
     render(<Eip7730CallSection format={format} call={call} />);
     expect(screen.getByTestId('address-Recipient')).toBeTruthy();
     expect(
-      screen.getByText('0x1234567890abcdef1234567890abcdef12345678'),
+      screen.getByText('0x1234567890AbcdEF1234567890aBcdef12345678'),
     ).toBeTruthy();
   });
 

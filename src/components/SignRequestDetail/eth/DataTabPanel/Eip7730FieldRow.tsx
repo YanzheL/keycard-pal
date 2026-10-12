@@ -11,6 +11,7 @@ import {
   type Eip7730FieldContext,
 } from '@/utils/eip7730/format';
 import type { Eip7730DisplayFormat, Eip7730Field } from '@/utils/eip7730/zip';
+import { checksumEthAddress } from '@/utils/ethereumAddress';
 
 export default function Eip7730FieldRow({
   field,
@@ -25,7 +26,7 @@ export default function Eip7730FieldRow({
   if (field.format === 'addressName' && raw?.startsWith('0x')) {
     return (
       <View style={styles.row}>
-        <AddressInfoRow label={field.label} value={raw} />
+        <AddressInfoRow label={field.label} value={checksumEthAddress(raw)} />
       </View>
     );
   }
@@ -49,7 +50,10 @@ export default function Eip7730FieldRow({
       ))}
       {unknownTokenAddress && (
         <View style={styles.row}>
-          <AddressInfoRow label="Token contract" value={unknownTokenAddress} />
+          <AddressInfoRow
+            label="Token contract"
+            value={checksumEthAddress(unknownTokenAddress)}
+          />
         </View>
       )}
     </>
