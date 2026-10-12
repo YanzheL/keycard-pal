@@ -119,7 +119,11 @@ function messageValue(path: string, message: unknown): string | null {
     let j = i;
     while (j < path.length && path[j] !== '.' && path[j] !== '[') j += 1;
     const key = path.slice(i, j);
-    if (current && typeof current === 'object') {
+    if (
+      current &&
+      typeof current === 'object' &&
+      Object.prototype.hasOwnProperty.call(current, key)
+    ) {
       current = (current as Record<string, unknown>)[key];
     } else {
       return null;

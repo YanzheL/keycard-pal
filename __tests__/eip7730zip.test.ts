@@ -52,7 +52,7 @@ const usdcContractDescriptor = {
     contract: {
       deployments: [
         { chainId: 1, address: '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48' },
-        { chainId: 137, address: '0xAAAAA1234567890aabBccDdEeFf001122334455' },
+        { chainId: 137, address: '0xAAAAA1234567890aabBccDdEeFf0011223344556' },
       ],
     },
   },
@@ -90,7 +90,7 @@ const permitEip712Descriptor = {
   context: {
     eip712: {
       deployments: [
-        { chainId: 1, address: '0xPermit000000000000000000000000000000pErM' },
+        { chainId: 1, address: '0x000000000022D473030F116dDEE9F6B43aC78BA3' },
       ],
     },
   },
@@ -140,7 +140,7 @@ describe('processRegistryZip', () => {
     const zip = makeZip({ 'registry/usdc.json': usdcContractDescriptor });
     const index = processRegistryZip(zip);
     expect(
-      nested(index).contracts['137:0xaaaaa1234567890aabbccddeeff001122334455'][
+      nested(index).contracts['137:0xaaaaa1234567890aabbccddeeff0011223344556'][
         '0xa9059cbb'
       ],
     ).toBeDefined();
@@ -149,7 +149,7 @@ describe('processRegistryZip', () => {
   it('indexes EIP-712 descriptors by chainId:address and primary type', () => {
     const zip = makeZip({ 'registry/permit.json': permitEip712Descriptor });
     const index = processRegistryZip(zip);
-    const key = '1:0xpermit000000000000000000000000000000perm';
+    const key = '1:0x000000000022d473030f116ddee9f6b43ac78ba3';
     expect(nested(index).eip712[key].Permit.intent).toBe('Sign permit');
     expect(nested(index).eip712[key].Permit.fields[0].path).toBe('spender');
   });
@@ -167,7 +167,7 @@ describe('processRegistryZip', () => {
       },
     });
     const index = processRegistryZip(zip);
-    const key = '1:0xpermit000000000000000000000000000000perm';
+    const key = '1:0x000000000022d473030f116ddee9f6b43ac78ba3';
     expect(nested(index).eip712[key].Permit.domain).toEqual({
       name: 'Permit2',
       chainId: '1',
@@ -178,7 +178,7 @@ describe('processRegistryZip', () => {
     const index = processRegistryZip(
       makeZip({ 'registry/permit.json': permitEip712Descriptor }),
     );
-    const key = '1:0xpermit000000000000000000000000000000perm';
+    const key = '1:0x000000000022d473030f116ddee9f6b43ac78ba3';
     expect(nested(index).eip712[key].Permit.domain).toBeUndefined();
   });
 

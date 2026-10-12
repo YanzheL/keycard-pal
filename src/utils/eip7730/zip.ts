@@ -63,6 +63,10 @@ export const EIP7730_INDEX_VERSION = 4;
 
 const SCHEMA_MAJOR = 2;
 const SELECTOR_RE = /^0x[0-9a-f]{8}$/i;
+const ADDRESS_RE = /^0x[0-9a-f]{40}$/i;
+// The registry unpacks to about 4 MB of JSON; a zip claiming far more is refused.
+const MAX_JSON_BYTES = 64 * 1024 * 1024;
+const MAX_FILE_BYTES = 8 * 1024 * 1024;
 const CONSTANT_REF = '$.metadata.constants.';
 const DEFINITION_REF = '$.display.definitions.';
 
@@ -76,6 +80,15 @@ type FieldSources = { definitions: Json; constants: Json };
 
 function isPlainObject(value: unknown): value is Json {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+/** ERC-20 decimals are a uint8; anything else would break amount formatting. */
+export function isDecimals(value: unknown): value is number {
+  return (
+    Number.isInteger(value) &&
+    (value as number) >= 0 &&
+    (value as number) <= 255
+  );
 }
 
 function own(object: Json, key: string): unknown {
@@ -191,7 +204,7 @@ function extractMetadata(
   }
   if (isPlainObject(rawMeta.token)) {
     const t = rawMeta.token;
-    const decimals = typeof t.decimals === 'number' ? t.decimals : undefined;
+    const decimals = isDecimals(t.decimals) ? t.decimals : undefined;
     const ticker = typeof t.ticker === 'string' ? t.ticker : undefined;
     if (decimals !== undefined || ticker !== undefined) {
       const addr =
@@ -231,8 +244,10 @@ function extractDeployments(rawDeployments: unknown): Deployment[] {
     if (!isPlainObject(d)) continue;
     const chainId =
       typeof d.chainId === 'number' ? d.chainId : Number(d.chainId);
-    const address = typeof d.address === 'string' ? d.address : null;
-    if (!Number.isFinite(chainId) || !address) continue;
+    const address = typeof d.address === 'string' ? d.address : '';
+    // The address names a saved slice file, so anything else is dropped here.
+    if (!Number.isSafeInteger(chainId) || chainId <= 0) continue;
+    if (!ADDRESS_RE.test(address)) continue;
     out.push({ chainId, address: address.toLowerCase() });
   }
   return out;
@@ -350,7 +365,11 @@ export function buildIndexFromDescriptors(
   const contracts: FormatsByDeployment = {};
   const eip712: FormatsByDeployment = {};
   for (const raw of descriptors) {
-    processDescriptor(raw, contracts, eip712);
+    try {
+      processDescriptor(raw, contracts, eip712);
+    } catch {
+      // A descriptor this parser cannot read costs only itself.
+    }
   }
   const formats: Eip7730DisplayFormat[] = [];
   const seen = { byObject: new Map<object, number>(), byContent: new Map() };
@@ -488,10 +507,28 @@ function isDescriptorPath(path: string): boolean {
   );
 }
 
+function isReadPath(name: string): boolean {
+  const segments = name.split('/');
+  return (
+    name.toLowerCase().endsWith('.json') &&
+    segments.some(s => s === 'registry' || s === 'ercs' || s === 'specs')
+  );
+}
+
 function readJsonFiles(zipBytes: Uint8Array): JsonFiles {
   const files: JsonFiles = new Map();
-  for (const [name, bytes] of Object.entries(unzipSync(zipBytes))) {
-    if (!name.toLowerCase().endsWith('.json')) continue;
+  let total = 0;
+  const unzipped = unzipSync(zipBytes, {
+    filter: file => {
+      if (!isReadPath(file.name)) return false;
+      total += file.originalSize;
+      if (file.originalSize > MAX_FILE_BYTES || total > MAX_JSON_BYTES) {
+        throw new Error('The zip unpacks to more than a registry ever holds.');
+      }
+      return true;
+    },
+  });
+  for (const [name, bytes] of Object.entries(unzipped)) {
     try {
       files.set(name, JSON.parse(strFromU8(bytes)));
     } catch {
@@ -505,11 +542,18 @@ export function processRegistryZip(zipBytes: Uint8Array): Eip7730Index {
   const files = readJsonFiles(zipBytes);
   const descriptors: Json[] = [];
   for (const path of files.keys()) {
-    if (!isDescriptorPath(path) || schemaMajor(path, files) !== SCHEMA_MAJOR) {
-      continue;
+    try {
+      if (
+        !isDescriptorPath(path) ||
+        schemaMajor(path, files) !== SCHEMA_MAJOR
+      ) {
+        continue;
+      }
+      const resolved = resolveIncludes(path, files);
+      if (resolved) descriptors.push(resolved);
+    } catch {
+      // Includes nested past what the stack holds, for one: skip that descriptor.
     }
-    const resolved = resolveIncludes(path, files);
-    if (resolved) descriptors.push(resolved);
   }
   return buildIndexFromDescriptors(descriptors);
 }

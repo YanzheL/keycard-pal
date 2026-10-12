@@ -5,7 +5,11 @@ import { UNLIMITED_APPROVAL_WARNING } from '@/constants/approval';
 import { getNativeCurrencySymbol } from '@/utils/chainMetadata';
 import { lookupToken } from '@/utils/tokenMetadata';
 
-import type { Eip7730DisplayFormat, Eip7730Field } from './zip';
+import {
+  isDecimals,
+  type Eip7730DisplayFormat,
+  type Eip7730Field,
+} from './zip';
 
 export type Eip7730FieldContext = {
   chainId?: number;
@@ -74,8 +78,12 @@ function descriptorToken(
   // `*` is the described contract's own metadata, never another token's.
   const own =
     ctx.contractAddress?.toLowerCase() === address ? tokens['*'] : undefined;
-  const info = tokens[address] ?? own;
-  if (info?.decimals === undefined || info.ticker === undefined) return null;
+  const info = Object.prototype.hasOwnProperty.call(tokens, address)
+    ? tokens[address]
+    : own;
+  if (!isDecimals(info?.decimals) || typeof info.ticker !== 'string') {
+    return null;
+  }
   return { decimals: info.decimals, symbol: info.ticker };
 }
 
@@ -179,7 +187,12 @@ function formatEnum(
   const id = ref.startsWith(ENUM_REF_PREFIX)
     ? ref.slice(ENUM_REF_PREFIX.length)
     : ref;
-  return format.metadata?.enums?.[id]?.[value] ?? value;
+  const labels = format.metadata?.enums?.[id];
+  const label =
+    labels && Object.prototype.hasOwnProperty.call(labels, value)
+      ? labels[value]
+      : null;
+  return typeof label === 'string' ? label : value;
 }
 
 export function formatEip7730Field(
@@ -189,16 +202,21 @@ export function formatEip7730Field(
   ctx: Eip7730FieldContext,
 ): Eip7730FieldDisplay {
   if (value === null) return { text: '—' };
-  switch (field.format) {
-    case 'tokenAmount':
-      return formatTokenAmount(value, format, ctx, field.params);
-    case 'amount':
-      return formatAmount(value, ctx, field.params);
-    case 'date':
-      return { text: formatDate(value) };
-    case 'enum':
-      return { text: formatEnum(value, format, field.params) };
-    default:
-      return { text: value };
+  try {
+    switch (field.format) {
+      case 'tokenAmount':
+        return formatTokenAmount(value, format, ctx, field.params);
+      case 'amount':
+        return formatAmount(value, ctx, field.params);
+      case 'date':
+        return { text: formatDate(value) };
+      case 'enum':
+        return { text: formatEnum(value, format, field.params) };
+      default:
+        return { text: value };
+    }
+  } catch {
+    // A descriptor from a later registry must never take the review screen down.
+    return { text: value };
   }
 }

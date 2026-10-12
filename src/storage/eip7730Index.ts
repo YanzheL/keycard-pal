@@ -42,13 +42,26 @@ export async function loadManifest(): Promise<SavedIndexManifest | null> {
   return null;
 }
 
+function isSlice(value: unknown): value is Eip7730IndexSlice {
+  if (typeof value !== 'object' || value === null) return false;
+  const slice = value as Partial<Eip7730IndexSlice>;
+  return (
+    Array.isArray(slice.formats) &&
+    typeof slice.contracts === 'object' &&
+    slice.contracts !== null &&
+    typeof slice.eip712 === 'object' &&
+    slice.eip712 !== null
+  );
+}
+
 export async function loadSlice(
   name: string,
 ): Promise<Eip7730IndexSlice | null> {
   try {
     const path = `${folder()}/${name}.json`;
     if (!(await RNFS.exists(path))) return null;
-    return JSON.parse(await RNFS.readFile(path, 'utf8'));
+    const slice: unknown = JSON.parse(await RNFS.readFile(path, 'utf8'));
+    return isSlice(slice) ? slice : null;
   } catch {
     return null;
   }

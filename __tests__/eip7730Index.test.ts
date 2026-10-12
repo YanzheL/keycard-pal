@@ -102,6 +102,13 @@ describe('loadSlice', () => {
     expect(mockReadFile).toHaveBeenCalledWith(`${FOLDER}/ab.json`, 'utf8');
   });
 
+  it('returns null for a slice that is not shaped like one', async () => {
+    for (const text of ['null', '[]', '{"formats":{}}', '{"formats":[]}']) {
+      mockReadFile.mockResolvedValueOnce(text);
+      expect(await loadSlice('ab')).toBeNull();
+    }
+  });
+
   it('returns null for a slice that does not exist or cannot be read', async () => {
     mockExists.mockResolvedValueOnce(false);
     expect(await loadSlice('ab')).toBeNull();
