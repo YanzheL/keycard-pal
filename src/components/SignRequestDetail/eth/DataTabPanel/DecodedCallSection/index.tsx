@@ -1,12 +1,8 @@
-import { useCallback } from 'react';
 import { StyleSheet, View } from 'react-native';
 
 import InfoRow from '@/components/InfoRow';
 
-import { useEip7730Format } from '@/hooks/useEip7730Format';
-
-import { lookupCalldata } from '@/utils/eip7730/lookup';
-import type { Eip7730Container } from '@/utils/eip7730/paths';
+import type { Eip7730DisplayFormat } from '@/utils/eip7730/zip';
 import { lookupToken } from '@/utils/tokenMetadata';
 import type { DecodedCall } from '@/utils/txParser';
 
@@ -26,47 +22,23 @@ function isTokenCall(call: DecodedCall): boolean {
   );
 }
 
-function selectorForCall(call: DecodedCall): string | null {
-  switch (call.kind) {
-    case 'erc20-transfer':
-      return '0xa9059cbb';
-    case 'erc20-transferFrom':
-      return '0x23b872dd';
-    case 'erc20-approve':
-      return '0x095ea7b3';
-    case 'contract-call':
-      return call.selector;
-    case 'unknown-call':
-      return call.selector;
-    default:
-      return null;
-  }
-}
+/** A registry entry that matched the call, with its arguments decoded by its own signature. */
+export type MatchedDescriptor = {
+  format: Eip7730DisplayFormat;
+  resolvePath: (path: string) => string | null;
+};
 
 export default function DecodedCallSection({
   call,
   tokenContract,
   chainId,
-  container,
+  descriptor,
 }: {
   call: DecodedCall;
   tokenContract?: string;
   chainId?: number;
-  container?: Eip7730Container;
+  descriptor?: MatchedDescriptor | null;
 }) {
-  const selector = selectorForCall(call);
-  const lookup = useCallback(
-    () =>
-      chainId !== undefined && tokenContract && selector
-        ? lookupCalldata(chainId, tokenContract, selector)
-        : null,
-    [chainId, tokenContract, selector],
-  );
-  const { format: descriptor, loading } = useEip7730Format(lookup);
-
-  // A saved slice takes milliseconds; the app's own section first would swap under the reader.
-  if (loading) return null;
-
   if (descriptor) {
     return (
       <>
@@ -78,11 +50,10 @@ export default function DecodedCallSection({
           />
         )}
         <Eip7730CallSection
-          format={descriptor}
-          call={call}
+          format={descriptor.format}
+          resolvePath={descriptor.resolvePath}
           contractAddress={tokenContract}
           chainId={chainId}
-          container={container}
         />
       </>
     );

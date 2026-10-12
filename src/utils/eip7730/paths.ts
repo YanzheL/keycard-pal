@@ -1,4 +1,9 @@
-import type { DecodedCall, DecodedCallArg } from '@/utils/txParser';
+import {
+  decodeAbiParameters,
+  parseAbiItem,
+  toFunctionSelector,
+  type AbiFunction,
+} from 'viem';
 
 export type Eip7730Container = {
   from?: string;
@@ -34,51 +39,6 @@ function containerValue(
   }
 }
 
-function pickFromArgs(args: DecodedCallArg[], name: string): string | null {
-  const match = args.find(a => a.name === name);
-  return match ? match.value : null;
-}
-
-function calldataValue(call: DecodedCall, head: string): string | null {
-  if (call.kind === 'erc20-transfer') {
-    if (head === 'to' || head === '_to') return call.to;
-    if (head === 'amount' || head === '_value' || head === 'value')
-      return call.amount.toString();
-    return null;
-  }
-  if (call.kind === 'erc20-transferFrom') {
-    if (head === 'from' || head === '_from') return call.from;
-    if (head === 'to' || head === '_to') return call.to;
-    if (head === 'amount' || head === '_value' || head === 'value')
-      return call.amount.toString();
-    return null;
-  }
-  if (call.kind === 'erc20-approve') {
-    if (head === 'spender' || head === '_spender') return call.spender;
-    if (head === 'amount' || head === '_value' || head === 'value')
-      return call.amount.toString();
-    return null;
-  }
-  if (call.kind === 'contract-call') {
-    return pickFromArgs(call.args, head);
-  }
-  return null;
-}
-
-export function buildCalldataPathResolver(
-  call: DecodedCall,
-  container: Eip7730Container = {},
-): (path: string) => string | null {
-  return (path: string) => {
-    if (!path) return null;
-    const { root, rest } = splitRoot(path);
-    if (root === '@') return containerValue(rest, container);
-    // `$.` points into the descriptor itself, which is not available here.
-    if (root === '$') return null;
-    return calldataValue(call, rest.split('.')[0]);
-  };
-}
-
 function indexOfClosingBracket(s: string, start: number): number {
   let depth = 0;
   for (let i = start; i < s.length; i += 1) {
@@ -92,8 +52,8 @@ function indexOfClosingBracket(s: string, start: number): number {
   return -1;
 }
 
-function messageValue(path: string, message: unknown): string | null {
-  let current: unknown = message;
+function valueAt(path: string, root: unknown): string | null {
+  let current: unknown = root;
   let i = 0;
   while (i < path.length && current !== null && current !== undefined) {
     if (path[i] === '.') {
@@ -131,7 +91,11 @@ function messageValue(path: string, message: unknown): string | null {
     i = j;
   }
   if (current === null || current === undefined) return null;
-  if (typeof current === 'object') return JSON.stringify(current);
+  if (typeof current === 'object') {
+    return JSON.stringify(current, (_key, v) =>
+      typeof v === 'bigint' ? v.toString() : v,
+    );
+  }
   return String(current);
 }
 
@@ -144,5 +108,41 @@ export function resolveEip712FieldValue(
   const { root, rest } = splitRoot(path);
   if (root === '@') return containerValue(rest, container);
   if (root === '$') return null;
-  return messageValue(rest, message);
+  return valueAt(rest, message);
+}
+
+/** Arguments named as the descriptor's own signature names them, or null when it does not fit. */
+export function decodeArgsBySignature(
+  signature: string,
+  data: string,
+): Record<string, unknown> | null {
+  try {
+    const item = parseAbiItem(`function ${signature}`) as AbiFunction;
+    if (toFunctionSelector(item) !== data.slice(0, 10).toLowerCase()) {
+      return null;
+    }
+    const values = decodeAbiParameters(
+      item.inputs,
+      `0x${data.slice(10)}` as `0x${string}`,
+    );
+    return Object.fromEntries(
+      item.inputs.map((input, i) => [input.name || String(i), values[i]]),
+    );
+  } catch {
+    return null;
+  }
+}
+
+export function buildArgsPathResolver(
+  args: Record<string, unknown>,
+  container: Eip7730Container = {},
+): (path: string) => string | null {
+  return (path: string) => {
+    if (!path) return null;
+    const { root, rest } = splitRoot(path);
+    if (root === '@') return containerValue(rest, container);
+    // `$.` points into the descriptor itself, which is not available here.
+    if (root === '$') return null;
+    return valueAt(rest, args);
+  };
 }

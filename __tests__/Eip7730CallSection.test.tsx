@@ -4,8 +4,8 @@ import { render, screen } from '@testing-library/react-native';
 import Eip7730CallSection from '../src/components/SignRequestDetail/eth/DataTabPanel/DecodedCallSection/Eip7730CallSection';
 import { UNLIMITED_APPROVAL_WARNING } from '../src/constants/approval';
 
+import { buildArgsPathResolver } from '../src/utils/eip7730/paths';
 import type { Eip7730DisplayFormat } from '../src/utils/eip7730/zip';
-import type { DecodedCall } from '../src/utils/txParser';
 
 jest.mock('../src/utils/tokenMetadata', () => ({
   lookupToken: jest.fn().mockReturnValue({ symbol: 'USDC', decimals: 6 }),
@@ -29,18 +29,17 @@ jest.mock('../src/components/ens/AddressInfoRow.online', () => {
   };
 });
 
+const RECIPIENT = '0x0000000000000000000000000000000000000abc';
+const transfer = (amount: bigint) =>
+  buildArgsPathResolver({ to: RECIPIENT, amount });
+
 describe('Eip7730CallSection', () => {
   it('renders intent string when present', () => {
     const format: Eip7730DisplayFormat = {
       intent: 'Send USDC',
       fields: [],
     };
-    const call: DecodedCall = {
-      kind: 'erc20-transfer',
-      to: '0xabc',
-      amount: 1n,
-    };
-    render(<Eip7730CallSection format={format} call={call} />);
+    render(<Eip7730CallSection format={format} resolvePath={transfer(1n)} />);
     expect(screen.getByText('Send USDC')).toBeTruthy();
   });
 
@@ -48,12 +47,10 @@ describe('Eip7730CallSection', () => {
     const format: Eip7730DisplayFormat = {
       fields: [{ path: 'to', label: 'Recipient', format: 'addressName' }],
     };
-    const call: DecodedCall = {
-      kind: 'erc20-transfer',
+    const resolvePath = buildArgsPathResolver({
       to: '0x1234567890abcdef1234567890abcdef12345678',
-      amount: 1n,
-    };
-    render(<Eip7730CallSection format={format} call={call} />);
+    });
+    render(<Eip7730CallSection format={format} resolvePath={resolvePath} />);
     expect(screen.getByTestId('address-Recipient')).toBeTruthy();
     expect(
       screen.getByText('0x1234567890AbcdEF1234567890aBcdef12345678'),
@@ -74,18 +71,15 @@ describe('Eip7730CallSection', () => {
       ],
       metadata: { tokens: { [TOKEN]: { decimals: 6, ticker: 'USDC' } } },
     };
-    const call: DecodedCall = {
-      kind: 'erc20-transfer',
-      to: '0x0000000000000000000000000000000000000abc',
-      amount: 1500000n,
-    };
     render(
       <Eip7730CallSection
         format={format}
-        call={call}
+        resolvePath={buildArgsPathResolver(
+          { to: RECIPIENT, amount: 1500000n },
+          { to: TOKEN, chainId: 1 },
+        )}
         contractAddress={TOKEN}
         chainId={1}
-        container={{ to: TOKEN, chainId: 1 }}
       />,
     );
     expect(screen.getByText('1.5 USDC')).toBeTruthy();
@@ -96,15 +90,10 @@ describe('Eip7730CallSection', () => {
     const format: Eip7730DisplayFormat = {
       fields: [{ path: 'amount', label: 'Amount', format: 'tokenAmount' }],
     };
-    const call: DecodedCall = {
-      kind: 'erc20-transfer',
-      to: '0x0000000000000000000000000000000000000abc',
-      amount: 1500000n,
-    };
     render(
       <Eip7730CallSection
         format={format}
-        call={call}
+        resolvePath={transfer(1500000n)}
         contractAddress={TOKEN}
         chainId={1}
       />,
@@ -124,15 +113,10 @@ describe('Eip7730CallSection', () => {
         },
       ],
     };
-    const call: DecodedCall = {
-      kind: 'erc20-transfer',
-      to: '0x0000000000000000000000000000000000000abc',
-      amount: 2n ** 256n - 1n,
-    };
     render(
       <Eip7730CallSection
         format={format}
-        call={call}
+        resolvePath={transfer(2n ** 256n - 1n)}
         contractAddress={TOKEN}
         chainId={1}
       />,
@@ -146,19 +130,14 @@ describe('Eip7730CallSection', () => {
     const format: Eip7730DisplayFormat = {
       fields: [{ path: '@.value', label: 'Value', format: 'amount' }],
     };
-    const call: DecodedCall = {
-      kind: 'contract-call',
-      selector: '0xdeadbeef',
-      functionName: 'deposit',
-      signature: 'deposit()',
-      args: [],
-    };
     render(
       <Eip7730CallSection
         format={format}
-        call={call}
+        resolvePath={buildArgsPathResolver(
+          {},
+          { value: '2000000000000000', chainId: 1 },
+        )}
         chainId={1}
-        container={{ value: '2000000000000000', chainId: 1 }}
       />,
     );
     expect(screen.getByText('0.002 ETH')).toBeTruthy();
@@ -170,14 +149,12 @@ describe('Eip7730CallSection', () => {
         { path: '', label: 'Share ticker', format: 'raw', value: 'kmmUSDC' },
       ],
     };
-    const call: DecodedCall = {
-      kind: 'contract-call',
-      selector: '0x6e553f65',
-      functionName: 'deposit',
-      signature: 'deposit(uint256,address)',
-      args: [],
-    };
-    render(<Eip7730CallSection format={format} call={call} />);
+    render(
+      <Eip7730CallSection
+        format={format}
+        resolvePath={buildArgsPathResolver({})}
+      />,
+    );
     expect(screen.getByText('kmmUSDC')).toBeTruthy();
   });
 
@@ -185,14 +162,7 @@ describe('Eip7730CallSection', () => {
     const format: Eip7730DisplayFormat = {
       fields: [{ path: 'missingField', label: 'Missing', format: 'raw' }],
     };
-    const call: DecodedCall = {
-      kind: 'contract-call',
-      selector: '0xdeadbeef',
-      functionName: 'doStuff',
-      signature: 'doStuff()',
-      args: [],
-    };
-    render(<Eip7730CallSection format={format} call={call} />);
+    render(<Eip7730CallSection format={format} resolvePath={transfer(1n)} />);
     expect(screen.getByText('—')).toBeTruthy();
   });
 });

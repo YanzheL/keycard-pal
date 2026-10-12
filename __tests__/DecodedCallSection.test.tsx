@@ -1,9 +1,9 @@
-import { act, render, screen } from '@testing-library/react-native';
+import { render, screen } from '@testing-library/react-native';
 import React from 'react';
 
 import DecodedCallSection from '../src/components/SignRequestDetail/eth/DataTabPanel/DecodedCallSection';
 
-import { setSavedIndex } from '../src/utils/eip7730/lookup';
+import { buildArgsPathResolver } from '../src/utils/eip7730/paths';
 import type { DecodedCall } from '../src/utils/txParser';
 
 jest.mock('react-native-paper', () => {
@@ -78,26 +78,6 @@ describe('DecodedCallSection', () => {
     it('omits token contract row when not provided', () => {
       render(<DecodedCallSection call={call} />);
       expect(screen.queryByText(/Token contract/)).toBeNull();
-    });
-
-    it('shows nothing while a saved slice is read, so no section swaps under the reader', async () => {
-      setSavedIndex({ generatedAt: '2026-10-12T00:00:00.000Z' });
-      try {
-        render(
-          <DecodedCallSection
-            call={call}
-            tokenContract={ADDR_B}
-            chainId={MAINNET}
-          />,
-        );
-        expect(screen.queryByText('ERC-20 Transfer')).toBeNull();
-
-        // No slice file here, so no descriptor: the app's own section follows.
-        await act(async () => {});
-        expect(screen.getByText('ERC-20 Transfer')).toBeTruthy();
-      } finally {
-        setSavedIndex(null);
-      }
     });
   });
 
@@ -422,10 +402,10 @@ describe('DecodedCallSection', () => {
     });
   });
 
-  describe('with a clear-signing descriptor in the bundled index', () => {
+  describe('with a matched registry entry', () => {
     const USDT_ADDRESS = '0xdac17f958d2ee523a2206206994597c13d831ec7';
 
-    it('keeps the token contract row and renders the descriptor', () => {
+    it('keeps the token contract row and renders the entry', () => {
       const call: DecodedCall = {
         kind: 'erc20-transfer',
         to: ADDR_A,
@@ -436,7 +416,23 @@ describe('DecodedCallSection', () => {
           call={call}
           tokenContract={USDT_ADDRESS}
           chainId={MAINNET}
-          container={{ to: USDT_ADDRESS, chainId: MAINNET }}
+          descriptor={{
+            format: {
+              intent: 'Send',
+              fields: [
+                {
+                  path: 'amount',
+                  label: 'Amount',
+                  format: 'tokenAmount',
+                  params: { tokenPath: '@.to' },
+                },
+              ],
+            },
+            resolvePath: buildArgsPathResolver(
+              { to: ADDR_A, amount: 1_500_000n },
+              { to: USDT_ADDRESS, chainId: MAINNET },
+            ),
+          }}
         />,
       );
       expect(screen.getByText('Send')).toBeTruthy();
@@ -445,23 +441,21 @@ describe('DecodedCallSection', () => {
       expect(screen.queryByText('ERC-20 Transfer')).toBeNull();
     });
 
-    it('leaves the contract row to the header for other calls', () => {
-      const call: DecodedCall = {
-        kind: 'contract-call',
-        selector: '0xa415bcad',
-        functionName: 'borrow',
-        signature: 'borrow(address,uint256,uint256,uint16,address)',
-        args: [],
-      };
+    it('leaves the contract row to the header for other calls, unknown ones included', () => {
       render(
         <DecodedCallSection
-          call={call}
-          tokenContract="0x7d2768de32b0b80b7a3454c06bdac94a69ddc7a9"
+          call={{ kind: 'unknown-call', selector: '0x9994dd15' }}
+          tokenContract="0x1111111254fb6c44bac0bed2854e76f90643097d"
           chainId={MAINNET}
+          descriptor={{
+            format: { intent: 'Swap', fields: [] },
+            resolvePath: buildArgsPathResolver({}),
+          }}
         />,
       );
-      expect(screen.getByText('Borrow')).toBeTruthy();
+      expect(screen.getByText('Swap')).toBeTruthy();
       expect(screen.queryByText(/Token contract/)).toBeNull();
+      expect(screen.queryByText(/Contract call/)).toBeNull();
     });
   });
 });

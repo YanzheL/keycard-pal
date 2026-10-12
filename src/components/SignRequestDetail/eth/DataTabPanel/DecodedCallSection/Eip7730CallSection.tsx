@@ -5,33 +5,22 @@ import theme from '@/theme';
 
 import Eip7730FieldRow from '@/components/SignRequestDetail/eth/DataTabPanel/Eip7730FieldRow';
 
-import {
-  buildCalldataPathResolver,
-  type Eip7730Container,
-} from '@/utils/eip7730/paths';
 import type { Eip7730DisplayFormat } from '@/utils/eip7730/zip';
-import type { DecodedCall } from '@/utils/txParser';
 
 type Props = {
   format: Eip7730DisplayFormat;
-  call: DecodedCall;
+  resolvePath: (path: string) => string | null;
   contractAddress?: string;
   chainId?: number;
-  container?: Eip7730Container;
 };
 
 export default function Eip7730CallSection({
   format,
-  call,
+  resolvePath,
   contractAddress,
   chainId,
-  container,
 }: Props) {
-  const ctx = {
-    chainId,
-    contractAddress,
-    resolvePath: buildCalldataPathResolver(call, container),
-  };
+  const ctx = { chainId, contractAddress, resolvePath };
 
   return (
     <View>

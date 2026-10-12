@@ -1,7 +1,12 @@
 import React from 'react';
 import { fireEvent, render, screen } from '@testing-library/react-native';
 import { RLP } from '@ethereumjs/rlp';
-import { encodeFunctionData, parseAbi } from 'viem';
+import {
+  encodeFunctionData,
+  parseAbi,
+  parseAbiItem,
+  type AbiFunction,
+} from 'viem';
 
 import SimulationAddressProvider from '../src/components/SignRequestDetail/SimulationAddressProvider';
 import { UNLIMITED_APPROVAL_WARNING } from '../src/constants/approval';
@@ -667,6 +672,53 @@ describe('EthSignRequestDetail — EIP-712 special renderers', () => {
 // ---------------------------------------------------------------------------
 // request.address, requestId, origin fields
 // ---------------------------------------------------------------------------
+
+describe('EthSignRequestDetail — registry entries for calls the app cannot decode', () => {
+  const ONEINCH_V4 = '0x1111111254fb6c44bac0bed2854e76f90643097d';
+  const RECIPIENT = '0xD3CDa913deb6F4967B2eF3Aa68F5a843da74c4Ef';
+
+  function swapTxHex(): string {
+    const data = encodeFunctionData({
+      abi: [
+        parseAbiItem(
+          'function clipperSwapTo(address recipient, address srcToken, address dstToken, uint256 amount, uint256 minReturn)',
+        ) as AbiFunction,
+      ],
+      args: [
+        RECIPIENT,
+        '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48',
+        '0xdAC17F958D2ee523a2206206994597C13D831ec7',
+        1_500_000n,
+        1_400_000n,
+      ],
+    });
+    return Buffer.from(
+      RLP.encode([
+        bn(1n),
+        bn(20_000_000_000n),
+        bn(200_000n),
+        addr(ONEINCH_V4),
+        bn(0n),
+        Buffer.from(data.slice(2), 'hex'),
+      ]),
+    ).toString('hex');
+  }
+
+  it("decodes the call by the entry's own signature and shows its fields", () => {
+    renderDetail({
+      signData: swapTxHex(),
+      dataType: 1,
+      derivationPath: "m/44'/60'/0'/0",
+      chainId: 1,
+    });
+
+    expect(screen.getByText('Decoded')).toBeTruthy();
+    expect(screen.getByText('Swap')).toBeTruthy();
+    expect(screen.getByText('1.5 USDC')).toBeTruthy();
+    expect(screen.getByText('1.4 USDT')).toBeTruthy();
+    expect(screen.getByText(RECIPIENT)).toBeTruthy();
+  });
+});
 
 describe('EthSignRequestDetail — optional fields', () => {
   it('shows derivation path row when request.address is set', () => {

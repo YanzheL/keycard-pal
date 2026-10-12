@@ -7,7 +7,8 @@ import { strToU8, zipSync } from 'fflate';
 import bundled from '../src/data/eip7730.json';
 import { formatEip7730Field } from '../src/utils/eip7730/format';
 import {
-  buildCalldataPathResolver,
+  buildArgsPathResolver,
+  decodeArgsBySignature,
   resolveEip712FieldValue,
 } from '../src/utils/eip7730/paths';
 import {
@@ -294,13 +295,38 @@ describe('rendering untrusted formats', () => {
     expect(resolveEip712FieldValue('nested.toString', message)).toBeNull();
     expect(resolveEip712FieldValue('__proto__', message)).toBeNull();
     expect(resolveEip712FieldValue('nested.amount', message)).toBe('5');
-    const resolve = buildCalldataPathResolver({
-      kind: 'contract-call',
-      selector: '0xdeadbeef',
-      functionName: 'f',
-      signature: 'f()',
-      args: [],
-    });
+    const resolve = buildArgsPathResolver({ amount: 5n });
     expect(resolve('constructor')).toBeNull();
+    expect(resolve('amount.toString')).toBeNull();
+  });
+});
+
+describe('decoding untrusted calldata by an untrusted signature', () => {
+  it('answers null for damaged calldata and odd signatures, and never throws', () => {
+    const index = bundled as unknown as Eip7730Index;
+    const signatures = index.formats
+      .map(f => f.signature)
+      .filter((sig): sig is string => typeof sig === 'string')
+      .slice(0, 120)
+      .concat([
+        '',
+        'f(',
+        'f(uint256',
+        'f(tuple)',
+        'f(uint7 x)',
+        'x'.repeat(5000),
+      ]);
+    const rand = random(11);
+    for (const signature of signatures) {
+      for (let i = 0; i < 4; i += 1) {
+        const hex = Array.from({ length: Math.floor(rand() * 200) }, () =>
+          Math.floor(rand() * 16).toString(16),
+        ).join('');
+        expect(() =>
+          decodeArgsBySignature(signature, `0x${hex}`),
+        ).not.toThrow();
+      }
+      expect(decodeArgsBySignature(signature, '0x')).toBeNull();
+    }
   });
 });

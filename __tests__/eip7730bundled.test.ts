@@ -1,15 +1,26 @@
 // Real descriptors and no mocks, so a change to the bundled data or its parsing fails here.
+import {
+  encodeFunctionData,
+  parseAbiItem,
+  type AbiFunction,
+  type AbiParameter,
+} from 'viem';
+
+import bundled from '../src/data/eip7730.json';
 import { UNLIMITED_APPROVAL_WARNING } from '../src/constants/approval';
 import { encodeEip712Type } from '../src/utils/eip712';
 import { formatEip7730Field } from '../src/utils/eip7730/format';
 import * as lookup from '../src/utils/eip7730/lookup';
 import {
-  buildCalldataPathResolver,
+  buildArgsPathResolver,
+  decodeArgsBySignature,
   resolveEip712FieldValue,
   type Eip7730Container,
 } from '../src/utils/eip7730/paths';
-import type { Eip7730DisplayFormat } from '../src/utils/eip7730/zip';
-import { decodeCalldata } from '../src/utils/txParser';
+import type {
+  Eip7730DisplayFormat,
+  Eip7730Index,
+} from '../src/utils/eip7730/zip';
 
 // The bundled index answers at once; a promise here would make every review screen wait.
 function now(result: lookup.FormatLookup): Eip7730DisplayFormat | null {
@@ -34,16 +45,21 @@ const word = (v: string | bigint) =>
     ? v.slice(2).padStart(64, '0')
     : v.toString(16).padStart(64, '0');
 
-function renderCalldata(to: string, data: string): Record<string, string> {
-  const call = decodeCalldata(data);
-  expect(call).not.toBeNull();
-  const descriptor = lookupCalldata(1, to, data.slice(0, 10));
-  expect(descriptor).not.toBeNull();
-  const container: Eip7730Container = { to, value: '0', chainId: 1 };
+// As the review does it: the entry's own signature decodes the calldata its paths refer to.
+function renderCalldata(
+  to: string,
+  data: string,
+  chainId = 1,
+): Record<string, string> {
+  const descriptor = lookupCalldata(chainId, to, data.slice(0, 10));
+  expect(descriptor?.signature).toBeDefined();
+  const args = decodeArgsBySignature(descriptor!.signature!, data);
+  expect(args).not.toBeNull();
+  const container: Eip7730Container = { to, value: '0', chainId };
   const ctx = {
-    chainId: 1,
+    chainId,
     contractAddress: to,
-    resolvePath: buildCalldataPathResolver(call!, container),
+    resolvePath: buildArgsPathResolver(args!, container),
   };
   return rows(descriptor!, ctx);
 }
@@ -106,22 +122,12 @@ describe('bundled EIP-7730 descriptors', () => {
     const vault = '0x2a4e2dacc45186bed96d9f766cb6be6b0f8a26f1';
     const descriptor = lookupCalldata(1, vault, '0x6e553f65');
     expect(descriptor?.intent).toBe('Deposit');
-    const call = {
-      kind: 'contract-call' as const,
-      selector: '0x6e553f65',
-      functionName: 'deposit',
-      signature: 'deposit(uint256,address)',
-      args: [
-        { name: 'assets', type: 'uint256', value: AMOUNT.toString() },
-        { name: 'receiver', type: 'address', value: RECIPIENT },
-      ],
-    };
-    const out = rows(descriptor!, {
-      chainId: 1,
-      contractAddress: vault,
-      resolvePath: buildCalldataPathResolver(call, { to: vault, chainId: 1 }),
-    });
+    const out = renderCalldata(
+      vault,
+      '0x6e553f65' + word(AMOUNT) + word(RECIPIENT),
+    );
     expect(out['Deposit asset']).toBe('1.5 USDC');
+    expect(out['Send shares to'].toLowerCase()).toBe(RECIPIENT);
     expect(
       descriptor!.fields.find(f => f.label === 'Share ticker')?.value,
     ).toBe('kmmUSDC');
@@ -190,5 +196,63 @@ describe('bundled EIP-7730 descriptors', () => {
         lookupEip712(1, USDC, encodedType, { ...domain, name: 'Fake Coin' }),
       ).toBeNull();
     });
+  });
+});
+
+// A value of any ABI type, so calldata can be built for every bundled signature.
+function sample(param: AbiParameter): unknown {
+  const array = param.type.match(/^(.*)\[(\d*)\]$/);
+  if (array) {
+    const inner = { ...param, type: array[1] } as AbiParameter;
+    return Array.from({ length: Number(array[2] || 2) }, () => sample(inner));
+  }
+  if (param.type === 'tuple' && 'components' in param) {
+    return Object.fromEntries(
+      param.components.map((c, i) => [c.name || String(i), sample(c)]),
+    );
+  }
+  if (param.type === 'address') return RECIPIENT;
+  if (param.type === 'bool') return true;
+  if (param.type === 'string') return 'x';
+  if (param.type === 'bytes') return '0x1234';
+  if (param.type.startsWith('bytes')) {
+    return `0x${'11'.repeat(Number(param.type.slice(5)))}`;
+  }
+  return 1n;
+}
+
+describe('every bundled calldata descriptor', () => {
+  const formats = (bundled as unknown as Eip7730Index).formats.filter(
+    f => f.signature,
+  );
+
+  it('decodes calldata built for its own signature, and its paths resolve', () => {
+    let paths = 0;
+    for (const format of formats) {
+      const item = parseAbiItem(`function ${format.signature}`) as AbiFunction;
+      const data = encodeFunctionData({
+        abi: [item],
+        args: item.inputs.map(sample),
+      });
+      const args = decodeArgsBySignature(format.signature!, data);
+      expect(args).not.toBeNull();
+      const resolve = buildArgsPathResolver(args!, {
+        from: RECIPIENT,
+        to: USDT,
+        value: '0',
+        chainId: 1,
+      });
+      for (const field of format.fields) {
+        // Slices and negative indices are not read yet; `$.` points into the descriptor.
+        if (!field.path || field.path.startsWith('$.')) continue;
+        if (/\[-|\[\d*:/.test(field.path)) continue;
+        expect([format.signature, field.path, resolve(field.path)]).not.toEqual(
+          [format.signature, field.path, null],
+        );
+        paths += 1;
+      }
+    }
+    expect(formats.length).toBeGreaterThan(800);
+    expect(paths).toBeGreaterThan(2000);
   });
 });

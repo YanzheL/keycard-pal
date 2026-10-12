@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { SegmentedButtons } from 'react-native-paper';
 
@@ -6,11 +6,21 @@ import { CALLDATA_DIGEST_EXPLAINER } from '@/constants/erc8213';
 import type { EthSignRequest } from '@/types';
 
 import InfoRow from '@/components/InfoRow';
+
+import { useEip7730Format } from '@/hooks/useEip7730Format';
+
+import { lookupCalldata } from '@/utils/eip7730/lookup';
+import {
+  buildArgsPathResolver,
+  decodeArgsBySignature,
+} from '@/utils/eip7730/paths';
 import { computeCalldataDigest } from '@/utils/erc8213';
 import type { ParsedTx } from '@/utils/txParser';
 
 import { DigestExplainer, DigestRow } from './shared';
-import DecodedCallSection from './DecodedCallSection';
+import DecodedCallSection, {
+  type MatchedDescriptor,
+} from './DecodedCallSection';
 import SimulationPanel from './SimulationPanel';
 import { useSimulation } from './useSimulation';
 
@@ -26,11 +36,35 @@ export default function TxDataPanel({
   chainId: number | undefined;
 }) {
   const calldata = tx.data ?? '';
-  const hasDecodedCall =
-    tx.decodedCall && tx.decodedCall.kind !== 'unknown-call';
+  const selector = calldata.length >= 10 ? calldata.slice(0, 10) : null;
 
-  const initialTab: Tab = hasDecodedCall ? 'decoded' : 'digests';
-  const [tab, setTab] = useState<Tab>(initialTab);
+  const lookup = useCallback(
+    () =>
+      chainId !== undefined && tx.to && selector
+        ? lookupCalldata(chainId, tx.to, selector)
+        : null,
+    [chainId, tx.to, selector],
+  );
+  const { format, loading } = useEip7730Format(lookup);
+
+  const descriptor = useMemo<MatchedDescriptor | null>(() => {
+    if (!format?.signature) return null;
+    // An entry whose signature does not fit the bytes is not describing this call.
+    const args = decodeArgsBySignature(format.signature, calldata);
+    if (!args) return null;
+    const container = {
+      from: request.address,
+      to: tx.to,
+      value: tx.valueWei,
+      chainId,
+    };
+    return { format, resolvePath: buildArgsPathResolver(args, container) };
+  }, [format, calldata, request.address, tx.to, tx.valueWei, chainId]);
+
+  const hasDecodedCall =
+    descriptor !== null ||
+    (tx.decodedCall !== undefined && tx.decodedCall.kind !== 'unknown-call');
+  const [chosenTab, setTab] = useState<Tab | null>(null);
 
   const { showSimulationTab, simulationState, handleSimulate } = useSimulation(
     request,
@@ -43,14 +77,16 @@ export default function TxDataPanel({
     [calldata],
   );
 
-  useEffect(() => {
-    if (!hasDecodedCall && tab === 'decoded') {
-      setTab('digests');
-    }
-    if (!showSimulationTab && tab === 'simulation') {
-      setTab(hasDecodedCall ? 'decoded' : 'digests');
-    }
-  }, [hasDecodedCall, showSimulationTab, tab]);
+  const defaultTab: Tab = hasDecodedCall ? 'decoded' : 'digests';
+  const tab: Tab =
+    chosenTab === null ||
+    (chosenTab === 'decoded' && !hasDecodedCall) ||
+    (chosenTab === 'simulation' && !showSimulationTab)
+      ? defaultTab
+      : chosenTab;
+
+  // The tabs depend on the entry, and a saved slice takes only milliseconds to read.
+  if (loading) return null;
 
   const buttons = [
     ...(hasDecodedCall ? [{ value: 'decoded', label: 'Decoded' }] : []),
@@ -74,12 +110,7 @@ export default function TxDataPanel({
             call={tx.decodedCall}
             tokenContract={tx.to}
             chainId={chainId}
-            container={{
-              from: request.address,
-              to: tx.to,
-              value: tx.valueWei,
-              chainId,
-            }}
+            descriptor={descriptor}
           />
         )}
         {tab === 'digests' && calldataDigest && (

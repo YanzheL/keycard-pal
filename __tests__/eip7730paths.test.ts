@@ -1,135 +1,110 @@
+import { encodeFunctionData, parseAbiItem, type AbiFunction } from 'viem';
+
 import {
-  buildCalldataPathResolver,
+  buildArgsPathResolver,
+  decodeArgsBySignature,
   resolveEip712FieldValue,
 } from '../src/utils/eip7730/paths';
 
-import type { DecodedCall } from '../src/utils/txParser';
+const SWAP =
+  'swap(address executor,(address srcToken,address dstToken,uint256 amount) desc,bytes data,uint256[] ids)';
+const RECIPIENT = '0xD3CDa913deb6F4967B2eF3Aa68F5a843da74c4Ef';
+const TOKEN = '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48';
 
-describe('buildCalldataPathResolver', () => {
-  it('resolves erc20-transfer fields by canonical name', () => {
-    const call: DecodedCall = {
-      kind: 'erc20-transfer',
-      to: '0xaaaa',
-      amount: 123n,
-    };
-    const r = buildCalldataPathResolver(call);
-    expect(r('to')).toBe('0xaaaa');
-    expect(r('amount')).toBe('123');
-    expect(r('_value')).toBe('123');
+function calldata(signature: string, args: unknown[]): string {
+  return encodeFunctionData({
+    abi: [parseAbiItem(`function ${signature}`) as AbiFunction],
+    args,
   });
+}
 
-  it('resolves erc20-transferFrom fields', () => {
-    const call: DecodedCall = {
-      kind: 'erc20-transferFrom',
-      from: '0xfrom',
-      to: '0xto',
-      amount: 9n,
-    };
-    const r = buildCalldataPathResolver(call);
-    expect(r('_from')).toBe('0xfrom');
-    expect(r('to')).toBe('0xto');
-    expect(r('value')).toBe('9');
-    expect(r('spender')).toBeNull();
-  });
+const swapData = calldata(SWAP, [
+  RECIPIENT,
+  { srcToken: TOKEN, dstToken: RECIPIENT, amount: 1500000n },
+  '0x1234',
+  [7n, 8n],
+]);
 
-  it('returns null for names a token call does not have', () => {
-    expect(
-      buildCalldataPathResolver({
-        kind: 'erc20-transfer',
-        to: '0x',
-        amount: 1n,
-      })('spender'),
-    ).toBeNull();
-    expect(
-      buildCalldataPathResolver({
-        kind: 'erc20-approve',
-        spender: '0x',
-        amount: 1n,
-      })('to'),
-    ).toBeNull();
-  });
-
-  it('returns null for calls without named fields and for an empty path', () => {
-    const unknown: DecodedCall = {
-      kind: 'unknown-call',
-      selector: '0x12345678',
-    };
-    expect(buildCalldataPathResolver(unknown)('to')).toBeNull();
-    expect(
-      buildCalldataPathResolver({
-        kind: 'erc20-transfer',
-        to: '0x',
-        amount: 1n,
-      })(''),
-    ).toBeNull();
-  });
-
-  it('resolves contract-call args by name', () => {
-    const call: DecodedCall = {
-      kind: 'contract-call',
-      selector: '0xdeadbeef',
-      functionName: 'doStuff',
-      signature: 'doStuff(address)',
-      args: [{ name: 'target', type: 'address', value: '0xbeef' }],
-    };
-    const r = buildCalldataPathResolver(call);
-    expect(r('target')).toBe('0xbeef');
-    expect(r('other')).toBeNull();
-  });
-
-  it('reads #. paths from the call', () => {
-    const call: DecodedCall = {
-      kind: 'erc20-approve',
-      spender: '0xccc',
-      amount: 7n,
-    };
-    const r = buildCalldataPathResolver(call);
-    expect(r('#.spender')).toBe('0xccc');
-    expect(r('#.amount')).toBe('7');
-  });
-
-  describe('@. paths read the transaction, not the call', () => {
-    const call: DecodedCall = {
-      kind: 'erc20-transfer',
-      to: '0xrecipient',
-      amount: 5n,
-    };
-    const r = buildCalldataPathResolver(call, {
-      from: '0xsigner',
-      to: '0xtoken',
-      value: '0',
-      chainId: 10,
+describe('decodeArgsBySignature', () => {
+  it("names arguments, structs included, by the descriptor's own signature", () => {
+    const args = decodeArgsBySignature(SWAP, swapData);
+    expect(args).not.toBeNull();
+    expect(args!.executor).toBe(RECIPIENT);
+    expect(args!.desc).toEqual({
+      srcToken: TOKEN,
+      dstToken: RECIPIENT,
+      amount: 1500000n,
     });
+    expect(args!.ids).toEqual([7n, 8n]);
+  });
 
-    it('resolves every container value', () => {
-      expect(r('@.from')).toBe('0xsigner');
-      expect(r('@.to')).toBe('0xtoken');
-      expect(r('@.value')).toBe('0');
-      expect(r('@.chainId')).toBe('10');
-    });
-
-    it('does not fall through to the call arguments', () => {
-      expect(r('to')).toBe('0xrecipient');
-      expect(r('@.amount')).toBeNull();
-    });
-
-    it('returns null for container values it was not given', () => {
-      expect(buildCalldataPathResolver(call)('@.to')).toBeNull();
-      expect(buildCalldataPathResolver(call)('@.chainId')).toBeNull();
+  it('names an unnamed parameter by its position', () => {
+    const data = calldata('transfer(address,uint256)', [RECIPIENT, 5n]);
+    expect(decodeArgsBySignature('transfer(address,uint256)', data)).toEqual({
+      0: RECIPIENT,
+      1: 5n,
     });
   });
 
-  it('returns null for $. paths into the descriptor', () => {
-    const call: DecodedCall = {
-      kind: 'contract-call',
-      selector: '0xdeadbeef',
-      functionName: 'doStuff',
-      signature: 'doStuff(address)',
-      args: [{ name: 'metadata', type: 'address', value: '0xbeef' }],
-    };
+  it('refuses calldata whose selector is another function', () => {
+    const data = calldata('approve(address spender,uint256 amount)', [
+      RECIPIENT,
+      5n,
+    ]);
     expect(
-      buildCalldataPathResolver(call)('$.metadata.constants.max'),
+      decodeArgsBySignature('transfer(address to,uint256 amount)', data),
     ).toBeNull();
+  });
+
+  it('refuses bytes that do not fit the types, and a signature it cannot parse', () => {
+    expect(
+      decodeArgsBySignature(
+        'transfer(address to,uint256 amount)',
+        '0xa9059cbb1234',
+      ),
+    ).toBeNull();
+    expect(decodeArgsBySignature('not a signature', swapData)).toBeNull();
+  });
+});
+
+describe('buildArgsPathResolver', () => {
+  const r = buildArgsPathResolver(decodeArgsBySignature(SWAP, swapData)!, {
+    from: '0xsigner',
+    to: '0xrouter',
+    value: '0',
+    chainId: 10,
+  });
+
+  it('walks into structs and arrays', () => {
+    expect(r('desc.amount')).toBe('1500000');
+    expect(r('#.desc.srcToken')).toBe(TOKEN);
+    expect(r('ids[1]')).toBe('8');
+    expect(r('data')).toBe('0x1234');
+  });
+
+  it('shows a whole struct as JSON, amounts included', () => {
+    expect(JSON.parse(r('desc')!)).toEqual({
+      srcToken: TOKEN,
+      dstToken: RECIPIENT,
+      amount: '1500000',
+    });
+  });
+
+  it('reads @. paths from the transaction, never from the arguments', () => {
+    expect(r('@.from')).toBe('0xsigner');
+    expect(r('@.to')).toBe('0xrouter');
+    expect(r('@.value')).toBe('0');
+    expect(r('@.chainId')).toBe('10');
+    expect(r('@.executor')).toBeNull();
+  });
+
+  it('returns null for what the arguments do not hold', () => {
+    expect(r('')).toBeNull();
+    expect(r('missing')).toBeNull();
+    expect(r('desc.missing')).toBeNull();
+    expect(r('$.metadata.constants.max')).toBeNull();
+    expect(r('constructor')).toBeNull();
+    expect(buildArgsPathResolver({})('@.to')).toBeNull();
   });
 });
 
