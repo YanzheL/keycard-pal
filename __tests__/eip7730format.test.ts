@@ -125,6 +125,71 @@ describe('formatEip7730Field', () => {
     });
   });
 
+  describe('unit', () => {
+    const unit = (value: string, params: Record<string, unknown>) =>
+      formatEip7730Field(field('unit', params), value, FORMAT, ctx()).text;
+
+    it('gives the spec examples', () => {
+      expect(unit('10', { base: 'h' })).toBe('10h');
+      expect(unit('15', { base: 'd', decimals: 1 })).toBe('1.5d');
+      expect(unit('36000', { base: 's', prefix: true })).toBe('36ks');
+    });
+
+    it('appends the base exactly as written', () => {
+      expect(unit('250', { base: 'bps' })).toBe('250bps');
+      expect(unit('5000', { base: '%', decimals: 2 })).toBe('50%');
+      expect(
+        unit('2000000000000000000', { base: ' shares', decimals: 18 }),
+      ).toBe('2 shares');
+      expect(unit('7', {})).toBe('7');
+    });
+
+    it('picks the SI prefix that leaves the smallest significand of one or more', () => {
+      expect(unit('1500000', { base: 'W', prefix: true })).toBe('1.5MW');
+      expect(unit('999', { base: 'W', prefix: true })).toBe('999W');
+      expect(unit('15', { base: 's', decimals: 4, prefix: true })).toBe(
+        '1.5ms',
+      );
+      expect(unit('5', { base: 'g', decimals: 1, prefix: true })).toBe('500mg');
+      expect(unit('0', { base: 'W', prefix: true })).toBe('0W');
+      expect(unit(`1${'0'.repeat(40)}`, { base: 'W', prefix: true })).toBe(
+        '10000000000QW',
+      );
+    });
+
+    it('ignores decimals that are no uint8 and keeps a value that is no number', () => {
+      expect(unit('15', { base: 'd', decimals: -1 })).toBe('15d');
+      expect(unit('soon', { base: 'd' })).toBe('soon');
+    });
+  });
+
+  describe('duration', () => {
+    const duration = (value: string) =>
+      formatEip7730Field(field('duration'), value, FORMAT, ctx()).text;
+
+    it('shows seconds as HH:MM:ss, the hours uncapped', () => {
+      expect(duration('8250')).toBe('02:17:30');
+      expect(duration('0')).toBe('00:00:00');
+      expect(duration('126230400')).toBe('35064:00:00');
+    });
+
+    it('keeps a value that is no duration', () => {
+      expect(duration('-5')).toBe('-5');
+      expect(duration('soon')).toBe('soon');
+    });
+  });
+
+  it('shows an NFT by its token ID, as the spec falls back to without a collection list', () => {
+    expect(
+      formatEip7730Field(
+        field('nftName', { collectionPath: '@.to' }),
+        '1036',
+        FORMAT,
+        ctx({ '@.to': OTHER }),
+      ),
+    ).toEqual({ text: '1036' });
+  });
+
   describe('tokenAmount', () => {
     it('takes the token from tokenPath', () => {
       expect(

@@ -7,7 +7,10 @@ export type Eip7730FieldFormat =
   | 'amount'
   | 'tokenAmount'
   | 'date'
+  | 'duration'
+  | 'unit'
   | 'enum'
+  | 'nftName'
   | 'addressName'
   | 'calldata';
 

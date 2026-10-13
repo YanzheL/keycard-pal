@@ -257,6 +257,58 @@ function formatDate(value: string): string {
     : value;
 }
 
+const SI_PREFIXES: Record<number, string> = {
+  [-30]: 'q',
+  [-27]: 'r',
+  [-24]: 'y',
+  [-21]: 'z',
+  [-18]: 'a',
+  [-15]: 'f',
+  [-12]: 'p',
+  [-9]: 'n',
+  [-6]: 'µ',
+  [-3]: 'm',
+  0: '',
+  3: 'k',
+  6: 'M',
+  9: 'G',
+  12: 'T',
+  15: 'P',
+  18: 'E',
+  21: 'Z',
+  24: 'Y',
+  27: 'R',
+  30: 'Q',
+};
+
+// The value over 10^shift; formatUnits takes no negative shift.
+function shifted(n: bigint, shift: number): string {
+  return shift >= 0
+    ? trimAmount(formatUnits(n, shift))
+    : (n * 10n ** BigInt(-shift)).toString();
+}
+
+function formatUnit(value: string, params: Params): string {
+  const n = toBigInt(value);
+  if (n === null) return value;
+  const base = typeof params?.base === 'string' ? params.base : '';
+  const decimals = isDecimals(params?.decimals) ? params.decimals : 0;
+  if (params?.prefix !== true || n === 0n) {
+    return `${shifted(n, decimals)}${base}`;
+  }
+  const digits = (n < 0n ? -n : n).toString().length;
+  const exponent = Math.floor((digits - 1 - decimals) / 3) * 3;
+  const power = Math.min(30, Math.max(-30, exponent));
+  return `${shifted(n, decimals + power)}${SI_PREFIXES[power]}${base}`;
+}
+
+function formatDuration(value: string): string {
+  const n = toBigInt(value);
+  if (n === null || n < 0n) return value;
+  const two = (part: bigint) => part.toString().padStart(2, '0');
+  return `${two(n / 3600n)}:${two((n % 3600n) / 60n)}:${two(n % 60n)}`;
+}
+
 function formatEnum(
   value: string,
   format: Eip7730DisplayFormat,
@@ -298,6 +350,10 @@ export function formatEip7730Field(
         return formatAmount(value, ctx, field.params);
       case 'date':
         return { text: formatDate(value) };
+      case 'duration':
+        return { text: formatDuration(value) };
+      case 'unit':
+        return { text: formatUnit(value, field.params) };
       case 'enum':
         return { text: formatEnum(value, format, field.params) };
       default:
