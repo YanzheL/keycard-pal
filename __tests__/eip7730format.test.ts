@@ -1,9 +1,11 @@
 import { UNLIMITED_APPROVAL_WARNING } from '../src/constants/approval';
 import {
+  asAddress,
   formatEip7730Field,
   interpolateIntent,
   UNKNOWN_TOKEN_WARNING,
 } from '../src/utils/eip7730/format';
+import { buildArgsEachResolver } from '../src/utils/eip7730/paths';
 
 import type {
   Eip7730DisplayFormat,
@@ -105,6 +107,12 @@ describe('formatEip7730Field', () => {
 
     it('keeps a value the enum does not list', () => {
       expect(formatEip7730Field(f, '5', FORMAT, ctx()).text).toBe('5');
+    });
+
+    it('finds a decimal key from the hex a slice gives', () => {
+      expect(formatEip7730Field(f, '0x01', FORMAT, ctx()).text).toBe('SELL');
+      expect(formatEip7730Field(f, '0x05', FORMAT, ctx()).text).toBe('0x05');
+      expect(formatEip7730Field(f, 'x', FORMAT, ctx()).text).toBe('x');
     });
 
     it('keeps the value without a $ref', () => {
@@ -398,6 +406,26 @@ describe('formatEip7730Field', () => {
   });
 });
 
+describe('asAddress', () => {
+  const ADDRESS = '0xD3CDa913deb6F4967B2eF3Aa68F5a843da74c4Ef';
+
+  it('checksums an address', () => {
+    expect(asAddress(ADDRESS.toLowerCase())).toBe(ADDRESS);
+  });
+
+  it('takes the last 20 bytes of a 32-byte word, in hex or decimal', () => {
+    const packed = 0x80n * 2n ** 248n + BigInt(ADDRESS);
+    expect(asAddress(`0x${packed.toString(16)}`)).toBe(ADDRESS);
+    expect(asAddress(packed.toString())).toBe(ADDRESS);
+  });
+
+  it('gives null for anything else', () => {
+    expect(asAddress('0x1234')).toBeNull();
+    expect(asAddress((2n ** 256n).toString())).toBeNull();
+    expect(asAddress('vitalik.eth')).toBeNull();
+  });
+});
+
 describe('interpolateIntent', () => {
   const RECIPIENT = '0xd3cda913deb6f4967b2ef3aa68f5a843da74c4ef';
   const sentence = (
@@ -439,5 +467,53 @@ describe('interpolateIntent', () => {
     expect(sentence('Send {missing}')).toBeNull();
     expect(sentence('Call {data}', { data: '0x12' })).toBeNull();
     expect(sentence('Broken {amount')).toBeNull();
+  });
+  it('fills an array placeholder with every element, each paired with its token', () => {
+    const OTHER_TOKEN = '0x000000000000000000000000000000000000f00d';
+    const args = {
+      amounts: [1500000n, 2000000n],
+      tokens: [TOKEN, OTHER_TOKEN],
+      owners: [
+        '0xd3cda913deb6f4967b2ef3aa68f5a843da74c4ef',
+        '0x000000000000000000000000000000000000c0de',
+      ],
+    };
+    const resolveEach = buildArgsEachResolver(args);
+    const fmt = (interpolatedIntent: string) => ({
+      intent: 'Withdraw',
+      interpolatedIntent,
+      fields: [
+        {
+          path: 'amounts.[]',
+          label: 'Amount',
+          format: 'tokenAmount' as const,
+          params: { tokenPath: 'tokens.[]' },
+        },
+        { path: 'owners.[]', label: 'Owner', format: 'addressName' as const },
+      ],
+      metadata: {
+        tokens: {
+          [TOKEN]: { decimals: 6, ticker: 'USDC' },
+          [OTHER_TOKEN]: { decimals: 6, ticker: 'DAI' },
+        },
+      },
+    });
+    const context = {
+      chainId: 1,
+      resolvePath: (p: string) => resolveEach(p)[0] ?? null,
+      resolveEach,
+    };
+    expect(interpolateIntent(fmt('Withdraw {amounts.[]}'), context)).toBe(
+      'Withdraw 1.5 USDC, 2 DAI',
+    );
+    expect(interpolateIntent(fmt('For {owners.[]}'), context)).toBe(
+      'For 0xD3CDa913deb6F4967B2eF3Aa68F5a843da74c4Ef, 0x000000000000000000000000000000000000c0DE',
+    );
+    expect(
+      interpolateIntent(fmt('Withdraw {amounts.[]}'), {
+        ...context,
+        resolveEach: buildArgsEachResolver({ amounts: [] }),
+      }),
+    ).toBeNull();
   });
 });

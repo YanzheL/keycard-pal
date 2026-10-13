@@ -6,6 +6,7 @@ import {
   decodeArgsBySignature,
   resolveEip712FieldValue,
   resolveEip712FieldValues,
+  sliceRange,
 } from '../src/utils/eip7730/paths';
 
 const SWAP =
@@ -127,10 +128,25 @@ describe('every value a path selects', () => {
     expect(each('#.calls.[].value')).toEqual(['1', '2']);
   });
 
-  it('takes one element by index, and nothing past the end', () => {
+  it('takes one element by index, negative from the end, and nothing past either end', () => {
     expect(each('data[1]')).toEqual(['0x0b']);
     expect(each('data[9]')).toEqual([]);
-    expect(each('data[-1]')).toEqual([]);
+    expect(each('data.[-1]')).toEqual(['0x0c']);
+    expect(each('data.[-3]')).toEqual(['0x0a']);
+    expect(each('data.[-4]')).toEqual([]);
+    expect(each('calls.[-1].to')).toEqual(['0xbb']);
+  });
+
+  it('takes a slice of an array as its elements', () => {
+    expect(each('data.[1:]')).toEqual(['0x0b', '0x0c']);
+    expect(each('data.[:-1]')).toEqual(['0x0a', '0x0b']);
+    expect(each('data.[-2:]')).toEqual(['0x0b', '0x0c']);
+    expect(each('data.[2:1]')).toEqual([]);
+  });
+
+  it('does not index into a value that is not an array', () => {
+    expect(each('calls.[0].data.[0]')).toEqual([]);
+    expect(each('calls.[0].to.[]')).toEqual([]);
   });
 
   it('reads a container value once, and nothing it does not hold', () => {
@@ -148,6 +164,57 @@ describe('every value a path selects', () => {
       '0x02',
     ]);
     expect(resolveEip712FieldValue('calls.[].data', message)).toBe('0x01');
+  });
+});
+
+describe('slices of a value', () => {
+  const word = (hex: string) => `0x${hex.padStart(64, '0')}`;
+  const args = {
+    packed: 0xabn * 2n ** 248n + BigInt(RECIPIENT),
+    negative: -1n,
+    path: `0x${'11'.repeat(20)}000bb8${'22'.repeat(20)}`,
+    creds: `0x01${'00'.repeat(11)}${'33'.repeat(20)}`,
+    flag: true,
+    text: 'hello',
+  };
+  const r = buildArgsPathResolver(args);
+
+  it('slices a number as its 32-byte word', () => {
+    expect(r('packed.[-20:]')).toBe(RECIPIENT.toLowerCase());
+    expect(r('packed.[:1]')).toBe('0xab');
+    expect(r('packed.[0:32]')).toBe(
+      word(args.packed.toString(16)).toLowerCase(),
+    );
+    expect(r('negative.[-1:]')).toBe('0xff');
+  });
+
+  it('slices bytes as they are', () => {
+    expect(r('path.[0:20]')).toBe(`0x${'11'.repeat(20)}`);
+    expect(r('path.[-20:]')).toBe(`0x${'22'.repeat(20)}`);
+    expect(r('creds.[:1]')).toBe('0x01');
+    expect(r('creds.[12:32]')).toBe(`0x${'33'.repeat(20)}`);
+  });
+
+  it('gives nothing for an empty slice or a value with no bytes', () => {
+    expect(r('creds.[40:]')).toBeNull();
+    expect(r('flag.[:1]')).toBeNull();
+    expect(r('text.[:1]')).toBeNull();
+  });
+
+  it('slices an EIP-712 number given as decimal or hex text', () => {
+    const message = { deadline: '1800000000', small: '0x0', id: 255 };
+    expect(resolveEip712FieldValue('deadline.[-4:]', message)).toBe(
+      '0x6b49d200',
+    );
+    expect(resolveEip712FieldValue('small.[-1:]', message)).toBe('0x00');
+    expect(resolveEip712FieldValue('id.[-1:]', message)).toBe('0xff');
+  });
+
+  it('counts slice bounds like Python, clamped to the length', () => {
+    expect(sliceRange(10, undefined, undefined)).toEqual([0, 10]);
+    expect(sliceRange(10, '-3', undefined)).toEqual([7, 10]);
+    expect(sliceRange(10, '2', '-2')).toEqual([2, 8]);
+    expect(sliceRange(10, '-20', '99')).toEqual([0, 10]);
   });
 });
 

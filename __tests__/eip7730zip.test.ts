@@ -636,6 +636,48 @@ describe('field expansion', () => {
     ]);
   });
 
+  it("reads a group's relative param paths inside the group", () => {
+    const fields = fieldsOf({
+      'registry/a.json': {
+        ...contract(),
+        ...transferFormat([
+          {
+            path: '#.uniData',
+            fields: [
+              {
+                path: 'fromAmount',
+                label: 'Amount',
+                format: 'tokenAmount',
+                params: {
+                  tokenPath: 'srcToken',
+                  threshold: '0xff',
+                  message: 'All',
+                },
+              },
+              {
+                path: 'toAmount',
+                label: 'Min',
+                format: 'tokenAmount',
+                params: { tokenPath: '@.to' },
+              },
+            ],
+          },
+          {
+            path: 'top',
+            label: 'Top',
+            format: 'tokenAmount',
+            params: { tokenPath: 'token' },
+          },
+        ]),
+      },
+    });
+    expect(fields?.map(f => f.params)).toEqual([
+      { tokenPath: '#.uniData.srcToken', threshold: '0xff', message: 'All' },
+      { tokenPath: '@.to' },
+      { tokenPath: 'token' },
+    ]);
+  });
+
   it('substitutes constants in params and values', () => {
     const fields = fieldsOf({
       'registry/a.json': {
@@ -774,8 +816,8 @@ describe('field expansion', () => {
 });
 
 describe('index shape', () => {
-  it('is version 6', () => {
-    expect(EIP7730_INDEX_VERSION).toBe(6);
+  it('is version 7', () => {
+    expect(EIP7730_INDEX_VERSION).toBe(7);
   });
 
   it('stores each key once per contract, its chains under it', () => {

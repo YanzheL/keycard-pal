@@ -3,10 +3,9 @@ import { Text } from 'react-native-paper';
 
 import theme from '@/theme';
 
-import Eip7730FieldRow from '@/components/SignRequestDetail/eth/DataTabPanel/Eip7730FieldRow';
+import Eip7730FieldList from '@/components/SignRequestDetail/eth/DataTabPanel/Eip7730FieldList';
 
 import { interpolateIntent } from '@/utils/eip7730/format';
-import { shownFields } from '@/utils/eip7730/visibility';
 import type { Eip7730DisplayFormat } from '@/utils/eip7730/zip';
 
 type Props = {
@@ -38,14 +37,7 @@ export default function Eip7730CallSection({
           </Text>
         </View>
       )}
-      {shownFields(format, ctx).map((field, index) => (
-        <Eip7730FieldRow
-          key={`${field.path}-${index}`}
-          field={field}
-          format={format}
-          ctx={ctx}
-        />
-      ))}
+      <Eip7730FieldList fields={format.fields} format={format} ctx={ctx} />
     </View>
   );
 }

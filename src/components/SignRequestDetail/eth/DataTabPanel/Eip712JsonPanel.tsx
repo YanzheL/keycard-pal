@@ -30,7 +30,7 @@ import {
 import { passesMustMatch, shownFields } from '@/utils/eip7730/visibility';
 import { classifyEthPayload } from '@/utils/ethPayload';
 
-import Eip7730FieldRow from './Eip7730FieldRow';
+import Eip7730FieldList from './Eip7730FieldList';
 import {
   DigestExplainer,
   DigestRow,
@@ -160,14 +160,11 @@ export default function Eip712JsonPanel({
                   </View>
                 )}
                 {eip7730Fields.length > 0 && <SectionHeader title="Message" />}
-                {eip7730Fields.map((field, index) => (
-                  <Eip7730FieldRow
-                    key={`eip7730-${field.path}-${index}`}
-                    field={field}
-                    format={eip7730Descriptor}
-                    ctx={fieldContext}
-                  />
-                ))}
+                <Eip7730FieldList
+                  fields={eip7730Descriptor.fields}
+                  format={eip7730Descriptor}
+                  ctx={fieldContext}
+                />
               </>
             ) : (
               <>

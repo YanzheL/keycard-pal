@@ -6,6 +6,7 @@ import { getNativeCurrencySymbol } from '@/utils/chainMetadata';
 import { checksumEthAddress } from '@/utils/ethereumAddress';
 import { lookupToken } from '@/utils/tokenMetadata';
 
+import { arrayIndices, bindField, firstArraySelector } from './arrays';
 import {
   interpolationParts,
   isDecimals,
@@ -33,6 +34,7 @@ export type Eip7730FieldDisplay = {
 export const UNKNOWN_TOKEN_WARNING = 'Unknown token';
 
 const ADDRESS_RE = /^0x[0-9a-fA-F]{40}$/;
+const WORD_RE = /^0x[0-9a-fA-F]{64}$/;
 const ENUM_REF_PREFIX = '$.metadata.enums.';
 const NATIVE_DECIMALS = 18;
 // Spending permissions; "All" and "Max" withdraw the user's own funds.
@@ -55,6 +57,17 @@ function literalAddresses(value: unknown): string[] {
   return list
     .filter((v): v is string => typeof v === 'string' && ADDRESS_RE.test(v))
     .map(v => v.toLowerCase());
+}
+
+/** An address, or the last 20 bytes of a 32-byte word, where the ABI puts one. */
+export function asAddress(value: string): string | null {
+  if (ADDRESS_RE.test(value)) return checksumEthAddress(value);
+  if (WORD_RE.test(value)) return checksumEthAddress(`0x${value.slice(-40)}`);
+  if (!/^\d+$/.test(value)) return null;
+  const n = BigInt(value);
+  return n < 2n ** 256n
+    ? checksumEthAddress(`0x${n.toString(16).padStart(64, '0').slice(-40)}`)
+    : null;
 }
 
 function nativeToken(chainId: number | undefined): TokenInfo | null {
@@ -195,9 +208,17 @@ function formatEnum(
     ? ref.slice(ENUM_REF_PREFIX.length)
     : ref;
   const labels = format.metadata?.enums?.[id];
+  if (!labels) return value;
+  // Keys are decimal; a slice of bytes arrives as hex.
+  const n = toBigInt(value);
+  const key = Object.prototype.hasOwnProperty.call(labels, value)
+    ? value
+    : n !== null
+    ? n.toString()
+    : null;
   const label =
-    labels && Object.prototype.hasOwnProperty.call(labels, value)
-      ? labels[value]
+    key !== null && Object.prototype.hasOwnProperty.call(labels, key)
+      ? labels[key]
       : null;
   return typeof label === 'string' ? label : value;
 }
@@ -245,11 +266,39 @@ export function interpolateIntent(
     }
     const path = normalizeFieldPath(part.path);
     const field = format.fields.find(f => normalizeFieldPath(f.path) === path);
-    const raw = field ? field.value ?? ctx.resolvePath(field.path) : null;
-    if (!field || field.format === 'calldata' || raw === null) return null;
-    const { text } = formatEip7730Field(field, raw, format, ctx);
-    sentence +=
-      field.format === 'addressName' ? checksumEthAddress(text) : text;
+    if (!field || field.format === 'calldata') return null;
+    const texts = fieldTexts(field, format, ctx);
+    if (!texts) return null;
+    sentence += texts.join(', ');
   }
   return sentence;
+}
+
+// Formatted as the rows show it, one text per array element.
+function fieldTexts(
+  field: Eip7730Field,
+  format: Eip7730DisplayFormat,
+  ctx: Eip7730FieldContext,
+): string[] | null {
+  const selector =
+    field.value === undefined ? firstArraySelector(field.path) : null;
+  const indices = selector ? arrayIndices(selector, ctx) : null;
+  if (selector && indices) {
+    if (indices.length === 0) return null;
+    const texts: string[] = [];
+    for (const index of indices) {
+      const element = fieldTexts(
+        bindField(field, selector, index),
+        format,
+        ctx,
+      );
+      if (!element) return null;
+      texts.push(...element);
+    }
+    return texts;
+  }
+  const raw = field.value ?? ctx.resolvePath(field.path);
+  if (raw === null) return null;
+  const { text } = formatEip7730Field(field, raw, format, ctx);
+  return [field.format === 'addressName' ? asAddress(raw) ?? text : text];
 }

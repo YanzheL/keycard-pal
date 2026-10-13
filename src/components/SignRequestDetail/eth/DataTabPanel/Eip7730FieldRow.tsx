@@ -7,6 +7,7 @@ import AddressInfoRow from '@/components/ens/AddressInfoRow.online';
 import InfoRow from '@/components/InfoRow';
 
 import {
+  asAddress,
   formatEip7730Field,
   type Eip7730FieldContext,
 } from '@/utils/eip7730/format';
@@ -28,10 +29,12 @@ export default function Eip7730FieldRow({
     return <Eip7730InnerCalls field={field} ctx={ctx} />;
   }
   const raw = field.value ?? ctx.resolvePath(field.path);
-  if (field.format === 'addressName' && raw?.startsWith('0x')) {
+  const address =
+    field.format === 'addressName' && raw !== null ? asAddress(raw) : null;
+  if (address) {
     return (
       <View style={styles.row}>
-        <AddressInfoRow label={field.label} value={checksumEthAddress(raw)} />
+        <AddressInfoRow label={field.label} value={address} />
       </View>
     );
   }

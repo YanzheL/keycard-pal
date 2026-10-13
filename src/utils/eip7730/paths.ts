@@ -52,7 +52,61 @@ function indexOfClosingBracket(s: string, start: number): number {
   return -1;
 }
 
-/** Every value a path selects; `[]` and `[*]` take each element, which only inner calls use so far. */
+const SLICE_RE = /^(-?\d+)?:(-?\d+)?$/;
+const WORD = 2n ** 256n;
+
+export function sliceRange(
+  length: number,
+  start: string | undefined,
+  end: string | undefined,
+): [number, number] {
+  const at = (text: string | undefined, fallback: number) => {
+    if (text === undefined || text === '') return fallback;
+    const n = Number(text);
+    return Math.min(length, Math.max(0, n < 0 ? length + n : n));
+  };
+  return [at(start, 0), at(end, length)];
+}
+
+function wordHex(n: bigint): string | null {
+  const v = n < 0n ? WORD + n : n;
+  return v >= 0n && v < WORD ? v.toString(16).padStart(64, '0') : null;
+}
+
+// The spec slices a number as its 32-byte ABI word.
+function bytesHex(value: unknown): string | null {
+  if (typeof value === 'bigint') return wordHex(value);
+  if (typeof value === 'number') {
+    return Number.isSafeInteger(value) ? wordHex(BigInt(value)) : null;
+  }
+  if (typeof value !== 'string') return null;
+  if (/^0x([0-9a-f]{2})*$/i.test(value)) return value.slice(2).toLowerCase();
+  if (/^(0x[0-9a-f]+|-?\d+)$/i.test(value)) return wordHex(BigInt(value));
+  return null;
+}
+
+function select(value: unknown, selector: string): unknown[] {
+  if (selector === '' || selector === '*') {
+    return Array.isArray(value) ? value : [];
+  }
+  if (/^-?\d+$/.test(selector)) {
+    if (!Array.isArray(value)) return [];
+    const n = Number(selector);
+    const index = n < 0 ? value.length + n : n;
+    return index >= 0 && index < value.length ? [value[index]] : [];
+  }
+  const slice = SLICE_RE.exec(selector);
+  if (!slice) return [];
+  if (Array.isArray(value)) {
+    const [start, end] = sliceRange(value.length, slice[1], slice[2]);
+    return value.slice(start, end);
+  }
+  const hex = bytesHex(value);
+  if (hex === null) return [];
+  const [start, end] = sliceRange(hex.length / 2, slice[1], slice[2]);
+  return start < end ? [`0x${hex.slice(start * 2, end * 2)}`] : [];
+}
+
 function valuesAt(path: string, root: unknown): unknown[] {
   let current: unknown[] = [root];
   let i = 0;
@@ -64,15 +118,8 @@ function valuesAt(path: string, root: unknown): unknown[] {
     if (path[i] === '[') {
       const end = indexOfClosingBracket(path, i + 1);
       if (end === -1) return [];
-      const inner = path.slice(i + 1, end);
-      current = current.flatMap(value => {
-        if (!Array.isArray(value)) return [];
-        if (inner === '' || inner === '*') return value;
-        const index = Number(inner);
-        return Number.isInteger(index) && index >= 0 && index < value.length
-          ? [value[index]]
-          : [];
-      });
+      const selector = path.slice(i + 1, end);
+      current = current.flatMap(value => select(value, selector));
       i = end + 1;
       continue;
     }

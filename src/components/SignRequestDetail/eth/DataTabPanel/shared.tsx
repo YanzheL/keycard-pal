@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 import { Icon, Text } from 'react-native-paper';
 
@@ -30,6 +31,25 @@ export function WarningRow({ text }: { text: string }) {
       <Text variant="labelSmall" style={styles.warningText}>
         {text}
       </Text>
+    </View>
+  );
+}
+
+export function ElementBlock({
+  title,
+  children,
+}: {
+  title?: string;
+  children: ReactNode;
+}) {
+  return (
+    <View style={styles.element}>
+      {title && (
+        <Text variant="labelSmall" style={styles.elementTitle}>
+          {title}
+        </Text>
+      )}
+      {children}
     </View>
   );
 }
@@ -83,6 +103,16 @@ const styles = StyleSheet.create({
   warningText: {
     color: theme.colors.negative,
     flexShrink: 1,
+  },
+  element: {
+    borderLeftWidth: 2,
+    borderLeftColor: theme.colors.surfaceVariant,
+    paddingLeft: 12,
+    marginVertical: 4,
+  },
+  elementTitle: {
+    color: theme.colors.onSurfaceVariant,
+    paddingTop: 4,
   },
   sectionHeader: {
     paddingTop: 8,

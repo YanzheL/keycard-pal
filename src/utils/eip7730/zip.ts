@@ -65,7 +65,7 @@ export type Eip7730IndexSlice = Pick<
   'formats' | 'contracts' | 'eip712'
 >;
 
-export const EIP7730_INDEX_VERSION = 6;
+export const EIP7730_INDEX_VERSION = 7;
 
 const SCHEMA_MAJOR = 2;
 const SELECTOR_RE = /^0x[0-9a-f]{8}$/i;
@@ -183,6 +183,22 @@ function joinFieldPath(prefix: string | undefined, path: string): string {
   return prefix && !/^[#@$]\./.test(path) ? `${prefix}.${path}` : path;
 }
 
+// Relative param paths inside a group are relative to the group, as field paths are.
+function withGroupPaths(
+  params: Json | undefined,
+  prefix: string | undefined,
+): Json | undefined {
+  if (!params || !prefix) return params;
+  return Object.fromEntries(
+    Object.entries(params).map(([key, value]) => [
+      key,
+      key.endsWith('Path') && typeof value === 'string'
+        ? joinFieldPath(prefix, value)
+        : value,
+    ]),
+  );
+}
+
 function expandFields(
   rawFields: unknown,
   sources: FieldSources,
@@ -211,7 +227,10 @@ function expandFields(
     const format = (
       typeof field.format === 'string' ? field.format : 'raw'
     ) as Eip7730FieldFormat;
-    const params = withConstants(field.params, sources.constants);
+    const params = withGroupPaths(
+      withConstants(field.params, sources.constants),
+      prefix,
+    );
     const value = substituteConstant(field.value, sources.constants);
     const rule = visible ? { visible } : {};
     if (typeof value === 'string' || typeof value === 'number') {

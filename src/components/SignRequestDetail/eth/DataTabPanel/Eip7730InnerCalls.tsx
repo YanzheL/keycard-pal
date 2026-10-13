@@ -1,9 +1,7 @@
 import { useMemo } from 'react';
 import { StyleSheet, View } from 'react-native';
-import { Text } from 'react-native-paper';
 
 import { DESCRIPTOR_CHECK_FAILED_WARNING } from '@/constants/eip7730';
-import theme from '@/theme';
 
 import AddressInfoRow from '@/components/ens/AddressInfoRow.online';
 import InfoRow from '@/components/InfoRow';
@@ -16,7 +14,7 @@ import type { Eip7730Field } from '@/utils/eip7730/zip';
 import { decodeCalldata } from '@/utils/txParser';
 
 import DecodedCallSection, { isTokenCall } from './DecodedCallSection';
-import { SectionHeader, WarningRow } from './shared';
+import { ElementBlock, SectionHeader, WarningRow } from './shared';
 
 // Deeper than this a crafted registry or calldata could nest without end.
 const MAX_DEPTH = 3;
@@ -146,12 +144,12 @@ export default function Eip7730InnerCalls({
       {calls.map((data, i) => {
         const chainId = Number(at(chainIds, i) ?? ctx.chainId);
         return (
-          <View key={`${i}-${data.slice(0, 10)}`} style={styles.call}>
-            {calls.length > 1 && (
-              <Text variant="labelSmall" style={styles.count}>
-                {`Call ${i + 1} of ${calls.length}`}
-              </Text>
-            )}
+          <ElementBlock
+            key={`${i}-${data.slice(0, 10)}`}
+            title={
+              calls.length > 1 ? `Call ${i + 1} of ${calls.length}` : undefined
+            }
+          >
             <InnerCall
               data={data}
               callee={at(callees, i)}
@@ -160,7 +158,7 @@ export default function Eip7730InnerCalls({
               spender={at(spenders, i)}
               depth={depth}
             />
-          </View>
+          </ElementBlock>
         );
       })}
     </View>
@@ -170,15 +168,5 @@ export default function Eip7730InnerCalls({
 const styles = StyleSheet.create({
   row: {
     paddingVertical: 8,
-  },
-  call: {
-    borderLeftWidth: 2,
-    borderLeftColor: theme.colors.surfaceVariant,
-    paddingLeft: 12,
-    marginVertical: 4,
-  },
-  count: {
-    color: theme.colors.onSurfaceVariant,
-    paddingTop: 4,
   },
 });

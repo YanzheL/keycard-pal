@@ -1,6 +1,6 @@
 {
-  "version": 6,
-  "generatedAt": "2026-10-13T10:40:40.826Z",
+  "version": 7,
+  "generatedAt": "2026-10-13T13:06:57.105Z",
   "formats": [
     {
       "fields": [
@@ -24620,7 +24620,7 @@
               "0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE",
               "0x0000000000000000000000000000000000000000"
             ],
-            "tokenPath": "srcToken"
+            "tokenPath": "#.swapData.srcToken"
           }
         },
         {
@@ -24632,7 +24632,7 @@
               "0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE",
               "0x0000000000000000000000000000000000000000"
             ],
-            "tokenPath": "destToken"
+            "tokenPath": "#.swapData.destToken"
           }
         },
         {
@@ -24665,7 +24665,7 @@
               "0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE",
               "0x0000000000000000000000000000000000000000"
             ],
-            "tokenPath": "srcToken"
+            "tokenPath": "#.swapData.srcToken"
           }
         },
         {
@@ -24677,7 +24677,7 @@
               "0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE",
               "0x0000000000000000000000000000000000000000"
             ],
-            "tokenPath": "destToken"
+            "tokenPath": "#.swapData.destToken"
           }
         },
         {
@@ -24710,7 +24710,7 @@
               "0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE",
               "0x0000000000000000000000000000000000000000"
             ],
-            "tokenPath": "srcToken"
+            "tokenPath": "#.swapData.srcToken"
           }
         },
         {
@@ -24722,7 +24722,7 @@
               "0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE",
               "0x0000000000000000000000000000000000000000"
             ],
-            "tokenPath": "destToken"
+            "tokenPath": "#.swapData.destToken"
           }
         },
         {
@@ -24755,7 +24755,7 @@
               "0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE",
               "0x0000000000000000000000000000000000000000"
             ],
-            "tokenPath": "srcToken"
+            "tokenPath": "#.swapData.srcToken"
           }
         },
         {
@@ -24767,7 +24767,7 @@
               "0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE",
               "0x0000000000000000000000000000000000000000"
             ],
-            "tokenPath": "destToken"
+            "tokenPath": "#.swapData.destToken"
           }
         },
         {
@@ -24800,7 +24800,7 @@
               "0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE",
               "0x0000000000000000000000000000000000000000"
             ],
-            "tokenPath": "srcToken"
+            "tokenPath": "#.uniData.srcToken"
           }
         },
         {
@@ -24812,7 +24812,7 @@
               "0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE",
               "0x0000000000000000000000000000000000000000"
             ],
-            "tokenPath": "destToken"
+            "tokenPath": "#.uniData.destToken"
           }
         },
         {
@@ -24845,7 +24845,7 @@
               "0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE",
               "0x0000000000000000000000000000000000000000"
             ],
-            "tokenPath": "srcToken"
+            "tokenPath": "#.uniData.srcToken"
           }
         },
         {
@@ -24857,7 +24857,7 @@
               "0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE",
               "0x0000000000000000000000000000000000000000"
             ],
-            "tokenPath": "destToken"
+            "tokenPath": "#.uniData.destToken"
           }
         },
         {
@@ -24890,7 +24890,7 @@
               "0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE",
               "0x0000000000000000000000000000000000000000"
             ],
-            "tokenPath": "srcToken"
+            "tokenPath": "#.uniData.srcToken"
           }
         },
         {
@@ -24902,7 +24902,7 @@
               "0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE",
               "0x0000000000000000000000000000000000000000"
             ],
-            "tokenPath": "destToken"
+            "tokenPath": "#.uniData.destToken"
           }
         },
         {
@@ -24935,7 +24935,7 @@
               "0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE",
               "0x0000000000000000000000000000000000000000"
             ],
-            "tokenPath": "srcToken"
+            "tokenPath": "#.uniData.srcToken"
           }
         },
         {
@@ -24947,7 +24947,7 @@
               "0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE",
               "0x0000000000000000000000000000000000000000"
             ],
-            "tokenPath": "destToken"
+            "tokenPath": "#.uniData.destToken"
           }
         },
         {
@@ -24980,7 +24980,7 @@
               "0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE",
               "0x0000000000000000000000000000000000000000"
             ],
-            "tokenPath": "srcToken"
+            "tokenPath": "#.curveV1Data.srcToken"
           }
         },
         {
@@ -24992,7 +24992,7 @@
               "0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE",
               "0x0000000000000000000000000000000000000000"
             ],
-            "tokenPath": "destToken"
+            "tokenPath": "#.curveV1Data.destToken"
           }
         },
         {
@@ -25025,7 +25025,7 @@
               "0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE",
               "0x0000000000000000000000000000000000000000"
             ],
-            "tokenPath": "srcToken"
+            "tokenPath": "#.curveV2Data.srcToken"
           }
         },
         {
@@ -25037,7 +25037,7 @@
               "0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE",
               "0x0000000000000000000000000000000000000000"
             ],
-            "tokenPath": "destToken"
+            "tokenPath": "#.curveV2Data.destToken"
           }
         },
         {
@@ -32852,8 +32852,8 @@
           "label": "Call",
           "format": "calldata",
           "params": {
-            "calleePath": "to",
-            "amountPath": "value",
+            "calleePath": "calls.[].to",
+            "amountPath": "calls.[].value",
             "spenderPath": "#.eoa"
           }
         },
@@ -33661,7 +33661,7 @@
           "label": "Minimum amounts to receive",
           "format": "tokenAmount",
           "params": {
-            "tokenPath": "token",
+            "tokenPath": "witness.outputs.[].token",
             "nativeCurrencyAddress": "0x0000000000000000000000000000000000000000"
           }
         },
@@ -33712,7 +33712,7 @@
           "label": "Minimum amounts to receive",
           "format": "tokenAmount",
           "params": {
-            "tokenPath": "token",
+            "tokenPath": "witness.outputs.[].token",
             "nativeCurrencyAddress": "0x0000000000000000000000000000000000000000"
           }
         },
@@ -33763,7 +33763,7 @@
           "label": "Min amount to receive",
           "format": "tokenAmount",
           "params": {
-            "tokenPath": "token",
+            "tokenPath": "witness.outputs.[].token",
             "nativeCurrencyAddress": "0x0000000000000000000000000000000000000000"
           }
         },
@@ -33814,7 +33814,7 @@
           "label": "Min amount to receive",
           "format": "tokenAmount",
           "params": {
-            "tokenPath": "token",
+            "tokenPath": "witness.baseOutputs.[].token",
             "nativeCurrencyAddress": "0x0000000000000000000000000000000000000000"
           }
         },

@@ -218,7 +218,8 @@ function sample(param: AbiParameter): unknown {
   if (param.type === 'address') return RECIPIENT;
   if (param.type === 'bool') return true;
   if (param.type === 'string') return 'x';
-  if (param.type === 'bytes') return '0x1234';
+  // Long enough for every byte slice the registry takes.
+  if (param.type === 'bytes') return `0x${'12'.repeat(400)}`;
   if (param.type.startsWith('bytes')) {
     return `0x${'11'.repeat(Number(param.type.slice(5)))}`;
   }
@@ -294,7 +295,7 @@ describe('every bundled calldata descriptor', () => {
     f => f.signature,
   );
 
-  it('decodes calldata built for its own signature, and its paths resolve', () => {
+  it('decodes calldata built for its own signature, and its field and param paths resolve', () => {
     let paths = 0;
     for (const format of formats) {
       const item = parseAbiItem(`function ${format.signature}`) as AbiFunction;
@@ -311,16 +312,25 @@ describe('every bundled calldata descriptor', () => {
         chainId: 1,
       });
       for (const field of format.fields) {
-        // Slices and negative indices are not read yet; `$.` points into the descriptor.
+        // `$.` points into the descriptor.
         if (!field.path || field.path.startsWith('$.')) continue;
-        if (/\[-|\[\d*:/.test(field.path)) continue;
         expect([format.signature, field.path, resolve(field.path)]).not.toEqual(
           [format.signature, field.path, null],
         );
         paths += 1;
+        for (const [key, value] of Object.entries(field.params ?? {})) {
+          if (!key.endsWith('Path') || typeof value !== 'string') continue;
+          if (value.startsWith('$.')) continue;
+          expect([format.signature, key, resolve(value)]).not.toEqual([
+            format.signature,
+            key,
+            null,
+          ]);
+          paths += 1;
+        }
       }
     }
     expect(formats.length).toBeGreaterThan(800);
-    expect(paths).toBeGreaterThan(2000);
+    expect(paths).toBeGreaterThan(2700);
   });
 });
