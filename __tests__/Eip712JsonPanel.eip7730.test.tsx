@@ -371,6 +371,33 @@ describe('Eip712JsonPanel EIP-7730 integration', () => {
     );
     expect(mockLookupEip712).not.toHaveBeenCalled();
   });
+  it('does not repeat the verifying contract as an unknown token contract', () => {
+    mockLookupEip712.mockReturnValue({
+      intent: 'Permit',
+      fields: [
+        {
+          path: 'sigDeadline',
+          label: 'Amount',
+          format: 'tokenAmount',
+          params: { tokenPath: '@.to' },
+        },
+      ],
+    });
+    const message = { spender: '0xabc', sigDeadline: '5' };
+    render(
+      <Eip712JsonPanel
+        request={buildRequest(buildPayload(message))}
+        eip712={buildSummary(message)}
+        chainId={1}
+      />,
+    );
+    expect(screen.getByText('Unknown token')).toBeTruthy();
+    expect(
+      screen.getByText(`ADDR verifyingContract: ${VERIFYING}`),
+    ).toBeTruthy();
+    expect(screen.queryByText(/Token contract/)).toBeNull();
+  });
+
   describe('visibility rules', () => {
     const SPENDER = '0xabc0000000000000000000000000000000000001';
 

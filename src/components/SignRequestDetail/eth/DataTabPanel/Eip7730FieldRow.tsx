@@ -72,8 +72,12 @@ export default function Eip7730FieldRow({
   const {
     text,
     warnings = [],
-    unknownTokenAddress,
+    ...rest
   } = formatEip7730Field(field, raw, format, ctx);
+  const unknownTokenAddress =
+    rest.unknownTokenAddress !== ctx.shownContract?.toLowerCase()
+      ? rest.unknownTokenAddress
+      : undefined;
   return (
     <>
       <View style={styles.row}>

@@ -53,6 +53,7 @@ export default function DecodedCallSection({
           depth={depth}
           contractAddress={tokenContract}
           chainId={chainId}
+          shownContract={isTokenCall(call) ? tokenContract : undefined}
         />
       </>
     );

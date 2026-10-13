@@ -15,6 +15,7 @@ type Props = {
   contractAddress?: string;
   chainId?: number;
   depth?: number;
+  shownContract?: string;
 };
 
 export default function Eip7730CallSection({
@@ -24,8 +25,16 @@ export default function Eip7730CallSection({
   contractAddress,
   chainId,
   depth = 0,
+  shownContract,
 }: Props) {
-  const ctx = { chainId, contractAddress, resolvePath, resolveEach, depth };
+  const ctx = {
+    chainId,
+    contractAddress,
+    resolvePath,
+    resolveEach,
+    depth,
+    shownContract,
+  };
   const title = interpolateIntent(format, ctx) ?? format.intent;
 
   return (

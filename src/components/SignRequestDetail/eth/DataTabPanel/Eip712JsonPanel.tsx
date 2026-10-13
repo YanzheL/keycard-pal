@@ -97,6 +97,8 @@ export default function Eip712JsonPanel({
       resolveEach: path =>
         resolveEip712FieldValues(path, rawTypedData?.message, container),
       depth: 0,
+      // The Domain section above names it.
+      shownContract: verifyingContract,
     };
   }, [domainChainId, verifyingContract, rawTypedData, request.address]);
 

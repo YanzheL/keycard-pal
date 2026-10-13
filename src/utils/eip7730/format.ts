@@ -23,6 +23,8 @@ export type Eip7730FieldContext = {
   resolveEach?: (path: string) => string[];
   /** How many inner calls deep this field sits; the top-level call is 0. */
   depth?: number;
+  /** A contract the review already shows, so an unknown token row would repeat it. */
+  shownContract?: string;
 };
 
 export type Eip7730FieldDisplay = {

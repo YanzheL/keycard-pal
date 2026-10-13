@@ -445,6 +445,50 @@ describe('DecodedCallSection', () => {
       expect(screen.queryByText('ERC-20 Transfer')).toBeNull();
     });
 
+    describe('when the token is unknown', () => {
+      const UNKNOWN = '0x000000000000000000000000000000000000dEaD';
+      const amountAtTo = (call: DecodedCall) => (
+        <DecodedCallSection
+          call={call}
+          tokenContract={UNKNOWN}
+          chainId={MAINNET}
+          descriptor={{
+            format: {
+              intent: 'Approve',
+              fields: [
+                {
+                  path: 'amount',
+                  label: 'Amount',
+                  format: 'tokenAmount',
+                  params: { tokenPath: '@.to' },
+                },
+              ],
+            },
+            resolvePath: buildArgsPathResolver(
+              { amount: 7n },
+              { to: UNKNOWN, chainId: MAINNET },
+            ),
+            resolveEach: buildArgsEachResolver({}),
+          }}
+        />
+      );
+
+      it('names the contract once on a token call', () => {
+        render(
+          amountAtTo({ kind: 'erc20-approve', spender: ADDR_A, amount: 7n }),
+        );
+        expect(screen.getByText('Unknown token')).toBeTruthy();
+        expect(screen.getAllByText(`Token contract: ${UNKNOWN}`)).toHaveLength(
+          1,
+        );
+      });
+
+      it('keeps the row on any other call, which shows no token contract', () => {
+        render(amountAtTo({ kind: 'unknown-call', selector: '0x12345678' }));
+        expect(screen.getByText(`Token contract: ${UNKNOWN}`)).toBeTruthy();
+      });
+    });
+
     it('leaves the contract row to the header for other calls, unknown ones included', () => {
       render(
         <DecodedCallSection
