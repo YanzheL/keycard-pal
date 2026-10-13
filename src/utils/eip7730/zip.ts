@@ -11,6 +11,8 @@ export type Eip7730FieldFormat =
   | 'unit'
   | 'enum'
   | 'nftName'
+  | 'chainId'
+  | 'tokenTicker'
   | 'addressName'
   | 'calldata';
 

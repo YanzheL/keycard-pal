@@ -314,6 +314,36 @@ describe('Eip7730FieldList', () => {
     });
   });
 
+  describe('tokenTicker', () => {
+    const tokenField: Eip7730Field = {
+      path: 'token',
+      label: 'Token',
+      format: 'tokenTicker',
+    };
+
+    it('names the token inside its address row', () => {
+      renderList([tokenField], { token: USDC });
+      expect(
+        within(screen.getByTestId('address-Token')).getByText('USDC'),
+      ).toBeTruthy();
+      expect(screen.getByText(`Token: ${USDC}`)).toBeTruthy();
+    });
+
+    it('warns about a token nothing knows', () => {
+      const unknown = '0x000000000000000000000000000000000000dEaD';
+      renderList([tokenField], { token: unknown });
+      expect(screen.getByText(`Token: ${unknown}`)).toBeTruthy();
+      expect(screen.getByText(UNKNOWN_TOKEN_WARNING)).toBeTruthy();
+    });
+  });
+
+  it('names a chain from its ID', () => {
+    renderList([{ path: 'dst', label: 'Destination', format: 'chainId' }], {
+      dst: 1n,
+    });
+    expect(screen.getByText('Destination: Ethereum Mainnet')).toBeTruthy();
+  });
+
   describe('with inner calls', () => {
     const transfer = encodeFunctionData({
       abi: [

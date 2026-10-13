@@ -8,6 +8,7 @@ import InfoRow from '@/components/InfoRow';
 
 import {
   describeAddress,
+  describeTokenTicker,
   formatEip7730Field,
   SENDER_TEXT,
   type AddressNameDisplay,
@@ -73,8 +74,12 @@ export default function Eip7730FieldRow({
   }
   const raw = field.value ?? ctx.resolvePath(field.path);
   const shown =
-    field.format === 'addressName' && raw !== null
+    raw === null
+      ? null
+      : field.format === 'addressName'
       ? describeAddress(field, raw, format, ctx)
+      : field.format === 'tokenTicker'
+      ? describeTokenTicker(field, raw, format, ctx)
       : null;
   if (shown) return <AddressNameRows label={field.label} shown={shown} />;
   const {

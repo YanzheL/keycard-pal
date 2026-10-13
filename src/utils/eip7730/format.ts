@@ -2,7 +2,7 @@ import { formatUnits } from 'viem';
 
 import { UNLIMITED_APPROVAL_WARNING } from '@/constants/approval';
 
-import { getNativeCurrencySymbol } from '@/utils/chainMetadata';
+import { getChainName, getNativeCurrencySymbol } from '@/utils/chainMetadata';
 import { checksumEthAddress } from '@/utils/ethereumAddress';
 import { lookupToken, type TokenMetadata } from '@/utils/tokenMetadata';
 
@@ -113,10 +113,7 @@ export function describeAddress(
   const warnings: string[] = [];
   let token: TokenMetadata | null = null;
   if (types.includes('token')) {
-    const own = descriptorToken(format, lower, ctx);
-    token = own
-      ? { symbol: own.symbol, decimals: own.decimals }
-      : lookupToken(ctx.chainId, lower);
+    token = knownToken(format, ctx, params, lower);
     if (!token && types.length === 1) warnings.push(UNKNOWN_TOKEN_WARNING);
   }
   if (
@@ -128,6 +125,20 @@ export function describeAddress(
     warnings.push(NOT_SIGNER_WARNING);
   }
   return { address, sender: false, token, warnings, ens };
+}
+
+/** A tokenTicker field: its ticker beside the address, or the address with a warning. */
+export function describeTokenTicker(
+  field: Eip7730Field,
+  raw: string,
+  format: Eip7730DisplayFormat,
+  ctx: Eip7730FieldContext,
+): AddressNameDisplay | null {
+  const address = asAddress(raw);
+  if (!address) return null;
+  const token = knownToken(format, ctx, field.params, address.toLowerCase());
+  const warnings = token ? [] : [UNKNOWN_TOKEN_WARNING];
+  return { address, sender: false, token, warnings, ens: true };
 }
 
 function nativeToken(chainId: number | undefined): TokenInfo | null {
@@ -167,6 +178,40 @@ function descriptorToken(
   return { decimals: info.decimals, symbol: info.ticker };
 }
 
+function chainOf(value: unknown): number | undefined {
+  const n =
+    typeof value === 'string' || typeof value === 'number'
+      ? Number(value)
+      : NaN;
+  return Number.isSafeInteger(n) && n > 0 ? n : undefined;
+}
+
+/** The chain a token lives on: the field's `chainId`/`chainIdPath`, else the request's. */
+function tokenChain(
+  params: Params,
+  ctx: Eip7730FieldContext,
+): number | undefined {
+  if (typeof params?.chainIdPath === 'string') {
+    return chainOf(ctx.resolvePath(params.chainIdPath));
+  }
+  return params?.chainId !== undefined ? chainOf(params.chainId) : ctx.chainId;
+}
+
+function knownToken(
+  format: Eip7730DisplayFormat,
+  ctx: Eip7730FieldContext,
+  params: Params,
+  address: string,
+): TokenMetadata | null {
+  const chainId = tokenChain(params, ctx);
+  // An entry's own token metadata describes its own chain only.
+  const own =
+    chainId === ctx.chainId ? descriptorToken(format, address, ctx) : null;
+  return own
+    ? { symbol: own.symbol, decimals: own.decimals }
+    : lookupToken(chainId, address);
+}
+
 function resolveToken(
   format: Eip7730DisplayFormat,
   ctx: Eip7730FieldContext,
@@ -175,14 +220,10 @@ function resolveToken(
 ): TokenInfo | null {
   if (!address) return null;
   if (literalAddresses(params?.nativeCurrencyAddress).includes(address)) {
-    return nativeToken(ctx.chainId);
+    return nativeToken(tokenChain(params, ctx));
   }
-  const fromDescriptor = descriptorToken(format, address, ctx);
-  if (fromDescriptor) return fromDescriptor;
-  const bundled = lookupToken(ctx.chainId, address);
-  return bundled
-    ? { decimals: bundled.decimals, symbol: bundled.symbol }
-    : null;
+  const known = knownToken(format, ctx, params, address);
+  return known ? { decimals: known.decimals, symbol: known.symbol } : null;
 }
 
 function reachesThreshold(amount: bigint, threshold: unknown): boolean {
@@ -349,9 +390,19 @@ export function formatEip7730Field(
       case 'amount':
         return formatAmount(value, ctx, field.params);
       case 'date':
-        return { text: formatDate(value) };
+        // A block height read as a timestamp would show a 1970 date.
+        return {
+          text:
+            field.params?.encoding === 'blockheight'
+              ? value
+              : formatDate(value),
+        };
       case 'duration':
         return { text: formatDuration(value) };
+      case 'chainId': {
+        const chainId = chainOf(value);
+        return { text: chainId ? getChainName(chainId) : value };
+      }
       case 'unit':
         return { text: formatUnit(value, field.params) };
       case 'enum':
@@ -415,6 +466,10 @@ function fieldTexts(
   }
   const raw = field.value ?? ctx.resolvePath(field.path);
   if (raw === null) return null;
+  if (field.format === 'tokenTicker') {
+    const ticker = describeTokenTicker(field, raw, format, ctx);
+    if (ticker) return [ticker.token?.symbol ?? ticker.address ?? raw];
+  }
   const shown =
     field.format === 'addressName'
       ? describeAddress(field, raw, format, ctx)

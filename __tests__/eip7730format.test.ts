@@ -2,6 +2,7 @@ import { UNLIMITED_APPROVAL_WARNING } from '../src/constants/approval';
 import {
   asAddress,
   describeAddress,
+  describeTokenTicker,
   formatEip7730Field,
   interpolateIntent,
   NOT_SIGNER_WARNING,
@@ -123,6 +124,17 @@ describe('formatEip7730Field', () => {
         '0',
       );
     });
+  });
+
+  it('keeps a block height as the number, not a 1970 date', () => {
+    expect(
+      formatEip7730Field(
+        field('date', { encoding: 'blockheight' }),
+        '19332140',
+        FORMAT,
+        ctx(),
+      ).text,
+    ).toBe('19332140');
   });
 
   describe('unit', () => {
@@ -471,6 +483,111 @@ describe('formatEip7730Field', () => {
         formatEip7730Field(field('amount'), '2000', FORMAT, ctx({}, {})),
       ).toEqual({ text: '2000' });
     });
+  });
+});
+
+describe('chainId', () => {
+  const chain = (value: string) =>
+    formatEip7730Field(field('chainId'), value, FORMAT, ctx()).text;
+
+  it('names the chain, decimal or hex', () => {
+    expect(chain('1')).toBe('Ethereum Mainnet');
+    expect(chain('0x89')).toBe(chain('137'));
+    expect(chain('137')).not.toBe('137');
+  });
+
+  it('says which chain it does not know, and keeps a value that is no chain ID', () => {
+    expect(chain('123456789123')).toBe('Chain 123456789123');
+    expect(chain('0')).toBe('0');
+    expect(chain('soon')).toBe('soon');
+  });
+});
+
+describe('tokenTicker', () => {
+  const ticker = (
+    params: Record<string, unknown> | undefined,
+    raw: string,
+    paths: Record<string, string> = {},
+  ) =>
+    describeTokenTicker(field('tokenTicker', params), raw, FORMAT, ctx(paths));
+
+  it("names a token from the entry's metadata on the request's chain", () => {
+    expect(ticker(undefined, TOKEN)).toMatchObject({
+      token: { symbol: 'USDC', decimals: 6 },
+      warnings: [],
+    });
+  });
+
+  it('looks a token up on the chain the field names', () => {
+    lookupToken.mockReturnValue({ symbol: 'WETH', decimals: 18 });
+    expect(ticker({ chainId: 10 }, TOKEN)?.token?.symbol).toBe('WETH');
+    expect(lookupToken).toHaveBeenCalledWith(10, TOKEN);
+    ticker({ chainIdPath: 'dst' }, OTHER, { dst: '8453' });
+    expect(lookupToken).toHaveBeenCalledWith(8453, OTHER);
+  });
+
+  it('warns about a token nothing knows, and gives null for no address', () => {
+    expect(ticker(undefined, OTHER)?.warnings).toEqual([UNKNOWN_TOKEN_WARNING]);
+    expect(ticker({ chainId: 10 }, TOKEN)?.warnings).toEqual([
+      UNKNOWN_TOKEN_WARNING,
+    ]);
+    expect(ticker(undefined, '0x12')).toBeNull();
+  });
+
+  it('fills a sentence with the ticker, or the address when unknown', () => {
+    const fmt = (fieldPath: string) => ({
+      intent: 'Bridge',
+      interpolatedIntent: `Bridge {${fieldPath}}`,
+      fields: [
+        { path: fieldPath, label: 'Token', format: 'tokenTicker' as const },
+      ],
+      metadata: FORMAT.metadata,
+    });
+    expect(interpolateIntent(fmt('t'), ctx({ t: TOKEN }))).toBe('Bridge USDC');
+    expect(interpolateIntent(fmt('t'), ctx({ t: OTHER }))).toBe(
+      `Bridge ${asAddress(OTHER)}`,
+    );
+  });
+});
+
+describe('tokenAmount on another chain', () => {
+  it('reads the token on the chain the field names', () => {
+    lookupToken.mockReturnValue({ symbol: 'USDC', decimals: 6 });
+    expect(
+      formatEip7730Field(
+        field('tokenAmount', { tokenPath: 'token', chainId: 42161 }),
+        '1500000',
+        FORMAT,
+        ctx({ token: OTHER }),
+      ).text,
+    ).toBe('1.5 USDC');
+    expect(lookupToken).toHaveBeenCalledWith(42161, OTHER);
+  });
+
+  it("ignores the entry's own token metadata off its chain", () => {
+    expect(
+      formatEip7730Field(
+        field('tokenAmount', { tokenPath: 'token', chainId: 42161 }),
+        '1500000',
+        FORMAT,
+        ctx({ token: TOKEN }),
+      ),
+    ).toMatchObject({ text: '1500000', warnings: [UNKNOWN_TOKEN_WARNING] });
+  });
+
+  it("names the native currency of the field's chain", () => {
+    expect(
+      formatEip7730Field(
+        field('tokenAmount', {
+          tokenPath: 'token',
+          chainId: 137,
+          nativeCurrencyAddress: NATIVE,
+        }),
+        '2000000000000000000',
+        FORMAT,
+        ctx({ token: NATIVE }),
+      ).text,
+    ).toMatch(/^2 (POL|MATIC)$/);
   });
 });
 
