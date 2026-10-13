@@ -1,8 +1,11 @@
 import { UNLIMITED_APPROVAL_WARNING } from '../src/constants/approval';
 import {
   asAddress,
+  describeAddress,
   formatEip7730Field,
   interpolateIntent,
+  NOT_SIGNER_WARNING,
+  SENDER_TEXT,
   UNKNOWN_TOKEN_WARNING,
 } from '../src/utils/eip7730/format';
 import { buildArgsEachResolver } from '../src/utils/eip7730/paths';
@@ -423,6 +426,98 @@ describe('asAddress', () => {
     expect(asAddress('0x1234')).toBeNull();
     expect(asAddress((2n ** 256n).toString())).toBeNull();
     expect(asAddress('vitalik.eth')).toBeNull();
+  });
+});
+
+describe('describeAddress', () => {
+  const SIGNER = '0xD3CDa913deb6F4967B2eF3Aa68F5a843da74c4Ef';
+  const ZERO = '0x0000000000000000000000000000000000000000';
+  const name = (
+    params: Record<string, unknown>,
+    raw: string,
+    paths: Record<string, string> = { '@.from': SIGNER },
+  ) => describeAddress(field('addressName', params), raw, FORMAT, ctx(paths));
+
+  it('gives null for a value that is no address', () => {
+    expect(name({}, '0x1234')).toBeNull();
+  });
+
+  it('names a known token, from the entry first, then the bundled list', () => {
+    expect(name({ types: ['token'] }, TOKEN)).toMatchObject({
+      token: { symbol: 'USDC', decimals: 6 },
+      warnings: [],
+    });
+    lookupToken.mockReturnValue({ symbol: 'DAI', decimals: 18, logoURI: 'x' });
+    expect(name({ types: ['token'] }, OTHER)?.token).toEqual({
+      symbol: 'DAI',
+      decimals: 18,
+      logoURI: 'x',
+    });
+    expect(lookupToken).toHaveBeenCalledWith(1, OTHER);
+  });
+
+  it('warns about an unknown token only when token is the one type', () => {
+    expect(name({ types: ['token'] }, OTHER)?.warnings).toEqual([
+      UNKNOWN_TOKEN_WARNING,
+    ]);
+    expect(name({ types: ['token', 'contract'] }, OTHER)?.warnings).toEqual([]);
+    expect(name({ types: ['contract'] }, TOKEN)?.token).toBeNull();
+  });
+
+  it('warns when a wallet-only address is not the signer, and only then', () => {
+    expect(name({ types: ['wallet'] }, OTHER)?.warnings).toEqual([
+      NOT_SIGNER_WARNING,
+    ]);
+    expect(name({ types: ['wallet'] }, SIGNER.toLowerCase())?.warnings).toEqual(
+      [],
+    );
+    expect(name({ types: ['wallet'] }, OTHER, {})?.warnings).toEqual([]);
+    expect(name({ types: ['wallet', 'eoa'] }, OTHER)?.warnings).toEqual([]);
+  });
+
+  it('allows ENS unless the sources leave it out', () => {
+    expect(name({}, OTHER)?.ens).toBe(true);
+    expect(name({ sources: ['local', 'ens'] }, OTHER)?.ens).toBe(true);
+    expect(name({ sources: ['local'] }, OTHER)?.ens).toBe(false);
+    expect(name({ sources: [] }, OTHER)?.ens).toBe(false);
+  });
+
+  it('shows the signer for a sender address, and no address without one', () => {
+    for (const senderAddress of [ZERO, [ZERO]]) {
+      expect(name({ senderAddress, types: ['token'] }, ZERO)).toEqual({
+        address: SIGNER,
+        sender: true,
+        token: null,
+        warnings: [],
+        ens: true,
+      });
+    }
+    expect(name({ senderAddress: ZERO }, ZERO, {})).toMatchObject({
+      address: null,
+      sender: true,
+    });
+    expect(name({ senderAddress: ZERO }, OTHER)?.sender).toBe(false);
+  });
+
+  it('fills a sentence with the signer, or the word for it', () => {
+    const fmt = {
+      intent: 'Swap',
+      interpolatedIntent: 'Swap for {to}',
+      fields: [
+        {
+          path: 'to',
+          label: 'Beneficiary',
+          format: 'addressName' as const,
+          params: { senderAddress: ZERO },
+        },
+      ],
+    };
+    expect(interpolateIntent(fmt, ctx({ to: ZERO, '@.from': SIGNER }))).toBe(
+      `Swap for ${SIGNER}`,
+    );
+    expect(interpolateIntent(fmt, ctx({ to: ZERO }))).toBe(
+      `Swap for ${SENDER_TEXT}`,
+    );
   });
 });
 

@@ -6,6 +6,7 @@ export default function AddressInfoRow({
 }: {
   label: string;
   value: string;
+  ens?: boolean;
 }) {
   return <InfoRow label={label} value={value} />;
 }

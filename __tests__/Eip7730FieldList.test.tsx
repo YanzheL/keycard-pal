@@ -4,7 +4,13 @@ import { encodeFunctionData, parseAbiItem, type AbiFunction } from 'viem';
 
 import Eip7730FieldList from '../src/components/SignRequestDetail/eth/DataTabPanel/Eip7730FieldList';
 import { UNLIMITED_APPROVAL_WARNING } from '../src/constants/approval';
-import type { Eip7730FieldContext } from '../src/utils/eip7730/format';
+import { SIGNER_CAPTION } from '../src/components/SignRequestDetail/eth/DataTabPanel/Eip7730FieldRow';
+import {
+  NOT_SIGNER_WARNING,
+  SENDER_TEXT,
+  UNKNOWN_TOKEN_WARNING,
+  type Eip7730FieldContext,
+} from '../src/utils/eip7730/format';
 import {
   buildArgsEachResolver,
   buildArgsPathResolver,
@@ -43,9 +49,15 @@ jest.mock('../src/components/InfoRow', () => {
 
 jest.mock('../src/components/ens/AddressInfoRow.online', () => {
   const { Text } = require('react-native');
-  return ({ label, value }: { label: string; value: string }) => (
-    <Text>{`${label}: ${value}`}</Text>
-  );
+  return ({
+    label,
+    value,
+    ens = true,
+  }: {
+    label: string;
+    value: string;
+    ens?: boolean;
+  }) => <Text>{`${label}: ${value}${ens ? '' : ' (no ENS)'}`}</Text>;
 });
 
 jest.mock('../src/utils/buildConfig', () => ({ INTERNET_ENABLED: false }));
@@ -61,8 +73,11 @@ const USDT = '0xdAC17F958D2ee523a2206206994597C13D831ec7';
 const RECIPIENT = '0xD3CDa913deb6F4967B2eF3Aa68F5a843da74c4Ef';
 const MAX_160 = '0xffffffffffffffffffffffffffffffffffffffff';
 
-function ctxFor(args: Record<string, unknown>): Eip7730FieldContext {
-  const container = { to: RECIPIENT, chainId: 1 };
+function ctxFor(
+  args: Record<string, unknown>,
+  from?: string,
+): Eip7730FieldContext {
+  const container = { to: RECIPIENT, chainId: 1, from };
   return {
     chainId: 1,
     resolvePath: buildArgsPathResolver(args, container),
@@ -71,10 +86,18 @@ function ctxFor(args: Record<string, unknown>): Eip7730FieldContext {
   };
 }
 
-function renderList(fields: Eip7730Field[], args: Record<string, unknown>) {
+function renderList(
+  fields: Eip7730Field[],
+  args: Record<string, unknown>,
+  from?: string,
+) {
   const format: Eip7730DisplayFormat = { fields };
   render(
-    <Eip7730FieldList fields={fields} format={format} ctx={ctxFor(args)} />,
+    <Eip7730FieldList
+      fields={fields}
+      format={format}
+      ctx={ctxFor(args, from)}
+    />,
   );
 }
 
@@ -188,6 +211,98 @@ describe('Eip7730FieldList', () => {
     expect(screen.getByText(`Withdrawal address: ${RECIPIENT}`)).toBeTruthy();
     expect(screen.getByText('Type: 0x01')).toBeTruthy();
     expect(screen.queryByText(/Item/)).toBeNull();
+  });
+
+  describe('addressName', () => {
+    const ZERO = '0x0000000000000000000000000000000000000000';
+    const UNKNOWN = '0x000000000000000000000000000000000000dEaD';
+
+    it('names a known token above its address', () => {
+      renderList(
+        [
+          {
+            path: 'asset',
+            label: 'Maker asset',
+            format: 'addressName',
+            params: { types: ['token'] },
+          },
+        ],
+        { asset: USDC },
+      );
+      expect(screen.getByText('USDC')).toBeTruthy();
+      expect(screen.getByText(`Maker asset: ${USDC}`)).toBeTruthy();
+      expect(screen.queryByText(UNKNOWN_TOKEN_WARNING)).toBeNull();
+    });
+
+    it('warns about an address that is no known token', () => {
+      renderList(
+        [
+          {
+            path: 'asset',
+            label: 'Maker asset',
+            format: 'addressName',
+            params: { types: ['token'] },
+          },
+        ],
+        { asset: UNKNOWN },
+      );
+      expect(screen.getByText(`Maker asset: ${UNKNOWN}`)).toBeTruthy();
+      expect(screen.getByText(UNKNOWN_TOKEN_WARNING)).toBeTruthy();
+    });
+
+    it('warns when a wallet-only address is not the signer', () => {
+      const from: Eip7730Field = {
+        path: 'from',
+        label: 'From',
+        format: 'addressName',
+        params: { types: ['wallet'] },
+      };
+      renderList([from], { from: UNKNOWN }, RECIPIENT);
+      expect(screen.getByText(NOT_SIGNER_WARNING)).toBeTruthy();
+    });
+
+    it('keeps ENS off where the sources leave it out', () => {
+      renderList(
+        [
+          {
+            path: 'spender',
+            label: 'Spender',
+            format: 'addressName',
+            params: { sources: ['local'] },
+          },
+        ],
+        { spender: USDT },
+      );
+      expect(screen.getByText(`Spender: ${USDT} (no ENS)`)).toBeTruthy();
+    });
+
+    it('shows the signer for a sender address', () => {
+      const beneficiary: Eip7730Field = {
+        path: 'beneficiary',
+        label: 'Beneficiary',
+        format: 'addressName',
+        params: { senderAddress: ZERO },
+      };
+      renderList([beneficiary], { beneficiary: ZERO }, RECIPIENT);
+      expect(screen.getByText(`Beneficiary: ${RECIPIENT}`)).toBeTruthy();
+      expect(screen.getByText(SIGNER_CAPTION)).toBeTruthy();
+    });
+
+    it('says Sender when the request does not name its signer', () => {
+      renderList(
+        [
+          {
+            path: 'beneficiary',
+            label: 'Beneficiary',
+            format: 'addressName',
+            params: { senderAddress: [ZERO] },
+          },
+        ],
+        { beneficiary: ZERO },
+      );
+      expect(screen.getByText(`Beneficiary: ${SENDER_TEXT}`)).toBeTruthy();
+      expect(screen.queryByText(SIGNER_CAPTION)).toBeNull();
+    });
   });
 
   describe('with inner calls', () => {

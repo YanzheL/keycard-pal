@@ -1,5 +1,5 @@
 import { StyleSheet, View } from 'react-native';
-import { Icon, Text } from 'react-native-paper';
+import { Text } from 'react-native-paper';
 
 import theme from '@/theme';
 
@@ -7,14 +7,49 @@ import AddressInfoRow from '@/components/ens/AddressInfoRow.online';
 import InfoRow from '@/components/InfoRow';
 
 import {
-  asAddress,
+  describeAddress,
   formatEip7730Field,
+  SENDER_TEXT,
+  type AddressNameDisplay,
   type Eip7730FieldContext,
 } from '@/utils/eip7730/format';
 import type { Eip7730DisplayFormat, Eip7730Field } from '@/utils/eip7730/zip';
 import { checksumEthAddress } from '@/utils/ethereumAddress';
 
+import TokenSymbolRow from './DecodedCallSection/TokenSymbolRow';
 import Eip7730InnerCalls from './Eip7730InnerCalls';
+import { WarningRow } from './shared';
+
+export const SIGNER_CAPTION = 'The address signing this';
+
+function AddressNameRows({
+  label,
+  shown,
+}: {
+  label: string;
+  shown: AddressNameDisplay;
+}) {
+  return (
+    <>
+      {shown.token && <TokenSymbolRow token={shown.token} />}
+      <View style={styles.row}>
+        {shown.address ? (
+          <AddressInfoRow label={label} value={shown.address} ens={shown.ens} />
+        ) : (
+          <InfoRow label={label} value={SENDER_TEXT} />
+        )}
+        {shown.sender && shown.address && (
+          <Text variant="labelSmall" style={styles.caption}>
+            {SIGNER_CAPTION}
+          </Text>
+        )}
+      </View>
+      {shown.warnings.map(warning => (
+        <WarningRow key={warning} text={warning} />
+      ))}
+    </>
+  );
+}
 
 export default function Eip7730FieldRow({
   field,
@@ -29,15 +64,11 @@ export default function Eip7730FieldRow({
     return <Eip7730InnerCalls field={field} ctx={ctx} />;
   }
   const raw = field.value ?? ctx.resolvePath(field.path);
-  const address =
-    field.format === 'addressName' && raw !== null ? asAddress(raw) : null;
-  if (address) {
-    return (
-      <View style={styles.row}>
-        <AddressInfoRow label={field.label} value={address} />
-      </View>
-    );
-  }
+  const shown =
+    field.format === 'addressName' && raw !== null
+      ? describeAddress(field, raw, format, ctx)
+      : null;
+  if (shown) return <AddressNameRows label={field.label} shown={shown} />;
   const {
     text,
     warnings = [],
@@ -49,12 +80,7 @@ export default function Eip7730FieldRow({
         <InfoRow label={field.label} value={text} />
       </View>
       {warnings.map(warning => (
-        <View key={warning} style={styles.warningRow}>
-          <Icon source="alert" size={16} color={theme.colors.negative} />
-          <Text variant="labelSmall" style={styles.warningText}>
-            {warning}
-          </Text>
-        </View>
+        <WarningRow key={warning} text={warning} />
       ))}
       {unknownTokenAddress && (
         <View style={styles.row}>
@@ -72,15 +98,8 @@ const styles = StyleSheet.create({
   row: {
     paddingVertical: 8,
   },
-  warningRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingVertical: 6,
-    paddingHorizontal: 4,
-  },
-  warningText: {
-    color: theme.colors.negative,
-    flexShrink: 1,
+  caption: {
+    color: theme.colors.onSurfaceVariant,
+    paddingTop: 4,
   },
 });

@@ -4,7 +4,7 @@ import { UNLIMITED_APPROVAL_WARNING } from '@/constants/approval';
 
 import { getNativeCurrencySymbol } from '@/utils/chainMetadata';
 import { checksumEthAddress } from '@/utils/ethereumAddress';
-import { lookupToken } from '@/utils/tokenMetadata';
+import { lookupToken, type TokenMetadata } from '@/utils/tokenMetadata';
 
 import { arrayIndices, bindField, firstArraySelector } from './arrays';
 import {
@@ -32,6 +32,9 @@ export type Eip7730FieldDisplay = {
 };
 
 export const UNKNOWN_TOKEN_WARNING = 'Unknown token';
+export const NOT_SIGNER_WARNING =
+  'This is not the address signing this request.';
+export const SENDER_TEXT = 'Sender';
 
 const ADDRESS_RE = /^0x[0-9a-fA-F]{40}$/;
 const WORD_RE = /^0x[0-9a-fA-F]{64}$/;
@@ -68,6 +71,61 @@ export function asAddress(value: string): string | null {
   return n < 2n ** 256n
     ? checksumEthAddress(`0x${n.toString(16).padStart(64, '0').slice(-40)}`)
     : null;
+}
+
+export type AddressNameDisplay = {
+  /** Null only for a sender the request does not name. */
+  address: string | null;
+  sender: boolean;
+  token: TokenMetadata | null;
+  warnings: string[];
+  ens: boolean;
+};
+
+function strings(value: unknown): string[] {
+  return Array.isArray(value)
+    ? value.filter((v): v is string => typeof v === 'string')
+    : [];
+}
+
+/** What an addressName field can say offline; null when the value is no address. */
+export function describeAddress(
+  field: Eip7730Field,
+  raw: string,
+  format: Eip7730DisplayFormat,
+  ctx: Eip7730FieldContext,
+): AddressNameDisplay | null {
+  const address = asAddress(raw);
+  if (!address) return null;
+  const params = field.params;
+  const types = strings(params?.types);
+  // The spec allows only the listed sources to name an address.
+  const ens =
+    !Array.isArray(params?.sources) || strings(params.sources).includes('ens');
+  const from = ctx.resolvePath('@.from');
+  const signer = from ? asAddress(from) : null;
+  const lower = address.toLowerCase();
+  if (literalAddresses(params?.senderAddress).includes(lower)) {
+    return { address: signer, sender: true, token: null, warnings: [], ens };
+  }
+  const warnings: string[] = [];
+  let token: TokenMetadata | null = null;
+  if (types.includes('token')) {
+    const own = descriptorToken(format, lower, ctx);
+    token = own
+      ? { symbol: own.symbol, decimals: own.decimals }
+      : lookupToken(ctx.chainId, lower);
+    if (!token && types.length === 1) warnings.push(UNKNOWN_TOKEN_WARNING);
+  }
+  if (
+    types.length === 1 &&
+    types[0] === 'wallet' &&
+    signer !== null &&
+    signer !== address
+  ) {
+    warnings.push(NOT_SIGNER_WARNING);
+  }
+  return { address, sender: false, token, warnings, ens };
 }
 
 function nativeToken(chainId: number | undefined): TokenInfo | null {
@@ -299,6 +357,10 @@ function fieldTexts(
   }
   const raw = field.value ?? ctx.resolvePath(field.path);
   if (raw === null) return null;
-  const { text } = formatEip7730Field(field, raw, format, ctx);
-  return [field.format === 'addressName' ? asAddress(raw) ?? text : text];
+  const shown =
+    field.format === 'addressName'
+      ? describeAddress(field, raw, format, ctx)
+      : null;
+  if (shown) return [shown.address ?? SENDER_TEXT];
+  return [formatEip7730Field(field, raw, format, ctx).text];
 }
