@@ -192,4 +192,31 @@ describe('Eip7730CallSection', () => {
     render(<Eip7730CallSection format={format} resolvePath={transfer(1n)} />);
     expect(screen.getByText('—')).toBeTruthy();
   });
+  it('leaves out the fields its visibility rules hide', () => {
+    const format: Eip7730DisplayFormat = {
+      fields: [
+        {
+          path: 'amount',
+          label: 'Amount',
+          format: 'raw',
+          visible: { ifNotIn: ['0'] },
+        },
+        {
+          path: 'to',
+          label: 'To',
+          format: 'raw',
+          visible: { mustMatch: [RECIPIENT] },
+        },
+      ],
+    };
+    const { rerender } = render(
+      <Eip7730CallSection format={format} resolvePath={transfer(0n)} />,
+    );
+    expect(screen.queryByText('Amount')).toBeNull();
+    expect(screen.queryByText('To')).toBeNull();
+
+    rerender(<Eip7730CallSection format={format} resolvePath={transfer(5n)} />);
+    expect(screen.getByText('Amount')).toBeTruthy();
+    expect(screen.queryByText('To')).toBeNull();
+  });
 });

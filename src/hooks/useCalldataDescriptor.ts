@@ -9,6 +9,7 @@ import {
   decodeArgsBySignature,
   type Eip7730Container,
 } from '@/utils/eip7730/paths';
+import { passesMustMatch } from '@/utils/eip7730/visibility';
 import type { Eip7730DisplayFormat } from '@/utils/eip7730/zip';
 
 /** A registry entry that matched a call, with its arguments decoded by its own signature. */
@@ -17,6 +18,10 @@ export type MatchedDescriptor = {
   resolvePath: (path: string) => string | null;
   resolveEach: (path: string) => string[];
 };
+
+type Match = { descriptor: MatchedDescriptor | null; rejected: boolean };
+
+const NO_MATCH: Match = { descriptor: null, rejected: false };
 
 /** `container` must be stable (useMemo); a top-level call and every inner call match the same way. */
 export function useCalldataDescriptor({
@@ -31,7 +36,7 @@ export function useCalldataDescriptor({
   data: string;
   container: Eip7730Container;
   enabled?: boolean;
-}): { descriptor: MatchedDescriptor | null; loading: boolean } {
+}): Match & { loading: boolean } {
   const selector = data.length >= 10 ? data.slice(0, 10) : null;
   const lookup = useCallback(
     () =>
@@ -42,17 +47,20 @@ export function useCalldataDescriptor({
   );
   const { format, loading } = useEip7730Format(lookup);
 
-  const descriptor = useMemo<MatchedDescriptor | null>(() => {
-    if (!format?.signature) return null;
+  const match = useMemo<Match>(() => {
+    if (!format?.signature) return NO_MATCH;
     // An entry whose signature does not fit the bytes is not describing this call.
     const args = decodeArgsBySignature(format.signature, data);
-    if (!args) return null;
-    return {
+    if (!args) return NO_MATCH;
+    const descriptor = {
       format,
       resolvePath: buildArgsPathResolver(args, container),
       resolveEach: buildArgsEachResolver(args, container),
     };
+    return passesMustMatch(format, descriptor)
+      ? { descriptor, rejected: false }
+      : { descriptor: null, rejected: true };
   }, [format, data, container]);
 
-  return { descriptor, loading };
+  return { ...match, loading };
 }

@@ -11,6 +11,8 @@ import { useTenderlyConfig } from '../src/hooks/useTenderlyConfig.online';
 
 import SimulationAddressProvider from '../src/components/SignRequestDetail/SimulationAddressProvider';
 import TxDataPanel from '../src/components/SignRequestDetail/eth/DataTabPanel/TxDataPanel';
+import { DESCRIPTOR_CHECK_FAILED_WARNING } from '../src/constants/eip7730';
+import * as eip7730Lookup from '../src/utils/eip7730/lookup';
 import { setSavedIndex } from '../src/utils/eip7730/lookup';
 import type { ParsedTx } from '../src/utils/txParser';
 import type { EthSignRequest } from '../src/types';
@@ -71,6 +73,7 @@ jest.mock('react-native-paper', () => {
   const { Text, TouchableOpacity, View } = require('react-native');
   return {
     Text: ({ children, ...props }: any) => <Text {...props}>{children}</Text>,
+    Icon: () => <View />,
     ActivityIndicator: () => <Text>loading</Text>,
     SegmentedButtons: ({
       buttons,
@@ -304,6 +307,48 @@ describe('TxDataPanel', () => {
       );
       expect(screen.getByText('DecodedCallSection')).toBeTruthy();
       expect(screen.queryByText(/descriptor:/)).toBeNull();
+    });
+
+    describe('with a mustMatch check', () => {
+      const transferEntry = (allowed: string[]) => ({
+        intent: 'Send',
+        signature: 'transfer(address recipient, uint256 amount)',
+        fields: [
+          {
+            path: 'recipient',
+            label: 'To',
+            format: 'raw' as const,
+            visible: { mustMatch: allowed },
+          },
+        ],
+      });
+
+      afterEach(() => jest.restoreAllMocks());
+
+      it('uses the entry when the value is listed', () => {
+        jest
+          .spyOn(eip7730Lookup, 'lookupCalldata')
+          .mockReturnValue(transferEntry([`0x${'aa'.repeat(20)}`]));
+        render(
+          <TxDataPanel tx={txWithDecoded} request={request} chainId={1} />,
+        );
+        expect(screen.getByText(/^descriptor: Send/)).toBeTruthy();
+        expect(screen.queryByText(DESCRIPTOR_CHECK_FAILED_WARNING)).toBeNull();
+      });
+
+      it("drops the entry when it is not, above every tab, for the app's own view", () => {
+        jest
+          .spyOn(eip7730Lookup, 'lookupCalldata')
+          .mockReturnValue(transferEntry([`0x${'bb'.repeat(20)}`]));
+        render(
+          <TxDataPanel tx={txWithDecoded} request={request} chainId={1} />,
+        );
+        expect(screen.getByText(DESCRIPTOR_CHECK_FAILED_WARNING)).toBeTruthy();
+        expect(screen.getByText('DecodedCallSection')).toBeTruthy();
+        expect(screen.queryByText(/descriptor:/)).toBeNull();
+        fireEvent.press(screen.getByText('Raw'));
+        expect(screen.getByText(DESCRIPTOR_CHECK_FAILED_WARNING)).toBeTruthy();
+      });
     });
 
     it('shows nothing while a saved slice is read, then decides its tabs', async () => {

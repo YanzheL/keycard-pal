@@ -2,6 +2,7 @@ import React from 'react';
 import { act, render, screen } from '@testing-library/react-native';
 
 import Eip712JsonPanel from '../src/components/SignRequestDetail/eth/DataTabPanel/Eip712JsonPanel';
+import { DESCRIPTOR_CHECK_FAILED_WARNING } from '../src/constants/eip7730';
 
 import type { Eip712Summary } from '../src/utils/eip712';
 import type { EthSignRequest } from '../src/types';
@@ -369,5 +370,76 @@ describe('Eip712JsonPanel EIP-7730 integration', () => {
       />,
     );
     expect(mockLookupEip712).not.toHaveBeenCalled();
+  });
+  describe('visibility rules', () => {
+    const SPENDER = '0xabc0000000000000000000000000000000000001';
+
+    function renderWith(fields: object[], sigDeadline: string) {
+      mockLookupEip712.mockReturnValue({ intent: 'Approve spender', fields });
+      const message = { spender: SPENDER, sigDeadline };
+      render(
+        <Eip712JsonPanel
+          request={buildRequest(buildPayload(message))}
+          eip712={buildSummary(message)}
+          chainId={1}
+        />,
+      );
+    }
+
+    const expires = {
+      path: 'sigDeadline',
+      label: 'Expires',
+      format: 'date',
+      visible: { ifNotIn: ['0'] },
+    };
+
+    it('hides a field whose value its ifNotIn list names', () => {
+      renderWith([expires], '0');
+      expect(screen.getByText('Approve spender')).toBeTruthy();
+      expect(screen.queryByText(/Expires/)).toBeNull();
+      expect(screen.queryByText('Message')).toBeNull();
+    });
+
+    it('shows it for any other value', () => {
+      renderWith([expires], '1700000000');
+      expect(screen.getByText(/Expires/)).toBeTruthy();
+    });
+
+    it('uses an entry whose mustMatch value is listed, the field hidden', () => {
+      renderWith(
+        [
+          {
+            path: 'spender',
+            label: 'Spender',
+            visible: { mustMatch: [SPENDER] },
+          },
+          { path: 'sigDeadline', label: 'Deadline', format: 'raw' },
+        ],
+        '5',
+      );
+      expect(screen.getByText('Approve spender')).toBeTruthy();
+      expect(screen.getByText('Deadline: 5')).toBeTruthy();
+      expect(screen.queryByText(/Spender/)).toBeNull();
+      expect(screen.queryByText(DESCRIPTOR_CHECK_FAILED_WARNING)).toBeNull();
+    });
+
+    it('drops an entry whose mustMatch value is not listed, and says so', () => {
+      renderWith(
+        [
+          {
+            path: 'spender',
+            label: 'Spender',
+            visible: { mustMatch: ['0x1'] },
+          },
+          { path: 'sigDeadline', label: 'Deadline', format: 'raw' },
+        ],
+        '5',
+      );
+      expect(screen.getByText(DESCRIPTOR_CHECK_FAILED_WARNING)).toBeTruthy();
+      expect(screen.queryByText('Approve spender')).toBeNull();
+      expect(screen.queryByText('Deadline: 5')).toBeNull();
+      expect(screen.getByText('Message Fields')).toBeTruthy();
+      expect(screen.getByText(`ADDR spender: ${SPENDER}`)).toBeTruthy();
+    });
   });
 });

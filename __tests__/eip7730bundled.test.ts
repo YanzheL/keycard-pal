@@ -20,6 +20,7 @@ import {
   resolveEip712FieldValue,
   type Eip7730Container,
 } from '../src/utils/eip7730/paths';
+import { shownFields } from '../src/utils/eip7730/visibility';
 import type {
   Eip7730DisplayFormat,
   Eip7730Index,
@@ -223,6 +224,24 @@ function sample(param: AbiParameter): unknown {
   }
   return 1n;
 }
+
+describe('visibility rules', () => {
+  const DAI = '0x6b175474e89094c44da98b954eedeac495271d0f';
+  const encodedType =
+    'Permit(address holder,address spender,uint256 nonce,uint256 expiry,bool allowed)';
+  const domain = { name: 'Dai Stablecoin', version: '1', chainId: 1 };
+
+  it('hides a DAI permit expiry of zero and shows any other', () => {
+    const descriptor = lookupEip712(1, DAI, encodedType, domain)!;
+    const labels = (expiry: string) =>
+      shownFields(descriptor, {
+        resolvePath: path =>
+          resolveEip712FieldValue(path, { spender: RECIPIENT, expiry }, {}),
+      }).map(field => field.label);
+    expect(labels('0')).not.toContain('Valid until');
+    expect(labels('1800000000')).toContain('Valid until');
+  });
+});
 
 describe('sentences', () => {
   it('fills a real entry sentence the way its fields are shown', () => {

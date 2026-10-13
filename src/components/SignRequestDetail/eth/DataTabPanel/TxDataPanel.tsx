@@ -2,6 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { SegmentedButtons } from 'react-native-paper';
 
+import { DESCRIPTOR_CHECK_FAILED_WARNING } from '@/constants/eip7730';
 import { CALLDATA_DIGEST_EXPLAINER } from '@/constants/erc8213';
 import type { EthSignRequest } from '@/types';
 
@@ -12,7 +13,7 @@ import { useCalldataDescriptor } from '@/hooks/useCalldataDescriptor';
 import { computeCalldataDigest } from '@/utils/erc8213';
 import type { ParsedTx } from '@/utils/txParser';
 
-import { DigestExplainer, DigestRow } from './shared';
+import { DigestExplainer, DigestRow, WarningRow } from './shared';
 import DecodedCallSection from './DecodedCallSection';
 import SimulationPanel from './SimulationPanel';
 import { useSimulation } from './useSimulation';
@@ -33,7 +34,7 @@ export default function TxDataPanel({
     () => ({ from: request.address, to: tx.to, value: tx.valueWei, chainId }),
     [request.address, tx.to, tx.valueWei, chainId],
   );
-  const { descriptor, loading } = useCalldataDescriptor({
+  const { descriptor, rejected, loading } = useCalldataDescriptor({
     chainId,
     contract: tx.to,
     data: calldata,
@@ -78,6 +79,7 @@ export default function TxDataPanel({
 
   return (
     <View style={styles.panel}>
+      {rejected && <WarningRow text={DESCRIPTOR_CHECK_FAILED_WARNING} />}
       <SegmentedButtons
         value={tab}
         onValueChange={v => setTab(v as Tab)}

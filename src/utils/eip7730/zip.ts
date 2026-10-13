@@ -11,12 +11,16 @@ export type Eip7730FieldFormat =
   | 'addressName'
   | 'calldata';
 
+/** The spec's `visible` object; list entries are kept as text. */
+export type Eip7730Visibility = { ifNotIn?: string[]; mustMatch?: string[] };
+
 export type Eip7730Field = {
   path: string;
   label: string;
   format: Eip7730FieldFormat;
   params?: Record<string, unknown>;
   value?: string;
+  visible?: Eip7730Visibility;
 };
 
 export type Eip7730TokenMetadata = {
@@ -61,7 +65,7 @@ export type Eip7730IndexSlice = Pick<
   'formats' | 'contracts' | 'eip712'
 >;
 
-export const EIP7730_INDEX_VERSION = 5;
+export const EIP7730_INDEX_VERSION = 6;
 
 const SCHEMA_MAJOR = 2;
 const SELECTOR_RE = /^0x[0-9a-f]{8}$/i;
@@ -128,6 +132,35 @@ function withConstants(params: unknown, constants: Json): Json | undefined {
   return out;
 }
 
+function isScalar(value: unknown): value is string | number | boolean {
+  return (
+    typeof value === 'string' ||
+    typeof value === 'number' ||
+    typeof value === 'boolean'
+  );
+}
+
+function valueList(value: unknown, constants: Json): string[] {
+  const list = substituteConstant(value, constants);
+  return Array.isArray(list)
+    ? [...new Set(list.filter(isScalar).map(String))]
+    : [];
+}
+
+function visibilityRule(
+  raw: unknown,
+  constants: Json,
+): Eip7730Visibility | undefined {
+  if (!isPlainObject(raw)) return undefined;
+  const rule: Eip7730Visibility = {};
+  const ifNotIn = own(raw, 'ifNotIn');
+  if (ifNotIn !== undefined) rule.ifNotIn = valueList(ifNotIn, constants);
+  const mustMatch = own(raw, 'mustMatch');
+  // An entry the app cannot compare matches nothing, so the check fails closed.
+  if (mustMatch !== undefined) rule.mustMatch = valueList(mustMatch, constants);
+  return rule.ifNotIn || rule.mustMatch ? rule : undefined;
+}
+
 function mergeParams(base: unknown, override: unknown): Json | undefined {
   if (!isPlainObject(base))
     return isPlainObject(override) ? override : undefined;
@@ -171,21 +204,27 @@ function expandFields(
       );
       continue;
     }
-    if (field.visible === 'never' || typeof field.format !== 'string') continue;
-    const format = field.format as Eip7730FieldFormat;
+    if (field.visible === 'never') continue;
+    const visible = visibilityRule(field.visible, sources.constants);
+    // A hidden field still has to be checked, and it needs no format to be.
+    if (typeof field.format !== 'string' && !visible?.mustMatch) continue;
+    const format = (
+      typeof field.format === 'string' ? field.format : 'raw'
+    ) as Eip7730FieldFormat;
     const params = withConstants(field.params, sources.constants);
     const value = substituteConstant(field.value, sources.constants);
+    const rule = visible ? { visible } : {};
     if (typeof value === 'string' || typeof value === 'number') {
       const text = String(value);
       // An unresolved constant would show its own reference as the value.
       if (text.startsWith('$.')) continue;
       const label = typeof field.label === 'string' ? field.label : '';
-      out.push({ path: '', label, format, params, value: text });
+      out.push({ path: '', label, format, params, value: text, ...rule });
       continue;
     }
     if (!path) continue;
     const label = typeof field.label === 'string' ? field.label : path;
-    out.push({ path, label, format, params });
+    out.push({ path, label, format, params, ...rule });
     if (field.visible === undefined || field.visible === 'always') {
       alwaysVisible.add(normalizeFieldPath(path));
     }

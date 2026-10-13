@@ -2,6 +2,7 @@ import React, { useCallback, useMemo, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { SegmentedButtons, Text } from 'react-native-paper';
 
+import { DESCRIPTOR_CHECK_FAILED_WARNING } from '@/constants/eip7730';
 import { EIP712_DIGEST_EXPLAINER } from '@/constants/erc8213';
 import type { EthSignRequest } from '@/types';
 import theme from '@/theme';
@@ -26,10 +27,16 @@ import {
   resolveEip712FieldValue,
   resolveEip712FieldValues,
 } from '@/utils/eip7730/paths';
+import { passesMustMatch, shownFields } from '@/utils/eip7730/visibility';
 import { classifyEthPayload } from '@/utils/ethPayload';
 
 import Eip7730FieldRow from './Eip7730FieldRow';
-import { DigestExplainer, DigestRow, SectionHeader } from './shared';
+import {
+  DigestExplainer,
+  DigestRow,
+  SectionHeader,
+  WarningRow,
+} from './shared';
 import SpecialEip712Section from './SpecialEip712Section';
 
 type Tab = 'details' | 'digests' | 'raw';
@@ -73,7 +80,7 @@ export default function Eip712JsonPanel({
       rawTypedData.domain,
     );
   }, [domainChainId, verifyingContract, rawTypedData]);
-  const { format: eip7730Descriptor, loading } = useEip7730Format(lookup);
+  const { format: matchedFormat, loading } = useEip7730Format(lookup);
 
   const fieldContext = useMemo<Eip7730FieldContext>(() => {
     const container = {
@@ -93,6 +100,13 @@ export default function Eip712JsonPanel({
     };
   }, [domainChainId, verifyingContract, rawTypedData, request.address]);
 
+  const rejected =
+    matchedFormat !== null && !passesMustMatch(matchedFormat, fieldContext);
+  const eip7730Descriptor = rejected ? null : matchedFormat;
+  const eip7730Fields = eip7730Descriptor
+    ? shownFields(eip7730Descriptor, fieldContext)
+    : [];
+
   const eip7730Title = eip7730Descriptor
     ? interpolateIntent(eip7730Descriptor, fieldContext) ??
       eip7730Descriptor.intent
@@ -108,6 +122,7 @@ export default function Eip712JsonPanel({
 
   return (
     <View style={styles.panel}>
+      {rejected && <WarningRow text={DESCRIPTOR_CHECK_FAILED_WARNING} />}
       <SegmentedButtons
         value={tab}
         onValueChange={v => setTab(v as Tab)}
@@ -144,10 +159,8 @@ export default function Eip712JsonPanel({
                     </Text>
                   </View>
                 )}
-                {eip7730Descriptor.fields.length > 0 && (
-                  <SectionHeader title="Message" />
-                )}
-                {eip7730Descriptor.fields.map((field, index) => (
+                {eip7730Fields.length > 0 && <SectionHeader title="Message" />}
+                {eip7730Fields.map((field, index) => (
                   <Eip7730FieldRow
                     key={`eip7730-${field.path}-${index}`}
                     field={field}

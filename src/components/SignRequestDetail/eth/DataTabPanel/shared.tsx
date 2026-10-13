@@ -1,5 +1,5 @@
 import { Pressable, StyleSheet, View } from 'react-native';
-import { Text } from 'react-native-paper';
+import { Icon, Text } from 'react-native-paper';
 
 import { Icons } from '@/assets/icons';
 import {
@@ -18,6 +18,17 @@ export function SectionHeader({ title }: { title: string }) {
     <View style={styles.sectionHeader}>
       <Text variant="labelMedium" style={styles.sectionHeaderText}>
         {title}
+      </Text>
+    </View>
+  );
+}
+
+export function WarningRow({ text }: { text: string }) {
+  return (
+    <View style={styles.warningRow}>
+      <Icon source="alert" size={16} color={theme.colors.negative} />
+      <Text variant="labelSmall" style={styles.warningText}>
+        {text}
       </Text>
     </View>
   );
@@ -61,6 +72,17 @@ export function DigestExplainer({ text }: { text: string }) {
 const styles = StyleSheet.create({
   row: {
     paddingVertical: 8,
+  },
+  warningRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingVertical: 6,
+    paddingHorizontal: 4,
+  },
+  warningText: {
+    color: theme.colors.negative,
+    flexShrink: 1,
   },
   sectionHeader: {
     paddingTop: 8,

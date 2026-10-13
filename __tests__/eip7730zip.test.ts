@@ -710,12 +710,72 @@ describe('field expansion', () => {
       },
     });
     expect(fields?.map(f => f.path)).toEqual(['b', 'c', 'd']);
+    expect(fields?.map(f => f.visible)).toEqual([
+      { mustMatch: ['0x0'] },
+      { ifNotIn: ['0'] },
+      undefined,
+    ]);
+  });
+
+  it('keeps list entries as text, once each, constants substituted', () => {
+    const fields = fieldsOf({
+      'registry/a.json': {
+        ...contract(),
+        metadata: { constants: { zero: 0 } },
+        ...transferFormat([
+          {
+            path: 'a',
+            label: 'A',
+            format: 'raw',
+            visible: { ifNotIn: [0, '0', true, { x: 1 }, null] },
+          },
+          {
+            path: 'b',
+            label: 'B',
+            format: 'raw',
+            visible: { mustMatch: ['$.metadata.constants.zero', 1] },
+          },
+        ]),
+      },
+    });
+    expect(fields?.map(f => f.visible)).toEqual([
+      { ifNotIn: ['0', 'true'] },
+      { mustMatch: ['0', '1'] },
+    ]);
+  });
+
+  it('keeps a mustMatch field without a format, to check it', () => {
+    const fields = fieldsOf({
+      'registry/a.json': {
+        ...contract(),
+        ...transferFormat([
+          { path: 'op', visible: { mustMatch: [0] } },
+          { path: 'other', visible: { ifNotIn: [0] } },
+        ]),
+      },
+    });
+    expect(fields).toEqual([
+      { path: 'op', label: 'op', format: 'raw', visible: { mustMatch: ['0'] } },
+    ]);
+  });
+
+  it('fails a mustMatch list it cannot read closed and ignores unknown rules', () => {
+    const fields = fieldsOf({
+      'registry/a.json': {
+        ...contract(),
+        ...transferFormat([
+          { path: 'a', label: 'A', format: 'raw', visible: { mustMatch: 0 } },
+          { path: 'b', label: 'B', format: 'raw', visible: { future: [0] } },
+        ]),
+      },
+    });
+    expect(fields?.map(f => f.visible)).toEqual([{ mustMatch: [] }, undefined]);
   });
 });
 
 describe('index shape', () => {
-  it('is version 5', () => {
-    expect(EIP7730_INDEX_VERSION).toBe(5);
+  it('is version 6', () => {
+    expect(EIP7730_INDEX_VERSION).toBe(6);
   });
 
   it('stores each key once per contract, its chains under it', () => {

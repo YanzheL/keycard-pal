@@ -2,6 +2,7 @@ import { useMemo } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { Text } from 'react-native-paper';
 
+import { DESCRIPTOR_CHECK_FAILED_WARNING } from '@/constants/eip7730';
 import theme from '@/theme';
 
 import AddressInfoRow from '@/components/ens/AddressInfoRow.online';
@@ -15,7 +16,7 @@ import type { Eip7730Field } from '@/utils/eip7730/zip';
 import { decodeCalldata } from '@/utils/txParser';
 
 import DecodedCallSection, { isTokenCall } from './DecodedCallSection';
-import { SectionHeader } from './shared';
+import { SectionHeader, WarningRow } from './shared';
 
 // Deeper than this a crafted registry or calldata could nest without end.
 const MAX_DEPTH = 3;
@@ -42,7 +43,7 @@ function InnerCall({
     () => ({ to: callee, value: amount, from: spender, chainId }),
     [callee, amount, spender, chainId],
   );
-  const { descriptor, loading } = useCalldataDescriptor({
+  const { descriptor, rejected, loading } = useCalldataDescriptor({
     chainId,
     contract: callee,
     data,
@@ -52,6 +53,9 @@ function InnerCall({
   if (loading) return null;
 
   const call = tooDeep ? null : decodeCalldata(data);
+  const warning = rejected && (
+    <WarningRow text={DESCRIPTOR_CHECK_FAILED_WARNING} />
+  );
   const contractRow = (
     <View style={styles.row}>
       <AddressInfoRow
@@ -64,6 +68,7 @@ function InnerCall({
   if (descriptor || (call && call.kind !== 'unknown-call')) {
     return (
       <>
+        {warning}
         {/* A token call's own section names the contract as "Token contract". */}
         {!(call && isTokenCall(call)) && contractRow}
         <DecodedCallSection
@@ -78,6 +83,7 @@ function InnerCall({
   }
   return (
     <>
+      {warning}
       {contractRow}
       <View style={styles.row}>
         <InfoRow label="Contract call" value={data.slice(0, 10)} />

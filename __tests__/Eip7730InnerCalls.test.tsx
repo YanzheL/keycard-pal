@@ -4,6 +4,8 @@ import { encodeFunctionData, parseAbiItem, type AbiFunction } from 'viem';
 
 import Eip7730InnerCalls from '../src/components/SignRequestDetail/eth/DataTabPanel/Eip7730InnerCalls';
 import { UNLIMITED_APPROVAL_WARNING } from '../src/constants/approval';
+import { DESCRIPTOR_CHECK_FAILED_WARNING } from '../src/constants/eip7730';
+import * as eip7730Lookup from '../src/utils/eip7730/lookup';
 import {
   buildArgsEachResolver,
   buildArgsPathResolver,
@@ -186,5 +188,50 @@ describe('Eip7730InnerCalls', () => {
     );
     await act(async () => {});
     expect(screen.getByText('Send')).toBeTruthy();
+  });
+  it("drops an inner call's entry when its mustMatch check fails, and says so", () => {
+    const spy = jest.spyOn(eip7730Lookup, 'lookupCalldata').mockReturnValue({
+      intent: 'Send',
+      signature: 'transfer(address to, uint256 amount)',
+      fields: [
+        {
+          path: 'to',
+          label: 'To',
+          format: 'raw',
+          visible: { mustMatch: [USDT] },
+        },
+      ],
+    });
+    try {
+      const ctx = ctxFor({ calls: [{ to: USDT, data: transfer, value: 0n }] });
+      render(<Eip7730InnerCalls field={callsField} ctx={ctx} />);
+      expect(screen.getByText(DESCRIPTOR_CHECK_FAILED_WARNING)).toBeTruthy();
+      expect(screen.queryByText('Send')).toBeNull();
+      expect(screen.getByText(`Token contract: ${USDT}`)).toBeTruthy();
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it('says so above the raw call when nothing else knows it', () => {
+    const spy = jest.spyOn(eip7730Lookup, 'lookupCalldata').mockReturnValue({
+      intent: 'Poke',
+      signature: 'poke(uint256 n)',
+      fields: [
+        { path: 'n', label: 'N', format: 'raw', visible: { mustMatch: ['2'] } },
+      ],
+    });
+    try {
+      const poke = encode('poke(uint256 n)', [1n]);
+      const ctx = ctxFor({
+        calls: [{ to: SOME_CONTRACT, data: poke, value: 0n }],
+      });
+      render(<Eip7730InnerCalls field={callsField} ctx={ctx} />);
+      expect(screen.getByText(DESCRIPTOR_CHECK_FAILED_WARNING)).toBeTruthy();
+      expect(screen.queryByText('Poke')).toBeNull();
+      expect(screen.getByText(`Data: ${poke}`)).toBeTruthy();
+    } finally {
+      spy.mockRestore();
+    }
   });
 });
