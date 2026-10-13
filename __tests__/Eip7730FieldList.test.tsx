@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react-native';
+import { render, screen, within } from '@testing-library/react-native';
 import React from 'react';
 import { encodeFunctionData, parseAbiItem, type AbiFunction } from 'viem';
 
@@ -48,16 +48,23 @@ jest.mock('../src/components/InfoRow', () => {
 });
 
 jest.mock('../src/components/ens/AddressInfoRow.online', () => {
-  const { Text } = require('react-native');
+  const { Text, View } = require('react-native');
   return ({
     label,
     value,
     ens = true,
+    name,
   }: {
     label: string;
     value: string;
     ens?: boolean;
-  }) => <Text>{`${label}: ${value}${ens ? '' : ' (no ENS)'}`}</Text>;
+    name?: React.ReactNode;
+  }) => (
+    <View testID={`address-${label}`}>
+      {name}
+      <Text>{`${label}: ${value}${ens ? '' : ' (no ENS)'}`}</Text>
+    </View>
+  );
 });
 
 jest.mock('../src/utils/buildConfig', () => ({ INTERNET_ENABLED: false }));
@@ -217,7 +224,7 @@ describe('Eip7730FieldList', () => {
     const ZERO = '0x0000000000000000000000000000000000000000';
     const UNKNOWN = '0x000000000000000000000000000000000000dEaD';
 
-    it('names a known token above its address', () => {
+    it('names a known token inside its address row', () => {
       renderList(
         [
           {
@@ -229,7 +236,9 @@ describe('Eip7730FieldList', () => {
         ],
         { asset: USDC },
       );
-      expect(screen.getByText('USDC')).toBeTruthy();
+      expect(
+        within(screen.getByTestId('address-Maker asset')).getByText('USDC'),
+      ).toBeTruthy();
       expect(screen.getByText(`Maker asset: ${USDC}`)).toBeTruthy();
       expect(screen.queryByText(UNKNOWN_TOKEN_WARNING)).toBeNull();
     });

@@ -1,4 +1,10 @@
-import { Image, StyleSheet, View } from 'react-native';
+import {
+  Image,
+  StyleSheet,
+  View,
+  type StyleProp,
+  type ViewStyle,
+} from 'react-native';
 import { Text } from 'react-native-paper';
 
 import theme from '@/theme';
@@ -27,10 +33,16 @@ function TokenLogo({
   );
 }
 
-export default function TokenSymbolRow({ token }: { token: TokenMetadata }) {
+export default function TokenSymbolRow({
+  token,
+  style,
+}: {
+  token: TokenMetadata;
+  style?: StyleProp<ViewStyle>;
+}) {
   const imagesEnabled = useTokenImagesEnabled();
   return (
-    <View style={styles.tokenRow}>
+    <View style={[styles.tokenRow, style]}>
       {token.logoURI && (
         <TokenLogo uri={token.logoURI} imagesEnabled={imagesEnabled} />
       )}

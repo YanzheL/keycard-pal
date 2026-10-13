@@ -1,5 +1,6 @@
 import { render, screen } from '@testing-library/react-native';
 import React from 'react';
+import { Text } from 'react-native';
 
 import AddressInfoRowOffline from '../src/components/ens/AddressInfoRow.offline';
 import AddressInfoRow from '../src/components/ens/AddressInfoRow.online';
@@ -45,5 +46,30 @@ describe('AddressInfoRow', () => {
   it('the offline row takes the same props and shows the address', () => {
     render(<AddressInfoRowOffline label="To" value={address} ens={false} />);
     expect(screen.getByText(address)).toBeTruthy();
+  });
+  it('shows a name between the label and the address, on both builds', () => {
+    for (const Row of [AddressInfoRow, AddressInfoRowOffline]) {
+      const { toJSON, unmount } = render(
+        <Row
+          label="Maker asset"
+          value={address}
+          ens={false}
+          name={<Text>USDC</Text>}
+        />,
+      );
+      const text = JSON.stringify(toJSON());
+      const at = (s: string) => text.indexOf(s);
+      expect(at('Maker asset')).toBeGreaterThan(-1);
+      expect(at('Maker asset')).toBeLessThan(at('USDC'));
+      expect(at('USDC')).toBeLessThan(at('d8dA'));
+      unmount();
+    }
+  });
+
+  it('passes the name on for a value that is no address', () => {
+    render(
+      <AddressInfoRow label="Note" value="hello" name={<Text>named</Text>} />,
+    );
+    expect(screen.getByText('named')).toBeTruthy();
   });
 });

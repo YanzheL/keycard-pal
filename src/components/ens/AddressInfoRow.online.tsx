@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { Text } from 'react-native-paper';
 
@@ -11,11 +12,13 @@ export default function AddressInfoRow({
   label,
   value,
   ens = true,
+  name,
 }: {
   label: string;
   value: string;
   /** False where a clear-signing descriptor rules out ENS as a name source. */
   ens?: boolean;
+  name?: ReactNode;
 }) {
   if (isDisplayAddress(value)) {
     return (
@@ -23,6 +26,7 @@ export default function AddressInfoRow({
         <Text variant="bodySmall" style={styles.infoLabel}>
           {label}
         </Text>
+        {name}
         {ens ? (
           <EnsAddressLabel address={value} />
         ) : (
@@ -32,7 +36,7 @@ export default function AddressInfoRow({
     );
   }
 
-  return <InfoRow label={label} value={value} />;
+  return <InfoRow label={label} value={value} name={name} />;
 }
 
 const styles = StyleSheet.create({

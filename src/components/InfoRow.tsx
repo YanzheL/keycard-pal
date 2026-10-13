@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { Text } from 'react-native-paper';
 
@@ -8,15 +9,18 @@ import AddressText, { isDisplayAddress } from './AddressText';
 export default function InfoRow({
   label,
   value,
+  name,
 }: {
   label: string;
   value: string;
+  name?: ReactNode;
 }) {
   return (
     <View style={styles.infoRow}>
       <Text variant="bodySmall" style={styles.infoLabel}>
         {label}
       </Text>
+      {name}
       {isDisplayAddress(value) ? (
         <AddressText address={value} style={styles.infoValue} selectable />
       ) : (

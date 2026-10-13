@@ -31,10 +31,18 @@ function AddressNameRows({
 }) {
   return (
     <>
-      {shown.token && <TokenSymbolRow token={shown.token} />}
       <View style={styles.row}>
         {shown.address ? (
-          <AddressInfoRow label={label} value={shown.address} ens={shown.ens} />
+          <AddressInfoRow
+            label={label}
+            value={shown.address}
+            ens={shown.ens}
+            name={
+              shown.token && (
+                <TokenSymbolRow token={shown.token} style={styles.name} />
+              )
+            }
+          />
         ) : (
           <InfoRow label={label} value={SENDER_TEXT} />
         )}
@@ -101,6 +109,9 @@ export default function Eip7730FieldRow({
 const styles = StyleSheet.create({
   row: {
     paddingVertical: 8,
+  },
+  name: {
+    paddingVertical: 0,
   },
   caption: {
     color: theme.colors.onSurfaceVariant,
