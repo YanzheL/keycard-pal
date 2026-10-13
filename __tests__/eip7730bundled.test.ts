@@ -9,7 +9,10 @@ import {
 import bundled from '../src/data/eip7730.json';
 import { UNLIMITED_APPROVAL_WARNING } from '../src/constants/approval';
 import { encodeEip712Type } from '../src/utils/eip712';
-import { formatEip7730Field } from '../src/utils/eip7730/format';
+import {
+  formatEip7730Field,
+  interpolateIntent,
+} from '../src/utils/eip7730/format';
 import * as lookup from '../src/utils/eip7730/lookup';
 import {
   buildArgsPathResolver,
@@ -220,6 +223,52 @@ function sample(param: AbiParameter): unknown {
   }
   return 1n;
 }
+
+describe('sentences', () => {
+  it('fills a real entry sentence the way its fields are shown', () => {
+    const token = '0x004e9c3ef86bc1ca1f0bb5c7662861ee93350568';
+    const data = '0xa9059cbb' + word(RECIPIENT) + word(150_000_000n);
+    const descriptor = lookupCalldata(1, token, '0xa9059cbb')!;
+    const args = decodeArgsBySignature(descriptor.signature!, data)!;
+    const sentence = interpolateIntent(descriptor, {
+      chainId: 1,
+      contractAddress: token,
+      resolvePath: buildArgsPathResolver(args, { to: token, chainId: 1 }),
+    });
+    expect(sentence).toBe(
+      'Send 1.5 uniBTC to 0xD3CDa913deb6F4967B2eF3Aa68F5a843da74c4Ef',
+    );
+  });
+
+  it('fills every bundled sentence from calldata built for its signature', () => {
+    let filled = 0;
+    for (const format of (bundled as unknown as Eip7730Index).formats) {
+      if (!format.signature || !format.interpolatedIntent) continue;
+      const item = parseAbiItem(`function ${format.signature}`) as AbiFunction;
+      const data = encodeFunctionData({
+        abi: [item],
+        args: item.inputs.map(sample),
+      });
+      const resolvePath = buildArgsPathResolver(
+        decodeArgsBySignature(format.signature, data)!,
+        { from: RECIPIENT, to: USDT, value: '1', chainId: 1 },
+      );
+      const sentence = interpolateIntent(format, {
+        chainId: 1,
+        contractAddress: USDT,
+        resolvePath,
+      });
+      // Slices and negative indices are not read yet.
+      if (/\[-|\[\d*:/.test(JSON.stringify(format.fields))) continue;
+      expect([format.interpolatedIntent, sentence]).not.toEqual([
+        format.interpolatedIntent,
+        null,
+      ]);
+      filled += 1;
+    }
+    expect(filled).toBeGreaterThan(150);
+  });
+});
 
 describe('every bundled calldata descriptor', () => {
   const formats = (bundled as unknown as Eip7730Index).formats.filter(

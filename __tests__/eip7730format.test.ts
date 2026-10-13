@@ -1,6 +1,7 @@
 import { UNLIMITED_APPROVAL_WARNING } from '../src/constants/approval';
 import {
   formatEip7730Field,
+  interpolateIntent,
   UNKNOWN_TOKEN_WARNING,
 } from '../src/utils/eip7730/format';
 
@@ -394,5 +395,49 @@ describe('formatEip7730Field', () => {
         formatEip7730Field(field('amount'), '2000', FORMAT, ctx({}, {})),
       ).toEqual({ text: '2000' });
     });
+  });
+});
+
+describe('interpolateIntent', () => {
+  const RECIPIENT = '0xd3cda913deb6f4967b2ef3aa68f5a843da74c4ef';
+  const sentence = (
+    interpolatedIntent: string | undefined,
+    paths: Record<string, string> = { '#.amount': '1500000', to: RECIPIENT },
+  ) =>
+    interpolateIntent(
+      {
+        intent: 'Send',
+        interpolatedIntent,
+        fields: [
+          { path: 'to', label: 'To', format: 'addressName' },
+          {
+            path: '#.amount',
+            label: 'Amount',
+            format: 'tokenAmount',
+            params: { token: TOKEN },
+          },
+          { path: '@.value', label: 'Value', format: 'amount' },
+          { path: '', label: 'Ticker', format: 'raw', value: 'kmmUSDC' },
+          { path: 'data', label: 'Call', format: 'calldata' },
+        ],
+        metadata: FORMAT.metadata,
+      },
+      ctx({ ...paths, '@.value': '500000000000000000' }),
+    );
+
+  it('formats each placeholder as its field, addresses checksummed', () => {
+    expect(sentence('Send {amount} to {#.to}')).toBe(
+      'Send 1.5 USDC to 0xD3CDa913deb6F4967B2eF3Aa68F5a843da74c4Ef',
+    );
+    expect(sentence('Wrap {@.value}')).toBe('Wrap 0.5 ETH');
+    expect(sentence('Run {{f}} for {amount}')).toBe('Run {f} for 1.5 USDC');
+  });
+
+  it('gives no sentence, so the intent shows, when anything cannot be filled', () => {
+    expect(sentence(undefined)).toBeNull();
+    expect(sentence('Send {amount} to {to}', { '#.amount': '1' })).toBeNull();
+    expect(sentence('Send {missing}')).toBeNull();
+    expect(sentence('Call {data}', { data: '0x12' })).toBeNull();
+    expect(sentence('Broken {amount')).toBeNull();
   });
 });

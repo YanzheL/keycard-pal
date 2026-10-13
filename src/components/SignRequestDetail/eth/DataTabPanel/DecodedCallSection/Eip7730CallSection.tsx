@@ -5,6 +5,7 @@ import theme from '@/theme';
 
 import Eip7730FieldRow from '@/components/SignRequestDetail/eth/DataTabPanel/Eip7730FieldRow';
 
+import { interpolateIntent } from '@/utils/eip7730/format';
 import type { Eip7730DisplayFormat } from '@/utils/eip7730/zip';
 
 type Props = {
@@ -25,13 +26,14 @@ export default function Eip7730CallSection({
   depth = 0,
 }: Props) {
   const ctx = { chainId, contractAddress, resolvePath, resolveEach, depth };
+  const title = interpolateIntent(format, ctx) ?? format.intent;
 
   return (
     <View>
-      {format.intent && (
+      {title && (
         <View style={styles.intentRow}>
           <Text variant="titleSmall" style={styles.intent}>
-            {format.intent}
+            {title}
           </Text>
         </View>
       )}

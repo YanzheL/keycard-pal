@@ -704,6 +704,37 @@ describe('EthSignRequestDetail — registry entries for calls the app cannot dec
     ).toString('hex');
   }
 
+  it("shows the entry's sentence in place of its intent", () => {
+    const UNIBTC = '0x004e9c3ef86bc1ca1f0bb5c7662861ee93350568';
+    const data = encodeFunctionData({
+      abi: [
+        parseAbiItem(
+          'function transfer(address to, uint256 amount)',
+        ) as AbiFunction,
+      ],
+      args: [RECIPIENT, 150_000_000n],
+    });
+    renderDetail({
+      signData: Buffer.from(
+        RLP.encode([
+          bn(1n),
+          bn(20_000_000_000n),
+          bn(100_000n),
+          addr(UNIBTC),
+          bn(0n),
+          Buffer.from(data.slice(2), 'hex'),
+        ]),
+      ).toString('hex'),
+      dataType: 1,
+      derivationPath: "m/44'/60'/0'/0",
+      chainId: 1,
+    });
+
+    expect(screen.getByText(`Send 1.5 uniBTC to ${RECIPIENT}`)).toBeTruthy();
+    expect(screen.queryByText('Send')).toBeNull();
+    expect(screen.getByText('Amount to Send')).toBeTruthy();
+  });
+
   it('shows every call a multicall holds, each through its own entry', () => {
     const AAVE_V3_POOL = '0x87870bca3f3fd6335c3f4ce8392d69350b4fa4e2';
     const inner = (signature: string, args: unknown[]) =>

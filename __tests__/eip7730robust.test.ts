@@ -5,7 +5,10 @@ import { join } from 'path';
 import { strToU8, zipSync } from 'fflate';
 
 import bundled from '../src/data/eip7730.json';
-import { formatEip7730Field } from '../src/utils/eip7730/format';
+import {
+  formatEip7730Field,
+  interpolateIntent,
+} from '../src/utils/eip7730/format';
 import {
   buildArgsPathResolver,
   decodeArgsBySignature,
@@ -111,6 +114,13 @@ function renderAll(index: Eip7730Index, rand: () => number): number {
       expect(typeof text).toBe('string');
       rendered += 1;
     }
+    const value = String(ODD[rendered % ODD.length]);
+    const sentence = interpolateIntent(format, {
+      chainId: 1,
+      contractAddress: ADDRESS,
+      resolvePath: () => value,
+    });
+    expect(sentence === null || typeof sentence === 'string').toBe(true);
   }
   return rendered;
 }

@@ -258,6 +258,31 @@ describe('Eip712JsonPanel EIP-7730 integration', () => {
     expect(screen.getByText('SpecialEip712Section')).toBeTruthy();
   });
 
+  it("shows the entry's sentence in place of its intent", () => {
+    mockLookupEip712.mockReturnValue({
+      intent: 'Approve spender',
+      interpolatedIntent: 'Allow {spender} to spend',
+      fields: [{ path: 'spender', label: 'Spender', format: 'addressName' }],
+    });
+    const message = {
+      spender: '0xabc0000000000000000000000000000000000001',
+      sigDeadline: '1',
+    };
+    render(
+      <Eip712JsonPanel
+        request={buildRequest(buildPayload(message))}
+        eip712={buildSummary(message)}
+        chainId={1}
+      />,
+    );
+    expect(
+      screen.getByText(
+        'Allow 0xABC0000000000000000000000000000000000001 to spend',
+      ),
+    ).toBeTruthy();
+    expect(screen.queryByText('Approve spender')).toBeNull();
+  });
+
   it('shows neither reviewer while a saved slice is read', async () => {
     let finish: (format: unknown) => void = () => {};
     mockLookupEip712.mockReturnValue(

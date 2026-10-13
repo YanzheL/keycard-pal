@@ -43,6 +43,33 @@ describe('Eip7730CallSection', () => {
     expect(screen.getByText('Send USDC')).toBeTruthy();
   });
 
+  it('shows the sentence in place of the intent, and the intent when it cannot be filled', () => {
+    const format: Eip7730DisplayFormat = {
+      intent: 'Send',
+      interpolatedIntent: 'Send {amount} to {to}',
+      fields: [
+        { path: 'to', label: 'To', format: 'addressName' },
+        { path: 'amount', label: 'Amount', format: 'raw' },
+      ],
+    };
+    const { unmount } = render(
+      <Eip7730CallSection format={format} resolvePath={transfer(7n)} />,
+    );
+    expect(
+      screen.getByText('Send 7 to 0x0000000000000000000000000000000000000aBc'),
+    ).toBeTruthy();
+    expect(screen.queryByText('Send')).toBeNull();
+    unmount();
+
+    render(
+      <Eip7730CallSection
+        format={format}
+        resolvePath={buildArgsPathResolver({ amount: 7n })}
+      />,
+    );
+    expect(screen.getByText('Send')).toBeTruthy();
+  });
+
   it('renders an AddressInfoRow for addressName fields', () => {
     const format: Eip7730DisplayFormat = {
       fields: [{ path: 'to', label: 'Recipient', format: 'addressName' }],

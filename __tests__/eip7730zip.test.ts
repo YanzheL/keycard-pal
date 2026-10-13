@@ -6,6 +6,7 @@ import {
   buildIndexFromDescriptors,
   EIP7730_INDEX_VERSION,
   indexedFormat,
+  interpolationParts,
   isEmptyIndex,
   processRegistryZip,
   sliceIndex,
@@ -713,8 +714,8 @@ describe('field expansion', () => {
 });
 
 describe('index shape', () => {
-  it('is version 4', () => {
-    expect(EIP7730_INDEX_VERSION).toBe(4);
+  it('is version 5', () => {
+    expect(EIP7730_INDEX_VERSION).toBe(5);
   });
 
   it('stores each key once per contract, its chains under it', () => {
@@ -875,5 +876,76 @@ describe('slices', () => {
 
   it('gives an empty index no slices', () => {
     expect(sliceIndex(buildIndexFromDescriptors([])).size).toBe(0);
+  });
+});
+
+describe('interpolatedIntent', () => {
+  const sentenceFor = (
+    interpolatedIntent: string,
+    fields: Record<string, unknown>[],
+  ) =>
+    indexedFormat(
+      buildIndexFromDescriptors([
+        {
+          ...contract(),
+          display: {
+            formats: {
+              [TRANSFER]: { intent: 'Send', interpolatedIntent, fields },
+            },
+          },
+        },
+      ]),
+      'contracts',
+      1,
+      ADDR,
+      TRANSFER_SELECTOR,
+    )?.interpolatedIntent;
+  const to = { path: 'to', label: 'To', format: 'addressName' };
+  const amount = { path: '#.amount', label: 'Amount', format: 'raw' };
+
+  it('keeps a sentence whose placeholders all name always-visible fields', () => {
+    expect(sentenceFor('Send {amount} to {#.to}', [to, amount])).toBe(
+      'Send {amount} to {#.to}',
+    );
+    expect(
+      sentenceFor('Send {@.value}', [
+        { path: '@.value', label: 'Value', format: 'amount' },
+      ]),
+    ).toBe('Send {@.value}');
+    expect(sentenceFor('Run {{f}} once', [])).toBe('Run {{f}} once');
+  });
+
+  it('drops a sentence the app could not fill as the spec asks', () => {
+    expect(
+      sentenceFor('Send {amount} to {nobody}', [to, amount]),
+    ).toBeUndefined();
+    expect(
+      sentenceFor('Send {amount}', [{ ...amount, visible: 'optional' }]),
+    ).toBeUndefined();
+    expect(
+      sentenceFor('Send {amount}', [
+        { ...amount, visible: { ifNotIn: ['0'] } },
+      ]),
+    ).toBeUndefined();
+    expect(
+      sentenceFor('Do {to}', [{ ...to, format: 'calldata' }]),
+    ).toBeUndefined();
+    expect(sentenceFor('Send {amount', [amount])).toBeUndefined();
+    expect(sentenceFor('Send amount}', [amount])).toBeUndefined();
+    expect(sentenceFor('Send {}', [amount])).toBeUndefined();
+  });
+
+  it('splits a sentence into text and placeholders, escapes included', () => {
+    expect(interpolationParts('Send {#.amount} to {to}')).toEqual([
+      { text: 'Send ' },
+      { path: '#.amount' },
+      { text: ' to ' },
+      { path: 'to' },
+    ]);
+    expect(interpolationParts('Run {{f}} with {x}')).toEqual([
+      { text: 'Run {f} with ' },
+      { path: 'x' },
+    ]);
+    expect(interpolationParts('a {b{c}')).toBeNull();
   });
 });

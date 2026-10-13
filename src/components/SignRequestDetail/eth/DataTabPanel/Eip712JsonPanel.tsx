@@ -17,7 +17,10 @@ import {
   parseEip712RawTypedData,
   type Eip712Summary,
 } from '@/utils/eip712';
-import type { Eip7730FieldContext } from '@/utils/eip7730/format';
+import {
+  interpolateIntent,
+  type Eip7730FieldContext,
+} from '@/utils/eip7730/format';
 import { lookupEip712 } from '@/utils/eip7730/lookup';
 import {
   resolveEip712FieldValue,
@@ -90,6 +93,11 @@ export default function Eip712JsonPanel({
     };
   }, [domainChainId, verifyingContract, rawTypedData, request.address]);
 
+  const eip7730Title = eip7730Descriptor
+    ? interpolateIntent(eip7730Descriptor, fieldContext) ??
+      eip7730Descriptor.intent
+    : undefined;
+
   const eip712Digest = useMemo(() => {
     // Same classification as the bytes sent to the card, so the digest shown is the one signed.
     const payload = classifyEthPayload(request.signData, request.dataType);
@@ -129,10 +137,10 @@ export default function Eip712JsonPanel({
             )}
             {loading ? null : eip7730Descriptor ? (
               <>
-                {eip7730Descriptor.intent && (
+                {eip7730Title && (
                   <View style={styles.row}>
                     <Text variant="titleSmall" style={styles.intent}>
-                      {eip7730Descriptor.intent}
+                      {eip7730Title}
                     </Text>
                   </View>
                 )}

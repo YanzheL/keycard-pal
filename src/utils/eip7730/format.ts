@@ -3,10 +3,13 @@ import { formatUnits } from 'viem';
 import { UNLIMITED_APPROVAL_WARNING } from '@/constants/approval';
 
 import { getNativeCurrencySymbol } from '@/utils/chainMetadata';
+import { checksumEthAddress } from '@/utils/ethereumAddress';
 import { lookupToken } from '@/utils/tokenMetadata';
 
 import {
+  interpolationParts,
   isDecimals,
+  normalizeFieldPath,
   type Eip7730DisplayFormat,
   type Eip7730Field,
 } from './zip';
@@ -223,4 +226,30 @@ export function formatEip7730Field(
     // A descriptor from a later registry must never take the review screen down.
     return { text: value };
   }
+}
+
+/** The sentence with every placeholder formatted as its field is; null means show `intent`. */
+export function interpolateIntent(
+  format: Eip7730DisplayFormat,
+  ctx: Eip7730FieldContext,
+): string | null {
+  const parts = format.interpolatedIntent
+    ? interpolationParts(format.interpolatedIntent)
+    : null;
+  if (!parts) return null;
+  let sentence = '';
+  for (const part of parts) {
+    if ('text' in part) {
+      sentence += part.text;
+      continue;
+    }
+    const path = normalizeFieldPath(part.path);
+    const field = format.fields.find(f => normalizeFieldPath(f.path) === path);
+    const raw = field ? field.value ?? ctx.resolvePath(field.path) : null;
+    if (!field || field.format === 'calldata' || raw === null) return null;
+    const { text } = formatEip7730Field(field, raw, format, ctx);
+    sentence +=
+      field.format === 'addressName' ? checksumEthAddress(text) : text;
+  }
+  return sentence;
 }

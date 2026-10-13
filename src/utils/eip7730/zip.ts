@@ -26,6 +26,8 @@ export type Eip7730TokenMetadata = {
 
 export type Eip7730DisplayFormat = {
   intent?: string;
+  /** Kept only when every placeholder names an always-visible field the app can show inline. */
+  interpolatedIntent?: string;
   /** The descriptor's function signature, parameter names included, when it keys the format by one. */
   signature?: string;
   fields: Eip7730Field[];
@@ -59,7 +61,7 @@ export type Eip7730IndexSlice = Pick<
   'formats' | 'contracts' | 'eip712'
 >;
 
-export const EIP7730_INDEX_VERSION = 4;
+export const EIP7730_INDEX_VERSION = 5;
 
 const SCHEMA_MAJOR = 2;
 const SELECTOR_RE = /^0x[0-9a-f]{8}$/i;
@@ -152,6 +154,7 @@ function expandFields(
   rawFields: unknown,
   sources: FieldSources,
   prefix?: string,
+  alwaysVisible: Set<string> = new Set(),
 ): Eip7730Field[] {
   if (!Array.isArray(rawFields)) return [];
   const out: Eip7730Field[] = [];
@@ -163,7 +166,9 @@ function expandFields(
         ? joinFieldPath(prefix, field.path)
         : undefined;
     if (Array.isArray(field.fields)) {
-      out.push(...expandFields(field.fields, sources, path ?? prefix));
+      out.push(
+        ...expandFields(field.fields, sources, path ?? prefix, alwaysVisible),
+      );
       continue;
     }
     if (field.visible === 'never' || typeof field.format !== 'string') continue;
@@ -181,8 +186,69 @@ function expandFields(
     if (!path) continue;
     const label = typeof field.label === 'string' ? field.label : path;
     out.push({ path, label, format, params });
+    if (field.visible === undefined || field.visible === 'always') {
+      alwaysVisible.add(normalizeFieldPath(path));
+    }
   }
   return out;
+}
+
+export function normalizeFieldPath(path: string): string {
+  return path.startsWith('#.') ? path.slice(2) : path;
+}
+
+export type InterpolationPart = { text: string } | { path: string };
+
+/** `{path}` placeholders and `{{`/`}}` escapes; null when the braces do not pair up. */
+export function interpolationParts(
+  template: string,
+): InterpolationPart[] | null {
+  const parts: InterpolationPart[] = [];
+  let text = '';
+  let i = 0;
+  while (i < template.length) {
+    const c = template[i];
+    if ((c === '{' || c === '}') && template[i + 1] === c) {
+      text += c;
+      i += 2;
+      continue;
+    }
+    if (c === '}') return null;
+    if (c === '{') {
+      const end = template.indexOf('}', i + 1);
+      const path = end === -1 ? '' : template.slice(i + 1, end);
+      if (!path.trim() || path.includes('{')) return null;
+      if (text) parts.push({ text });
+      text = '';
+      parts.push({ path: path.trim() });
+      i = end + 1;
+      continue;
+    }
+    text += c;
+    i += 1;
+  }
+  if (text) parts.push({ text });
+  return parts;
+}
+
+function validInterpolation(
+  template: string,
+  fields: Eip7730Field[],
+  alwaysVisible: Set<string>,
+): boolean {
+  const parts = interpolationParts(template);
+  if (!parts) return false;
+  return parts.every(part => {
+    if ('text' in part) return true;
+    const path = normalizeFieldPath(part.path);
+    const field = fields.find(f => normalizeFieldPath(f.path) === path);
+    // The spec allows only always-visible fields; an inner call cannot be a phrase.
+    return (
+      field !== undefined &&
+      field.format !== 'calldata' &&
+      alwaysVisible.has(path)
+    );
+  });
 }
 
 function extractMetadata(
@@ -227,10 +293,23 @@ function extractDisplayFormat(
   sources: FieldSources,
 ): Eip7730DisplayFormat | null {
   if (!isPlainObject(rawFormat)) return null;
-  const fields = expandFields(rawFormat.fields, sources);
+  const alwaysVisible = new Set<string>();
+  const fields = expandFields(
+    rawFormat.fields,
+    sources,
+    undefined,
+    alwaysVisible,
+  );
   if (fields.length === 0 && typeof rawFormat.intent !== 'string') return null;
   const out: Eip7730DisplayFormat = { fields };
   if (typeof rawFormat.intent === 'string') out.intent = rawFormat.intent;
+  const template = rawFormat.interpolatedIntent;
+  if (
+    typeof template === 'string' &&
+    validInterpolation(template, fields, alwaysVisible)
+  ) {
+    out.interpolatedIntent = template;
+  }
   if (metadata) out.metadata = metadata;
   return out;
 }
