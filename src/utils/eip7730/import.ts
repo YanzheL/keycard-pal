@@ -40,7 +40,12 @@ export async function importRegistryZipFromPicker(): Promise<ImportResult> {
 
   let bytes: Uint8Array;
   try {
-    const b64 = await RNFS.readFile(file.uri, 'base64');
+    // react-native-fs reads a path on iOS, and the picker hands back a file URL.
+    const source =
+      Platform.OS === 'ios'
+        ? decodeURIComponent(file.uri.replace(/^file:\/\//, ''))
+        : file.uri;
+    const b64 = await RNFS.readFile(source, 'base64');
     bytes = base64ToBytes(b64);
   } catch {
     return { ok: false, reason: 'unreadable' };

@@ -77,6 +77,30 @@ describe('importRegistryZipFromPicker', () => {
     });
   });
 
+  it('reads the path behind the file URL the iOS picker returns', async () => {
+    jest.replaceProperty(Platform, 'OS', 'ios');
+    mockPick.mockResolvedValue([
+      { uri: 'file:///private/var/mobile/tmp/My%20registry.zip' },
+    ]);
+    expect(await importRegistryZipFromPicker()).toEqual({
+      ok: true,
+      index: INDEX,
+    });
+    expect(mockReadFile).toHaveBeenCalledWith(
+      '/private/var/mobile/tmp/My registry.zip',
+      'base64',
+    );
+  });
+
+  it('hands the content URI to the reader unchanged on Android', async () => {
+    jest.replaceProperty(Platform, 'OS', 'android');
+    await importRegistryZipFromPicker();
+    expect(mockReadFile).toHaveBeenCalledWith(
+      'content://registry.zip',
+      'base64',
+    );
+  });
+
   it('refuses a zip with no descriptors and keeps the current index', async () => {
     mockProcess.mockReturnValue({ ...INDEX, contracts: {} });
     expect(await importRegistryZipFromPicker()).toEqual({
