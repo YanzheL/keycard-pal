@@ -149,6 +149,7 @@ describe('Eip712JsonPanel EIP-7730 integration', () => {
     );
 
     expect(screen.getByText('Approve spender')).toBeTruthy();
+    expect(screen.getByTestId('descriptor-source')).toBeTruthy();
     expect(
       screen.getByText(
         'ADDR Spender: 0xABC0000000000000000000000000000000000001',
@@ -396,6 +397,27 @@ describe('Eip712JsonPanel EIP-7730 integration', () => {
       screen.getByText(`ADDR verifyingContract: ${VERIFYING}`),
     ).toBeTruthy();
     expect(screen.queryByText(/Token contract/)).toBeNull();
+  });
+
+  it('drops an entry whose bundled lists differ in length, and says so', () => {
+    const group = { id: 0, iteration: 'bundled' };
+    mockLookupEip712.mockReturnValue({
+      intent: 'Batch',
+      fields: [
+        { path: 'tokens.[]', label: 'Token', format: 'raw', group },
+        { path: 'amounts.[]', label: 'Amount', format: 'raw', group },
+      ],
+    });
+    const message = { tokens: ['0x01', '0x02'], amounts: ['1'] } as any;
+    render(
+      <Eip712JsonPanel
+        request={buildRequest(buildPayload(message))}
+        eip712={buildSummary(message)}
+        chainId={1}
+      />,
+    );
+    expect(screen.getByText(DESCRIPTOR_CHECK_FAILED_WARNING)).toBeTruthy();
+    expect(screen.queryByText('Batch')).toBeNull();
   });
 
   describe('visibility rules', () => {

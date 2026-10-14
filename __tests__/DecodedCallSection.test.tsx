@@ -7,6 +7,7 @@ import {
   buildArgsEachResolver,
   buildArgsPathResolver,
 } from '../src/utils/eip7730/paths';
+import { checksumEthAddress } from '../src/utils/ethereumAddress';
 import type { DecodedCall } from '../src/utils/txParser';
 
 jest.mock('react-native-paper', () => {
@@ -75,7 +76,9 @@ describe('DecodedCallSection', () => {
 
     it('shows token contract row when provided', () => {
       render(<DecodedCallSection call={call} tokenContract={ADDR_B} />);
-      expect(screen.getByText(`Token contract: ${ADDR_B}`)).toBeTruthy();
+      expect(
+        screen.getByText(`Token contract: ${checksumEthAddress(ADDR_B)}`),
+      ).toBeTruthy();
     });
 
     it('omits token contract row when not provided', () => {
@@ -102,7 +105,9 @@ describe('DecodedCallSection', () => {
 
     it('shows token contract row when provided', () => {
       render(<DecodedCallSection call={call} tokenContract={ADDR_A} />);
-      expect(screen.getByText(`Token contract: ${ADDR_A}`)).toBeTruthy();
+      expect(
+        screen.getByText(`Token contract: ${checksumEthAddress(ADDR_A)}`),
+      ).toBeTruthy();
     });
   });
 
@@ -138,7 +143,9 @@ describe('DecodedCallSection', () => {
         amount: 1n,
       };
       render(<DecodedCallSection call={call} tokenContract={ADDR_B} />);
-      expect(screen.getByText(`Token contract: ${ADDR_B}`)).toBeTruthy();
+      expect(
+        screen.getByText(`Token contract: ${checksumEthAddress(ADDR_B)}`),
+      ).toBeTruthy();
     });
   });
 
@@ -440,7 +447,9 @@ describe('DecodedCallSection', () => {
         />,
       );
       expect(screen.getByText('Send')).toBeTruthy();
-      expect(screen.getByText(`Token contract: ${USDT_ADDRESS}`)).toBeTruthy();
+      expect(
+        screen.getByText(`Token contract: ${checksumEthAddress(USDT_ADDRESS)}`),
+      ).toBeTruthy();
       expect(screen.getByText('Amount: 1.5 USDT')).toBeTruthy();
       expect(screen.queryByText('ERC-20 Transfer')).toBeNull();
     });
@@ -478,14 +487,16 @@ describe('DecodedCallSection', () => {
           amountAtTo({ kind: 'erc20-approve', spender: ADDR_A, amount: 7n }),
         );
         expect(screen.getByText('Unknown token')).toBeTruthy();
-        expect(screen.getAllByText(`Token contract: ${UNKNOWN}`)).toHaveLength(
-          1,
-        );
+        expect(
+          screen.getAllByText(`Token contract: ${checksumEthAddress(UNKNOWN)}`),
+        ).toHaveLength(1);
       });
 
       it('keeps the row on any other call, which shows no token contract', () => {
         render(amountAtTo({ kind: 'unknown-call', selector: '0x12345678' }));
-        expect(screen.getByText(`Token contract: ${UNKNOWN}`)).toBeTruthy();
+        expect(
+          screen.getByText(`Token contract: ${checksumEthAddress(UNKNOWN)}`),
+        ).toBeTruthy();
       });
     });
 

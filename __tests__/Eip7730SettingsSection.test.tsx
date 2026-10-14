@@ -9,6 +9,7 @@ import {
 
 import Eip7730SettingsSectionOffline from '../src/components/settings/eip7730/Eip7730SettingsSection.offline';
 import Eip7730SettingsSectionOnline from '../src/components/settings/eip7730/Eip7730SettingsSection.online';
+import { IMPORT_SOURCE_WARNING } from '../src/constants/eip7730';
 import { setSavedIndex } from '../src/utils/eip7730/lookup';
 
 import { testIndex } from './eip7730Index.testUtils';
@@ -84,6 +85,7 @@ describe('Eip7730SettingsSection.offline', () => {
   it('shows the import button, the bundled index and the registry to download', () => {
     render(<Eip7730SettingsSectionOffline />);
     expect(screen.getByText('Import registry zip')).toBeTruthy();
+    expect(screen.getByText(IMPORT_SOURCE_WARNING)).toBeTruthy();
     expect(screen.getByText('Bundled (default)')).toBeTruthy();
     expect(screen.queryByTestId('eip7730-use-bundled')).toBeNull();
     expect(
@@ -167,6 +169,7 @@ describe('Eip7730SettingsSection.online', () => {
     await waitFor(() => {
       expect(screen.getByTestId('eip7730-import-button')).toBeTruthy();
     });
+    expect(screen.getByText(IMPORT_SOURCE_WARNING)).toBeTruthy();
     expect(screen.queryByTestId('eip7730-download-now')).toBeNull();
   });
 

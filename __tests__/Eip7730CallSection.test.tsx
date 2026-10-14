@@ -1,10 +1,12 @@
 import React from 'react';
-import { render, screen } from '@testing-library/react-native';
+import { act, render, screen } from '@testing-library/react-native';
 
 import Eip7730CallSection from '../src/components/SignRequestDetail/eth/DataTabPanel/DecodedCallSection/Eip7730CallSection';
 import { UNLIMITED_APPROVAL_WARNING } from '../src/constants/approval';
 
+import { setSavedIndex } from '../src/utils/eip7730/lookup';
 import { buildArgsPathResolver } from '../src/utils/eip7730/paths';
+import { BUNDLED_SOURCE_TEXT } from '../src/utils/eip7730/source';
 import type { Eip7730DisplayFormat } from '../src/utils/eip7730/zip';
 
 jest.mock('../src/utils/tokenMetadata', () => ({
@@ -218,5 +220,33 @@ describe('Eip7730CallSection', () => {
     rerender(<Eip7730CallSection format={format} resolvePath={transfer(5n)} />);
     expect(screen.getByText('Amount')).toBeTruthy();
     expect(screen.queryByText('To')).toBeNull();
+  });
+  it('says where its entry came from on a top-level call, and follows a change of registry', () => {
+    const format: Eip7730DisplayFormat = { intent: 'Send', fields: [] };
+    render(<Eip7730CallSection format={format} resolvePath={transfer(1n)} />);
+    expect(screen.getByText(BUNDLED_SOURCE_TEXT)).toBeTruthy();
+    try {
+      act(() =>
+        setSavedIndex({
+          generatedAt: '2026-10-13T12:00:00.000Z',
+          source: 'import',
+        }),
+      );
+      expect(screen.getByText(/^From a registry imported on /)).toBeTruthy();
+    } finally {
+      act(() => setSavedIndex(null));
+    }
+  });
+
+  it('leaves the source to the top-level call', () => {
+    const format: Eip7730DisplayFormat = { intent: 'Send', fields: [] };
+    render(
+      <Eip7730CallSection
+        format={format}
+        resolvePath={transfer(1n)}
+        depth={1}
+      />,
+    );
+    expect(screen.queryByTestId('descriptor-source')).toBeNull();
   });
 });

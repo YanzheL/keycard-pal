@@ -68,6 +68,32 @@ describe('loadManifest', () => {
     expect(mockUnlink).not.toHaveBeenCalled();
   });
 
+  it('reads where the index came from, and a manifest saved before it said so', async () => {
+    mockReadFile.mockResolvedValueOnce(
+      JSON.stringify({
+        version: EIP7730_INDEX_VERSION,
+        generatedAt: 'x',
+        source: 'import',
+      }),
+    );
+    expect(await loadManifest()).toMatchObject({ source: 'import' });
+    mockReadFile.mockResolvedValueOnce(
+      JSON.stringify({ version: EIP7730_INDEX_VERSION, generatedAt: 'x' }),
+    );
+    expect((await loadManifest())?.source).toBeUndefined();
+  });
+
+  it('drops a manifest naming a source it does not know', async () => {
+    mockReadFile.mockResolvedValue(
+      JSON.stringify({
+        version: EIP7730_INDEX_VERSION,
+        generatedAt: 'x',
+        source: 'mail',
+      }),
+    );
+    expect(await loadManifest()).toBeNull();
+  });
+
   it('returns null without touching anything when nothing is saved', async () => {
     mockExists.mockResolvedValueOnce(false);
     expect(await loadManifest()).toBeNull();
@@ -120,12 +146,14 @@ describe('loadSlice', () => {
 describe('saveIndex', () => {
   it('writes one file per slice, the manifest last, then swaps the folder in', async () => {
     mockExists.mockResolvedValue(false);
-    const manifest = await saveIndex(INDEX);
+    const manifest = await saveIndex(INDEX, 'download');
 
     expect(manifest).toEqual({
       version: EIP7730_INDEX_VERSION,
       generatedAt: '2026-10-12T00:00:00.000Z',
+      source: 'download',
     });
+    expect(JSON.parse(mockWriteFile.mock.calls[2][1])).toEqual(manifest);
     expect(mockMkdir).toHaveBeenCalledWith(STAGING);
     const written = mockWriteFile.mock.calls.map(call => call[0]);
     expect(written).toEqual([
@@ -140,14 +168,14 @@ describe('saveIndex', () => {
   });
 
   it('clears leftovers of an earlier attempt and the previous index', async () => {
-    await saveIndex(INDEX);
+    await saveIndex(INDEX, 'import');
     expect(mockUnlink).toHaveBeenCalledWith(STAGING);
     expect(mockUnlink).toHaveBeenCalledWith(FOLDER);
   });
 
   it('fails without swapping when a slice cannot be written', async () => {
     mockWriteFile.mockRejectedValueOnce(new Error('ENOSPC'));
-    await expect(saveIndex(INDEX)).rejects.toThrow('ENOSPC');
+    await expect(saveIndex(INDEX, 'import')).rejects.toThrow('ENOSPC');
     expect(mockMoveFile).not.toHaveBeenCalled();
   });
 });

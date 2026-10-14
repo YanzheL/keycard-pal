@@ -1,6 +1,6 @@
 {
-  "version": 7,
-  "generatedAt": "2026-10-13T13:06:57.105Z",
+  "version": 8,
+  "generatedAt": "2026-10-13T16:56:07.602Z",
   "formats": [
     {
       "fields": [
@@ -28992,6 +28992,11 @@
           "format": "tokenAmount",
           "params": {
             "tokenPath": "@.to"
+          },
+          "encryption": {
+            "scheme": "fhevm",
+            "plaintextType": "uint64",
+            "fallbackLabel": "[Encrypted Amount]"
           }
         }
       ],
@@ -29029,6 +29034,11 @@
           "format": "tokenAmount",
           "params": {
             "tokenPath": "@.to"
+          },
+          "encryption": {
+            "scheme": "fhevm",
+            "plaintextType": "uint64",
+            "fallbackLabel": "[Encrypted Amount]"
           }
         }
       ],
@@ -29064,6 +29074,11 @@
           "format": "tokenAmount",
           "params": {
             "tokenPath": "@.to"
+          },
+          "encryption": {
+            "scheme": "fhevm",
+            "plaintextType": "uint64",
+            "fallbackLabel": "[Encrypted Amount]"
           }
         },
         {
@@ -29090,6 +29105,11 @@
           "format": "tokenAmount",
           "params": {
             "tokenPath": "@.to"
+          },
+          "encryption": {
+            "scheme": "fhevm",
+            "plaintextType": "uint64",
+            "fallbackLabel": "[Encrypted Amount]"
           }
         },
         {
@@ -29116,6 +29136,11 @@
           "format": "tokenAmount",
           "params": {
             "tokenPath": "@.to"
+          },
+          "encryption": {
+            "scheme": "fhevm",
+            "plaintextType": "uint64",
+            "fallbackLabel": "[Encrypted Amount]"
           }
         },
         {
@@ -29153,6 +29178,11 @@
           "format": "tokenAmount",
           "params": {
             "tokenPath": "@.to"
+          },
+          "encryption": {
+            "scheme": "fhevm",
+            "plaintextType": "uint64",
+            "fallbackLabel": "[Encrypted Amount]"
           }
         },
         {
@@ -29190,6 +29220,11 @@
           "format": "tokenAmount",
           "params": {
             "tokenPath": "@.to"
+          },
+          "encryption": {
+            "scheme": "fhevm",
+            "plaintextType": "uint64",
+            "fallbackLabel": "[Encrypted Amount]"
           }
         },
         {
@@ -29216,6 +29251,11 @@
           "format": "tokenAmount",
           "params": {
             "tokenPath": "@.to"
+          },
+          "encryption": {
+            "scheme": "fhevm",
+            "plaintextType": "uint64",
+            "fallbackLabel": "[Encrypted Amount]"
           }
         },
         {
@@ -29242,6 +29282,11 @@
           "format": "tokenAmount",
           "params": {
             "tokenPath": "@.to"
+          },
+          "encryption": {
+            "scheme": "fhevm",
+            "plaintextType": "uint64",
+            "fallbackLabel": "[Encrypted Amount]"
           }
         },
         {
@@ -29279,6 +29324,11 @@
           "format": "tokenAmount",
           "params": {
             "tokenPath": "@.to"
+          },
+          "encryption": {
+            "scheme": "fhevm",
+            "plaintextType": "uint64",
+            "fallbackLabel": "[Encrypted Amount]"
           }
         },
         {
@@ -29342,6 +29392,11 @@
           "format": "tokenAmount",
           "params": {
             "tokenPath": "@.to"
+          },
+          "encryption": {
+            "scheme": "fhevm",
+            "plaintextType": "uint64",
+            "fallbackLabel": "[Encrypted Amount]"
           }
         }
       ],
@@ -29357,6 +29412,11 @@
           "format": "tokenAmount",
           "params": {
             "tokenPath": "@.to"
+          },
+          "encryption": {
+            "scheme": "fhevm",
+            "plaintextType": "uint64",
+            "fallbackLabel": "[Encrypted Amount]"
           }
         },
         {
@@ -32840,12 +32900,20 @@
               "local",
               "ens"
             ]
+          },
+          "group": {
+            "id": 0,
+            "label": "Account action"
           }
         },
         {
           "path": "calls.[].value",
           "label": "Native value",
-          "format": "raw"
+          "format": "raw",
+          "group": {
+            "id": 0,
+            "label": "Account action"
+          }
         },
         {
           "path": "calls.[].data",
@@ -32855,6 +32923,10 @@
             "calleePath": "calls.[].to",
             "amountPath": "calls.[].value",
             "spenderPath": "#.eoa"
+          },
+          "group": {
+            "id": 0,
+            "label": "Account action"
           }
         },
         {

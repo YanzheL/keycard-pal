@@ -4,7 +4,10 @@ import { encodeFunctionData, parseAbiItem, type AbiFunction } from 'viem';
 
 import Eip7730FieldList from '../src/components/SignRequestDetail/eth/DataTabPanel/Eip7730FieldList';
 import { UNLIMITED_APPROVAL_WARNING } from '../src/constants/approval';
-import { SIGNER_CAPTION } from '../src/components/SignRequestDetail/eth/DataTabPanel/Eip7730FieldRow';
+import {
+  ENCRYPTED_VALUE_LABEL,
+  SIGNER_CAPTION,
+} from '../src/components/SignRequestDetail/eth/DataTabPanel/Eip7730FieldRow';
 import {
   NOT_SIGNER_WARNING,
   SENDER_TEXT,
@@ -342,6 +345,150 @@ describe('Eip7730FieldList', () => {
       dst: 1n,
     });
     expect(screen.getByText('Destination: Ethereum Mainnet')).toBeTruthy();
+  });
+
+  describe('encrypted fields', () => {
+    const HANDLE = `0x${'ab'.repeat(32)}`;
+
+    it('shows the placeholder and the ciphertext handle, never an amount', () => {
+      renderList(
+        [
+          {
+            path: 'amount',
+            label: 'Amount',
+            format: 'tokenAmount',
+            params: { token: USDC },
+            encryption: {
+              scheme: 'fhevm',
+              fallbackLabel: '[Encrypted Amount]',
+            },
+          },
+        ],
+        { amount: HANDLE },
+      );
+      expect(screen.getByText('Amount: [Encrypted Amount]')).toBeTruthy();
+      expect(
+        screen.getByText(`${ENCRYPTED_VALUE_LABEL}: ${HANDLE}`),
+      ).toBeTruthy();
+      expect(screen.queryByText(/USDC/)).toBeNull();
+    });
+
+    it('treats an encrypted address as a handle, not an address', () => {
+      renderList(
+        [
+          {
+            path: 'to',
+            label: 'To',
+            format: 'addressName',
+            encryption: {},
+          },
+        ],
+        { to: HANDLE },
+      );
+      expect(screen.getByText('To: [Encrypted]')).toBeTruthy();
+      expect(screen.queryByTestId('address-To')).toBeNull();
+    });
+  });
+
+  it('shows an interoperable address as its name, with no ENS lookup', () => {
+    const value = `0x00010000010114${RECIPIENT.slice(2).toLowerCase()}`;
+    renderList(
+      [{ path: 'to', label: 'To', format: 'interoperableAddressName' }],
+      { to: value },
+    );
+    expect(
+      screen.getByText(new RegExp(`^To: ${RECIPIENT}@eip155:1#[0-9A-F]{8}$`)),
+    ).toBeTruthy();
+  });
+
+  describe('groups', () => {
+    const calls = [
+      { to: USDT, value: 1n },
+      { to: USDC, value: 2n },
+    ];
+
+    it("shows a group's label once, before its fields", () => {
+      const group = { id: 0, label: 'Account action' };
+      renderList(
+        [
+          { path: 'calls.[].to', label: 'To', format: 'raw', group },
+          { path: 'calls.[].value', label: 'Value', format: 'raw', group },
+        ],
+        { calls },
+      );
+      expect(screen.getAllByText('Account action')).toHaveLength(1);
+      expect(screen.getByText('Item 1 of 2')).toBeTruthy();
+      expect(screen.getByText('Value: 2')).toBeTruthy();
+    });
+
+    // Text in render order, so a test can see which rows each block holds.
+    const order = () =>
+      screen
+        .getAllByText(/^(Item|To|Value|Token|Amount)/)
+        .map(node => node.props.children);
+
+    it('bundles different arrays by position in a bundled group', () => {
+      const group = { id: 0, iteration: 'bundled' as const };
+      renderList(
+        [
+          { path: 'tokens.[]', label: 'Token', format: 'raw', group },
+          { path: 'amounts.[]', label: 'Amount', format: 'raw', group },
+        ],
+        { tokens: ['a', 'b'], amounts: [1n, 2n] },
+      );
+      expect(order()).toEqual([
+        'Item 1 of 2',
+        'Token: a',
+        'Amount: 1',
+        'Item 2 of 2',
+        'Token: b',
+        'Amount: 2',
+      ]);
+    });
+
+    it('lists each array on its own in a sequential group', () => {
+      const group = { id: 0, iteration: 'sequential' as const };
+      renderList(
+        [
+          { path: 'calls.[].to', label: 'To', format: 'raw', group },
+          { path: 'calls.[].value', label: 'Value', format: 'raw', group },
+        ],
+        { calls },
+      );
+      expect(order()).toEqual([
+        'Item 1 of 2',
+        `To: ${USDT}`,
+        'Item 2 of 2',
+        `To: ${USDC}`,
+        'Item 1 of 2',
+        'Value: 1',
+        'Item 2 of 2',
+        'Value: 2',
+      ]);
+    });
+  });
+
+  describe('separators', () => {
+    const legs = (separator: string): Eip7730Field[] => [
+      { path: 'legs.[]', label: 'Leg', format: 'raw', separator },
+    ];
+
+    it('titles each element with the separator, its index filled in', () => {
+      renderList(legs('Swap {index}:'), { legs: ['x', 'y'] });
+      expect(screen.getByText('Swap 0:')).toBeTruthy();
+      expect(screen.getByText('Swap 1:')).toBeTruthy();
+      expect(screen.queryByText(/Item/)).toBeNull();
+    });
+
+    it('titles a single element too', () => {
+      renderList(legs('Swap {index}'), { legs: ['x'] });
+      expect(screen.getByText('Swap 0')).toBeTruthy();
+    });
+
+    it('falls back to the plain title for a separator naming anything else', () => {
+      renderList(legs('Swap {legs}'), { legs: ['x', 'y'] });
+      expect(screen.getByText('Item 1 of 2')).toBeTruthy();
+    });
   });
 
   describe('with inner calls', () => {

@@ -18,7 +18,10 @@ export function restorePersistedIndex(): Promise<void> {
         await clearSavedIndex();
         return;
       }
-      setSavedIndex({ generatedAt: manifest.generatedAt });
+      setSavedIndex({
+        generatedAt: manifest.generatedAt,
+        source: manifest.source,
+      });
     });
   }
   return restoring;

@@ -41,10 +41,13 @@ beforeEach(() => {
 
 describe('restorePersistedIndex', () => {
   it('makes a saved index the source, from its manifest alone', async () => {
-    mockLoadManifest.mockResolvedValue(SAVED);
+    mockLoadManifest.mockResolvedValue({ ...SAVED, source: 'download' });
     const { restore, lookup } = load();
     await restore.restorePersistedIndex();
-    expect(lookup.getSavedIndex()).toEqual({ generatedAt: SAVED.generatedAt });
+    expect(lookup.getSavedIndex()).toEqual({
+      generatedAt: SAVED.generatedAt,
+      source: 'download',
+    });
   });
 
   it('reads the manifest once per app run', async () => {

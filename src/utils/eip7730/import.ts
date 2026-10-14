@@ -56,10 +56,10 @@ export async function importRegistryZipFromPicker(): Promise<ImportResult> {
 
   let generatedAt: string;
   try {
-    ({ generatedAt } = await saveIndex(index));
+    ({ generatedAt } = await saveIndex(index, 'import'));
   } catch {
     return { ok: false, reason: 'unsaved' };
   }
-  setSavedIndex({ generatedAt });
+  setSavedIndex({ generatedAt, source: 'import' });
   return { ok: true, index };
 }

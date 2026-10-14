@@ -277,7 +277,11 @@ describe('rendering untrusted formats', () => {
       format: 'tokenAmount' as const,
       params: { token: ADDRESS },
     };
-    const ctx = { chainId: 1, resolvePath: () => '5' };
+    const ctx = {
+      chainId: 1,
+      contractAddress: ADDRESS,
+      resolvePath: () => '5',
+    };
     expect(formatEip7730Field(field, '5', format, ctx)).toEqual({ text: '5' });
   });
 

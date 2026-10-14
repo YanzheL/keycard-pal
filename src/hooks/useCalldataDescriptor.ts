@@ -9,7 +9,7 @@ import {
   decodeArgsBySignature,
   type Eip7730Container,
 } from '@/utils/eip7730/paths';
-import { passesMustMatch } from '@/utils/eip7730/visibility';
+import { fitsRequest } from '@/utils/eip7730/visibility';
 import type { Eip7730DisplayFormat } from '@/utils/eip7730/zip';
 
 /** A registry entry that matched a call, with its arguments decoded by its own signature. */
@@ -57,7 +57,7 @@ export function useCalldataDescriptor({
       resolvePath: buildArgsPathResolver(args, container),
       resolveEach: buildArgsEachResolver(args, container),
     };
-    return passesMustMatch(format, descriptor)
+    return fitsRequest(format, descriptor)
       ? { descriptor, rejected: false }
       : { descriptor: null, rejected: true };
   }, [format, data, container]);

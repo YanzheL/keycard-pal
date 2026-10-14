@@ -12,6 +12,7 @@ import {
 } from '../src/utils/eip7730/paths';
 import type { Eip7730FieldContext } from '../src/utils/eip7730/format';
 import type { Eip7730Field } from '../src/utils/eip7730/zip';
+import { checksumEthAddress } from '../src/utils/ethereumAddress';
 
 jest.mock('react-native-paper', () => {
   const { Text, View } = require('react-native');
@@ -121,7 +122,9 @@ describe('Eip7730InnerCalls', () => {
 
     // No entry for this token: the app's own approve section, warning included.
     expect(screen.getByText(UNLIMITED_APPROVAL_WARNING)).toBeTruthy();
-    expect(screen.getByText(`Token contract: ${OTHER_TOKEN}`)).toBeTruthy();
+    expect(
+      screen.getByText(`Token contract: ${checksumEthAddress(OTHER_TOKEN)}`),
+    ).toBeTruthy();
 
     // Nothing knows this one.
     expect(screen.getByText(`Contract: ${SOME_CONTRACT}`)).toBeTruthy();
@@ -207,7 +210,9 @@ describe('Eip7730InnerCalls', () => {
       render(<Eip7730InnerCalls field={callsField} ctx={ctx} />);
       expect(screen.getByText(DESCRIPTOR_CHECK_FAILED_WARNING)).toBeTruthy();
       expect(screen.queryByText('Send')).toBeNull();
-      expect(screen.getByText(`Token contract: ${USDT}`)).toBeTruthy();
+      expect(
+        screen.getByText(`Token contract: ${checksumEthAddress(USDT)}`),
+      ).toBeTruthy();
     } finally {
       spy.mockRestore();
     }
@@ -233,5 +238,42 @@ describe('Eip7730InnerCalls', () => {
     } finally {
       spy.mockRestore();
     }
+  });
+  it('puts a selector given apart back in front of its arguments', () => {
+    const args = `0x${transfer.slice(10)}`;
+    const field: Eip7730Field = {
+      path: 'call',
+      label: 'Call',
+      format: 'calldata',
+      params: { callee: USDT, selector: transfer.slice(0, 10) },
+    };
+    render(<Eip7730InnerCalls field={field} ctx={ctxFor({ call: args })} />);
+    expect(screen.getByText('Send')).toBeTruthy();
+    expect(screen.getByText('Amount: 1.5 USDT')).toBeTruthy();
+  });
+
+  it('leaves data that already starts with the selector as it is', () => {
+    const field: Eip7730Field = {
+      path: 'call',
+      label: 'Call',
+      format: 'calldata',
+      params: { callee: USDT, selectorPath: 'sel' },
+    };
+    render(
+      <Eip7730InnerCalls
+        field={field}
+        ctx={ctxFor({ call: transfer, sel: transfer.slice(0, 10) })}
+      />,
+    );
+    expect(screen.getByText('Amount: 1.5 USDT')).toBeTruthy();
+  });
+  it('shows a call with no data by its contract alone', () => {
+    const ctx = ctxFor({
+      calls: [{ to: SOME_CONTRACT, data: '0x', value: 5n }],
+    });
+    render(<Eip7730InnerCalls field={callsField} ctx={ctx} />);
+    expect(screen.getByText(`Contract: ${SOME_CONTRACT}`)).toBeTruthy();
+    expect(screen.getByText('Data: —')).toBeTruthy();
+    expect(screen.queryByText(/Contract call/)).toBeNull();
   });
 });

@@ -11,7 +11,13 @@ const FOLDER = 'eip7730';
 const STAGING = 'eip7730-next';
 const MANIFEST = 'manifest.json';
 
-export type SavedIndexManifest = { version: number; generatedAt: string };
+export type IndexSource = 'import' | 'download';
+
+export type SavedIndexManifest = {
+  version: number;
+  generatedAt: string;
+  source?: IndexSource;
+};
 
 function folder(name = FOLDER): string {
   return `${RNFS.DocumentDirectoryPath}/${name}`;
@@ -22,7 +28,10 @@ function isManifest(value: unknown): value is SavedIndexManifest {
   const manifest = value as Partial<SavedIndexManifest>;
   return (
     manifest.version === EIP7730_INDEX_VERSION &&
-    typeof manifest.generatedAt === 'string'
+    typeof manifest.generatedAt === 'string' &&
+    (manifest.source === undefined ||
+      manifest.source === 'import' ||
+      manifest.source === 'download')
   );
 }
 
@@ -69,6 +78,7 @@ export async function loadSlice(
 
 export async function saveIndex(
   index: Eip7730Index,
+  source: IndexSource,
 ): Promise<SavedIndexManifest> {
   const staging = folder(STAGING);
   if (await RNFS.exists(staging)) await RNFS.unlink(staging);
@@ -78,7 +88,11 @@ export async function saveIndex(
       RNFS.writeFile(`${staging}/${name}.json`, JSON.stringify(slice), 'utf8'),
     ),
   );
-  const manifest = { version: index.version, generatedAt: index.generatedAt };
+  const manifest = {
+    version: index.version,
+    generatedAt: index.generatedAt,
+    source,
+  };
   // Written last, so a folder cut short by a failure has none and is ignored.
   await RNFS.writeFile(
     `${staging}/${MANIFEST}`,

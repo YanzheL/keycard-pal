@@ -1,4 +1,5 @@
 import {
+  fitsRequest,
   isFieldShown,
   passesMustMatch,
   sameValue,
@@ -143,5 +144,48 @@ describe('passesMustMatch', () => {
       visible: { mustMatch: [ADDRESS.toLowerCase()] },
     });
     expect(passesMustMatch(fmt, source({}))).toBe(true);
+  });
+});
+
+describe('fitsRequest', () => {
+  const bundled = { id: 0, iteration: 'bundled' as const };
+  const lists = (tokens: string[], amounts: string[]) =>
+    source({ 'tokens.[]': tokens, 'amounts.[]': amounts });
+
+  it('fails a mustMatch value outside its list', () => {
+    const fmt = format(field('op', { mustMatch: ['0'] }));
+    expect(fitsRequest(fmt, source({ op: '1' }))).toBe(false);
+    expect(fitsRequest(fmt, source({ op: '0' }))).toBe(true);
+  });
+
+  it('fails a bundled group whose arrays differ in length', () => {
+    const fmt = format(
+      { ...field('tokens.[]'), group: bundled },
+      { ...field('amounts.[]'), group: bundled },
+    );
+    expect(fitsRequest(fmt, lists(['a', 'b'], ['1', '2']))).toBe(true);
+    expect(fitsRequest(fmt, lists(['a', 'b'], ['1']))).toBe(false);
+  });
+
+  it('lets arrays outside a bundled group differ', () => {
+    const fmt = format(field('tokens.[]'), field('amounts.[]'));
+    expect(fitsRequest(fmt, lists(['a', 'b'], ['1']))).toBe(true);
+  });
+
+  it('fails a param over another array of a different length', () => {
+    const fmt = format({
+      ...field('amounts.[]'),
+      params: { tokenPath: 'tokens.[]' },
+    });
+    expect(fitsRequest(fmt, lists(['a', 'b'], ['1', '2']))).toBe(true);
+    expect(fitsRequest(fmt, lists(['a'], ['1', '2']))).toBe(false);
+  });
+
+  it('skips constants and fields over no array', () => {
+    const fmt = format(
+      { ...field(''), value: '1', group: bundled },
+      { ...field('x'), group: bundled, params: { tokenPath: 'tokens.[]' } },
+    );
+    expect(fitsRequest(fmt, lists(['a'], []))).toBe(true);
   });
 });

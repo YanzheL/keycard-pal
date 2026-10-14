@@ -159,10 +159,11 @@ describe('Eip7730DownloadProvider', () => {
       { headers: {} },
     );
     expect(mockProcess).toHaveBeenCalled();
-    expect(mockSaveIndex).toHaveBeenCalled();
+    expect(mockSaveIndex).toHaveBeenCalledWith(expect.anything(), 'download');
     expect(mockSaveEtag).toHaveBeenCalledWith('W/abc');
     expect(mockSetSavedIndex).toHaveBeenCalledWith({
       generatedAt: '2026-10-12T00:00:00.000Z',
+      source: 'download',
     });
   });
 
@@ -229,6 +230,7 @@ describe('Eip7730DownloadProvider', () => {
     );
     expect(mockSetSavedIndex).toHaveBeenCalledWith({
       generatedAt: '2026-10-12T00:00:00.000Z',
+      source: 'download',
     });
   });
 

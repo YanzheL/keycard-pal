@@ -1,4 +1,4 @@
-import { loadSlice } from '@/storage/eip7730Index';
+import { loadSlice, type IndexSource } from '@/storage/eip7730Index';
 
 import {
   indexedFormat,
@@ -8,7 +8,7 @@ import {
   type Eip7730IndexSlice,
 } from './zip';
 
-export type SavedIndex = { generatedAt: string };
+export type SavedIndex = { generatedAt: string; source?: IndexSource };
 
 /** Answers at once from the bundled index or a slice already read, else once the slice is read. */
 export type FormatLookup =

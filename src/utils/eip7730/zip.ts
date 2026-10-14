@@ -14,10 +14,25 @@ export type Eip7730FieldFormat =
   | 'chainId'
   | 'tokenTicker'
   | 'addressName'
+  | 'interoperableAddressName'
   | 'calldata';
 
 /** The spec's `visible` object; list entries are kept as text. */
 export type Eip7730Visibility = { ifNotIn?: string[]; mustMatch?: string[] };
+
+/** Present when the on-chain value is encrypted; the app cannot decrypt it. */
+export type Eip7730Encryption = {
+  scheme?: string;
+  plaintextType?: string;
+  fallbackLabel?: string;
+};
+
+/** The group a field was declared in, kept only when it has a label or an iteration mode. */
+export type Eip7730Group = {
+  id: number;
+  label?: string;
+  iteration?: 'sequential' | 'bundled';
+};
 
 export type Eip7730Field = {
   path: string;
@@ -26,6 +41,9 @@ export type Eip7730Field = {
   params?: Record<string, unknown>;
   value?: string;
   visible?: Eip7730Visibility;
+  encryption?: Eip7730Encryption;
+  separator?: string;
+  group?: Eip7730Group;
 };
 
 export type Eip7730TokenMetadata = {
@@ -70,7 +88,7 @@ export type Eip7730IndexSlice = Pick<
   'formats' | 'contracts' | 'eip712'
 >;
 
-export const EIP7730_INDEX_VERSION = 7;
+export const EIP7730_INDEX_VERSION = 8;
 
 const SCHEMA_MAJOR = 2;
 const SELECTOR_RE = /^0x[0-9a-f]{8}$/i;
@@ -166,6 +184,36 @@ function visibilityRule(
   return rule.ifNotIn || rule.mustMatch ? rule : undefined;
 }
 
+function encryptionRule(raw: unknown): Eip7730Encryption | undefined {
+  if (!isPlainObject(raw)) return undefined;
+  const rule: Eip7730Encryption = {};
+  for (const key of ['scheme', 'plaintextType', 'fallbackLabel'] as const) {
+    const value = own(raw, key);
+    if (typeof value === 'string') rule[key] = value;
+  }
+  return rule;
+}
+
+type GroupState = { next: number };
+
+function groupOf(
+  raw: Json,
+  outer: Eip7730Group | undefined,
+  state: GroupState,
+): Eip7730Group | undefined {
+  const label = typeof raw.label === 'string' ? raw.label : undefined;
+  const iteration =
+    raw.iteration === 'sequential' || raw.iteration === 'bundled'
+      ? raw.iteration
+      : undefined;
+  if (label === undefined && iteration === undefined) return outer;
+  return {
+    id: state.next++,
+    ...(label !== undefined && { label }),
+    ...(iteration && { iteration }),
+  };
+}
+
 function mergeParams(base: unknown, override: unknown): Json | undefined {
   if (!isPlainObject(base))
     return isPlainObject(override) ? override : undefined;
@@ -209,6 +257,8 @@ function expandFields(
   sources: FieldSources,
   prefix?: string,
   alwaysVisible: Set<string> = new Set(),
+  group?: Eip7730Group,
+  groups: GroupState = { next: 0 },
 ): Eip7730Field[] {
   if (!Array.isArray(rawFields)) return [];
   const out: Eip7730Field[] = [];
@@ -221,7 +271,14 @@ function expandFields(
         : undefined;
     if (Array.isArray(field.fields)) {
       out.push(
-        ...expandFields(field.fields, sources, path ?? prefix, alwaysVisible),
+        ...expandFields(
+          field.fields,
+          sources,
+          path ?? prefix,
+          alwaysVisible,
+          groupOf(field, group, groups),
+          groups,
+        ),
       );
       continue;
     }
@@ -237,18 +294,26 @@ function expandFields(
       prefix,
     );
     const value = substituteConstant(field.value, sources.constants);
-    const rule = visible ? { visible } : {};
+    const encryption = encryptionRule(field.encryption);
+    const extra = {
+      ...(visible && { visible }),
+      ...(encryption && { encryption }),
+      ...(typeof field.separator === 'string' && {
+        separator: field.separator,
+      }),
+      ...(group && { group }),
+    };
     if (typeof value === 'string' || typeof value === 'number') {
       const text = String(value);
       // An unresolved constant would show its own reference as the value.
       if (text.startsWith('$.')) continue;
       const label = typeof field.label === 'string' ? field.label : '';
-      out.push({ path: '', label, format, params, value: text, ...rule });
+      out.push({ path: '', label, format, params, value: text, ...extra });
       continue;
     }
     if (!path) continue;
     const label = typeof field.label === 'string' ? field.label : path;
-    out.push({ path, label, format, params, ...rule });
+    out.push({ path, label, format, params, ...extra });
     if (field.visible === undefined || field.visible === 'always') {
       alwaysVisible.add(normalizeFieldPath(path));
     }
@@ -336,9 +401,7 @@ function extractMetadata(
     const decimals = isDecimals(t.decimals) ? t.decimals : undefined;
     const ticker = typeof t.ticker === 'string' ? t.ticker : undefined;
     if (decimals !== undefined || ticker !== undefined) {
-      const addr =
-        typeof t.address === 'string' ? t.address.toLowerCase() : '*';
-      result.tokens = { [addr]: { decimals, ticker } };
+      result.tokens = { '*': { decimals, ticker } };
     }
   }
   if (

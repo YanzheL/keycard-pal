@@ -1,3 +1,4 @@
+import { arrayIndices, firstArraySelector } from './arrays';
 import type { Eip7730FieldContext } from './format';
 import type { Eip7730DisplayFormat, Eip7730Field } from './zip';
 
@@ -59,4 +60,44 @@ export function passesMustMatch(
       values.every(value => allowed.some(v => sameValue(value, v)))
     );
   });
+}
+
+function countOf(path: string, source: ValueSource): number | null {
+  const selector = firstArraySelector(path);
+  return selector ? arrayIndices(selector, source)?.length ?? null : null;
+}
+
+function arraysLineUp(
+  format: Eip7730DisplayFormat,
+  source: ValueSource,
+): boolean {
+  const bundled = new Map<number, number>();
+  for (const field of format.fields) {
+    if (field.value !== undefined) continue;
+    const count = countOf(field.path, source);
+    if (count === null) continue;
+    const group = field.group;
+    if (group?.iteration === 'bundled') {
+      const seen = bundled.get(group.id);
+      if (seen !== undefined && seen !== count) return false;
+      bundled.set(group.id, count);
+    }
+    const own = firstArraySelector(field.path)?.prefix;
+    for (const [key, value] of Object.entries(field.params ?? {})) {
+      if (!key.endsWith('Path') || typeof value !== 'string') continue;
+      const other = firstArraySelector(value);
+      if (!other || other.prefix === own) continue;
+      const paired = countOf(value, source);
+      if (paired !== null && paired !== count) return false;
+    }
+  }
+  return true;
+}
+
+/** False when the entry does not describe this request: a failed `mustMatch` or arrays that do not line up. */
+export function fitsRequest(
+  format: Eip7730DisplayFormat,
+  source: ValueSource,
+): boolean {
+  return passesMustMatch(format, source) && arraysLineUp(format, source);
 }

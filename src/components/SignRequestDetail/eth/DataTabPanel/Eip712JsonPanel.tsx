@@ -27,11 +27,12 @@ import {
   resolveEip712FieldValue,
   resolveEip712FieldValues,
 } from '@/utils/eip7730/paths';
-import { passesMustMatch, shownFields } from '@/utils/eip7730/visibility';
+import { fitsRequest, shownFields } from '@/utils/eip7730/visibility';
 import { classifyEthPayload } from '@/utils/ethPayload';
 
 import Eip7730FieldList from './Eip7730FieldList';
 import {
+  DescriptorSourceLine,
   DigestExplainer,
   DigestRow,
   SectionHeader,
@@ -103,7 +104,7 @@ export default function Eip712JsonPanel({
   }, [domainChainId, verifyingContract, rawTypedData, request.address]);
 
   const rejected =
-    matchedFormat !== null && !passesMustMatch(matchedFormat, fieldContext);
+    matchedFormat !== null && !fitsRequest(matchedFormat, fieldContext);
   const eip7730Descriptor = rejected ? null : matchedFormat;
   const eip7730Fields = eip7730Descriptor
     ? shownFields(eip7730Descriptor, fieldContext)
@@ -161,6 +162,7 @@ export default function Eip712JsonPanel({
                     </Text>
                   </View>
                 )}
+                <DescriptorSourceLine />
                 {eip7730Fields.length > 0 && <SectionHeader title="Message" />}
                 <Eip7730FieldList
                   fields={eip7730Descriptor.fields}

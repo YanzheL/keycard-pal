@@ -1,7 +1,8 @@
 import { useCallback, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
-import { Text } from 'react-native-paper';
+import { Icon, Text } from 'react-native-paper';
 
+import { IMPORT_SOURCE_WARNING } from '@/constants/eip7730';
 import theme from '@/theme';
 
 import SettingsButton from './SettingsButton';
@@ -45,6 +46,13 @@ export default function ImportRegistryButton({
         testID="eip7730-import-button"
       />
       {error && <Text style={styles.error}>{error}</Text>}
+      {/* Whoever made the file decides what the review screens say. */}
+      <View style={styles.warning}>
+        <Icon source="alert" size={16} color={theme.colors.negative} />
+        <Text variant="labelSmall" style={styles.warningText}>
+          {IMPORT_SOURCE_WARNING}
+        </Text>
+      </View>
     </View>
   );
 }
@@ -56,5 +64,14 @@ const styles = StyleSheet.create({
   error: {
     color: theme.colors.error,
     fontSize: 12,
+  },
+  warning: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  warningText: {
+    color: theme.colors.negative,
+    flexShrink: 1,
   },
 });

@@ -53,9 +53,10 @@ describe('importRegistryZipFromPicker', () => {
   it('saves and activates an index with descriptors', async () => {
     const result = await importRegistryZipFromPicker();
     expect(result).toEqual({ ok: true, index: INDEX });
-    expect(mockSaveIndex).toHaveBeenCalledWith(INDEX);
+    expect(mockSaveIndex).toHaveBeenCalledWith(INDEX, 'import');
     expect(mockSetSavedIndex).toHaveBeenCalledWith({
       generatedAt: '2026-10-12T00:00:00.000Z',
+      source: 'import',
     });
   });
 

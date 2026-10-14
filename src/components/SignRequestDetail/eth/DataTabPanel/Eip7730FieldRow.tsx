@@ -8,6 +8,7 @@ import InfoRow from '@/components/InfoRow';
 
 import {
   describeAddress,
+  describeInteroperable,
   describeTokenTicker,
   formatEip7730Field,
   SENDER_TEXT,
@@ -22,27 +23,29 @@ import Eip7730InnerCalls from './Eip7730InnerCalls';
 import { WarningRow } from './shared';
 
 export const SIGNER_CAPTION = 'The address signing this';
+export const ENCRYPTED_VALUE_LABEL = 'Encrypted value';
 
 function AddressNameRows({
   label,
   shown,
 }: {
   label: string;
-  shown: AddressNameDisplay;
+  shown: AddressNameDisplay & { name?: string };
 }) {
+  const token = shown.token && (
+    <TokenSymbolRow token={shown.token} style={styles.name} />
+  );
   return (
     <>
       <View style={styles.row}>
-        {shown.address ? (
+        {shown.name && !shown.sender ? (
+          <InfoRow label={label} value={shown.name} name={token} />
+        ) : shown.address ? (
           <AddressInfoRow
             label={label}
             value={shown.address}
             ens={shown.ens}
-            name={
-              shown.token && (
-                <TokenSymbolRow token={shown.token} style={styles.name} />
-              )
-            }
+            name={token}
           />
         ) : (
           <InfoRow label={label} value={SENDER_TEXT} />
@@ -73,18 +76,22 @@ export default function Eip7730FieldRow({
     return <Eip7730InnerCalls field={field} ctx={ctx} />;
   }
   const raw = field.value ?? ctx.resolvePath(field.path);
+  // An encrypted value is a ciphertext handle, never an address.
   const shown =
-    raw === null
+    raw === null || field.encryption
       ? null
       : field.format === 'addressName'
       ? describeAddress(field, raw, format, ctx)
       : field.format === 'tokenTicker'
       ? describeTokenTicker(field, raw, format, ctx)
+      : field.format === 'interoperableAddressName'
+      ? describeInteroperable(field, raw, format, ctx)
       : null;
   if (shown) return <AddressNameRows label={field.label} shown={shown} />;
   const {
     text,
     warnings = [],
+    encryptedValue,
     ...rest
   } = formatEip7730Field(field, raw, format, ctx);
   const unknownTokenAddress =
@@ -96,6 +103,11 @@ export default function Eip7730FieldRow({
       <View style={styles.row}>
         <InfoRow label={field.label} value={text} />
       </View>
+      {encryptedValue !== undefined && (
+        <View style={styles.row}>
+          <InfoRow label={ENCRYPTED_VALUE_LABEL} value={encryptedValue} />
+        </View>
+      )}
       {warnings.map(warning => (
         <WarningRow key={warning} text={warning} />
       ))}

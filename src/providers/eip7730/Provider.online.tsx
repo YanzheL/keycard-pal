@@ -154,10 +154,10 @@ export function Eip7730DownloadProvider({
       if (isEmptyIndex(index)) {
         throw new Error('The file has no descriptors this app can read.');
       }
-      const { generatedAt } = await saveIndex(index);
+      const { generatedAt } = await saveIndex(index, 'download');
       if (result.etag) await saveEtag(result.etag);
       if (result.lastModified) await saveLastModified(result.lastModified);
-      setSavedIndex({ generatedAt });
+      setSavedIndex({ generatedAt, source: 'download' });
       setPhase('done');
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));

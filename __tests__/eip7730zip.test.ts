@@ -339,9 +339,9 @@ describe('processRegistryZip', () => {
         '0xa9059cbb'
       ];
     expect(entry.metadata?.tokens).toBeDefined();
-    const tokenAddr = '0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48';
-    expect(entry.metadata?.tokens?.[tokenAddr].decimals).toBe(6);
-    expect(entry.metadata?.tokens?.[tokenAddr].ticker).toBe('USDC');
+    expect(entry.metadata?.tokens).toEqual({
+      '*': { decimals: 6, ticker: 'USDC' },
+    });
   });
 });
 
@@ -815,9 +815,125 @@ describe('field expansion', () => {
   });
 });
 
+describe('encryption, separators and groups', () => {
+  it('keeps encryption from a definition, its strings only', () => {
+    const fields = fieldsOf({
+      'registry/a.json': {
+        ...contract(),
+        ...transferFormat(
+          [
+            { path: 'amount', $ref: '$.display.definitions.secret' },
+            {
+              path: 'to',
+              label: 'To',
+              format: 'raw',
+              encryption: { scheme: 7, fallbackLabel: '[Hidden]' },
+            },
+            { path: 'memo', label: 'Memo', format: 'raw', encryption: 'yes' },
+          ],
+          {
+            definitions: {
+              secret: {
+                label: 'Amount',
+                format: 'tokenAmount',
+                encryption: {
+                  scheme: 'fhevm',
+                  plaintextType: 'uint64',
+                  fallbackLabel: '[Encrypted Amount]',
+                },
+              },
+            },
+          },
+        ),
+      },
+    });
+    expect(fields?.map(f => f.encryption)).toEqual([
+      {
+        scheme: 'fhevm',
+        plaintextType: 'uint64',
+        fallbackLabel: '[Encrypted Amount]',
+      },
+      { fallbackLabel: '[Hidden]' },
+      undefined,
+    ]);
+  });
+
+  it('keeps a string separator', () => {
+    const fields = fieldsOf({
+      'registry/a.json': {
+        ...contract(),
+        ...transferFormat([
+          { path: 'a.[]', label: 'A', format: 'raw', separator: 'Leg {index}' },
+          { path: 'b.[]', label: 'B', format: 'raw', separator: 3 },
+        ]),
+      },
+    });
+    expect(fields?.map(f => f.separator)).toEqual(['Leg {index}', undefined]);
+  });
+
+  it('keeps the group a field sits in only when it has a label or an iteration mode', () => {
+    const fields = fieldsOf({
+      'registry/a.json': {
+        ...contract(),
+        ...transferFormat([
+          {
+            path: 'calls.[]',
+            label: 'Account action',
+            fields: [
+              { path: 'to', label: 'To', format: 'raw' },
+              { path: 'value', label: 'Value', format: 'raw' },
+            ],
+          },
+          {
+            iteration: 'bundled',
+            fields: [
+              { path: 'tokens.[]', label: 'Token', format: 'raw' },
+              {
+                fields: [
+                  { path: 'amounts.[]', label: 'Amount', format: 'raw' },
+                ],
+              },
+            ],
+          },
+          {
+            iteration: 'sideways',
+            fields: [{ path: 'x', label: 'X', format: 'raw' }],
+          },
+          { fields: [{ path: 'y', label: 'Y', format: 'raw' }] },
+        ]),
+      },
+    });
+    expect(fields?.map(f => [f.path, f.group])).toEqual([
+      ['calls.[].to', { id: 0, label: 'Account action' }],
+      ['calls.[].value', { id: 0, label: 'Account action' }],
+      ['tokens.[]', { id: 1, iteration: 'bundled' }],
+      ['amounts.[]', { id: 1, iteration: 'bundled' }],
+      ['x', undefined],
+      ['y', undefined],
+    ]);
+  });
+
+  it('never binds an entry only a factory deploys, which needs chain data to verify', () => {
+    const index = buildIndexFromDescriptors([
+      {
+        context: {
+          contract: {
+            factory: {
+              deployEvent: 'event Deployed(address)',
+              deployments: [{ chainId: 1, address: ADDR }],
+            },
+          },
+        },
+        ...transferFormat([{ path: 'to', label: 'To', format: 'raw' }]),
+      },
+    ]);
+    expect(isEmptyIndex(index)).toBe(true);
+  });
+});
+
 describe('index shape', () => {
-  it('is version 7', () => {
-    expect(EIP7730_INDEX_VERSION).toBe(7);
+  it('is version 8', () => {
+    expect(EIP7730_INDEX_VERSION).toBe(8);
   });
 
   it('stores each key once per contract, its chains under it', () => {

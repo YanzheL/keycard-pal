@@ -79,18 +79,33 @@ function InnerCall({
       </>
     );
   }
+  // A call with no data only moves value, so it has no function to name.
+  const hasSelector = data.length >= 10;
   return (
     <>
       {warning}
       {contractRow}
+      {hasSelector && (
+        <View style={styles.row}>
+          <InfoRow label="Contract call" value={data.slice(0, 10)} />
+        </View>
+      )}
       <View style={styles.row}>
-        <InfoRow label="Contract call" value={data.slice(0, 10)} />
-      </View>
-      <View style={styles.row}>
-        <InfoRow label="Data" value={data} />
+        <InfoRow label="Data" value={data.length > 2 ? data : '—'} />
       </View>
     </>
   );
+}
+
+const SELECTOR_RE = /^0x[0-9a-f]{8}$/i;
+
+// The spec lets the selector come apart from the arguments.
+function withSelector(data: string, selector: string | undefined): string {
+  return selector &&
+    SELECTOR_RE.test(selector) &&
+    !data.toLowerCase().startsWith(selector.toLowerCase())
+    ? `${selector}${data.slice(2)}`
+    : data;
 }
 
 function pick(
@@ -126,6 +141,7 @@ export default function Eip7730InnerCalls({
   const amounts = pick(field.params, 'amountPath', 'amount', each);
   const spenders = pick(field.params, 'spenderPath', 'spender', each);
   const chainIds = pick(field.params, 'chainIdPath', 'chainId', each);
+  const selectors = pick(field.params, 'selectorPath', 'selector', each);
   // One value applies to every call; a list pairs with the calls by position.
   const at = (list: string[], i: number) =>
     list.length === 1 ? list[0] : list[i];
@@ -151,7 +167,7 @@ export default function Eip7730InnerCalls({
             }
           >
             <InnerCall
-              data={data}
+              data={withSelector(data, at(selectors, i))}
               callee={at(callees, i)}
               chainId={Number.isSafeInteger(chainId) ? chainId : undefined}
               amount={at(amounts, i)}

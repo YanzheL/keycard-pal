@@ -244,6 +244,35 @@ describe('visibility rules', () => {
   });
 });
 
+describe('encrypted amounts', () => {
+  const CUSDC = '0xe978f22157048e5db8e5d07971376e86671672b2';
+
+  it('shows a confidential transfer amount as the placeholder, never the handle', () => {
+    const handle = `0x${'ab'.repeat(32)}`;
+    const selector = Object.keys(
+      (bundled as unknown as Eip7730Index).contracts[CUSDC] ?? {},
+    ).find(key => {
+      const format = lookupCalldata(1, CUSDC, key);
+      return format?.signature?.startsWith(
+        'confidentialTransfer(address to,bytes32 amount)',
+      );
+    });
+    expect(selector).toBeDefined();
+    const descriptor = lookupCalldata(1, CUSDC, selector!)!;
+    const resolvePath = buildArgsPathResolver(
+      { to: RECIPIENT, amount: handle },
+      { to: CUSDC, chainId: 1 },
+    );
+    const out = rows(descriptor, {
+      chainId: 1,
+      contractAddress: CUSDC,
+      resolvePath,
+    });
+    expect(Object.values(out)).toContain('[Encrypted Amount]');
+    expect(JSON.stringify(out)).not.toContain('abab');
+  });
+});
+
 describe('sentences', () => {
   it('fills a real entry sentence the way its fields are shown', () => {
     const token = '0x004e9c3ef86bc1ca1f0bb5c7662861ee93350568';

@@ -1,4 +1,4 @@
-import { formatUnits } from 'viem';
+import { formatUnits, keccak256 } from 'viem';
 
 import { UNLIMITED_APPROVAL_WARNING } from '@/constants/approval';
 
@@ -31,12 +31,15 @@ export type Eip7730FieldDisplay = {
   text: string;
   warnings?: string[];
   unknownTokenAddress?: string;
+  /** The ciphertext or its handle, shown beside the placeholder. */
+  encryptedValue?: string;
 };
 
 export const UNKNOWN_TOKEN_WARNING = 'Unknown token';
 export const NOT_SIGNER_WARNING =
   'This is not the address signing this request.';
 export const SENDER_TEXT = 'Sender';
+export const ENCRYPTED_TEXT = '[Encrypted]';
 
 const ADDRESS_RE = /^0x[0-9a-fA-F]{40}$/;
 const WORD_RE = /^0x[0-9a-fA-F]{64}$/;
@@ -127,6 +130,60 @@ export function describeAddress(
   return { address, sender: false, token, warnings, ens };
 }
 
+function encryptedLabel(field: Eip7730Field): string | null {
+  return field.encryption
+    ? field.encryption.fallbackLabel ?? ENCRYPTED_TEXT
+    : null;
+}
+
+/** An ERC-7930 address on an EVM chain as ERC-7828 writes it; null for anything else. */
+export function interoperableName(
+  raw: string,
+): { text: string; address: string; chainId: number } | null {
+  if (!/^0x([0-9a-f]{2})*$/i.test(raw)) return null;
+  const hex = raw.slice(2).toLowerCase();
+  const byte = (i: number) => parseInt(hex.slice(i * 2, i * 2 + 2), 16);
+  const size = hex.length / 2;
+  if (size < 6 || byte(0) * 256 + byte(1) !== 1) return null;
+  const chainType = byte(2) * 256 + byte(3);
+  const referenceLength = byte(4);
+  if (6 + referenceLength > size) return null;
+  const addressLength = byte(5 + referenceLength);
+  if (6 + referenceLength + addressLength !== size) return null;
+  // Only eip155 (0x0000) has a display rule the app knows: a chain ID and a 20-byte address.
+  if (chainType !== 0 || referenceLength === 0 || addressLength !== 20) {
+    return null;
+  }
+  const chainId = Number(
+    BigInt(`0x${hex.slice(10, 10 + referenceLength * 2)}`),
+  );
+  if (!Number.isSafeInteger(chainId) || chainId === 0) return null;
+  const address = checksumEthAddress(
+    `0x${hex.slice((6 + referenceLength) * 2)}`,
+  );
+  // ERC-7828 leaves the version out of the checksum.
+  const checksum = keccak256(`0x${hex.slice(4)}`)
+    .slice(2, 10)
+    .toUpperCase();
+  return { text: `${address}@eip155:${chainId}#${checksum}`, address, chainId };
+}
+
+/** An interoperableAddressName field: the ERC-7828 name, with addressName's checks on its chain. */
+export function describeInteroperable(
+  field: Eip7730Field,
+  raw: string,
+  format: Eip7730DisplayFormat,
+  ctx: Eip7730FieldContext,
+): (AddressNameDisplay & { name: string }) | null {
+  const parsed = interoperableName(raw);
+  if (!parsed) return null;
+  const shown = describeAddress(field, parsed.address, format, {
+    ...ctx,
+    chainId: parsed.chainId,
+  });
+  return shown && { ...shown, name: parsed.text, ens: false };
+}
+
 /** A tokenTicker field: its ticker beside the address, or the address with a warning. */
 export function describeTokenTicker(
   field: Eip7730Field,
@@ -165,13 +222,11 @@ function descriptorToken(
   ctx: Eip7730FieldContext,
 ): TokenInfo | null {
   const tokens = format.metadata?.tokens;
-  if (!tokens) return null;
-  // `*` is the described contract's own metadata, never another token's.
-  const own =
-    ctx.contractAddress?.toLowerCase() === address ? tokens['*'] : undefined;
-  const info = Object.prototype.hasOwnProperty.call(tokens, address)
-    ? tokens[address]
-    : own;
+  // The spec's token metadata names only the described contract, so another address cannot borrow a ticker.
+  if (!tokens || ctx.contractAddress?.toLowerCase() !== address) return null;
+  const info = Object.prototype.hasOwnProperty.call(tokens, '*')
+    ? tokens['*']
+    : undefined;
   if (!isDecimals(info?.decimals) || typeof info.ticker !== 'string') {
     return null;
   }
@@ -290,12 +345,35 @@ function formatAmount(
   return { text: native ? amountText(amount, native) : value };
 }
 
+const pad = (n: number, width = 2) => String(n).padStart(width, '0');
+
+/** RFC 3339, as the spec recommends, in the phone's own time zone with its offset shown. */
 function formatDate(value: string): string {
   const date = new Date(Number(value) * 1000);
-  // A maximum value means "never expires"; it is past any date JS can show.
-  return Number(value) > 0 && !Number.isNaN(date.getTime())
-    ? date.toLocaleString()
-    : value;
+  // A maximum value means "never expires"; it is past any date RFC 3339 can write.
+  if (
+    !(Number(value) > 0) ||
+    Number.isNaN(date.getTime()) ||
+    date.getUTCFullYear() > 9999
+  ) {
+    return value;
+  }
+  const offset = -date.getTimezoneOffset();
+  const local = new Date(date.getTime() + offset * 60_000);
+  const zone =
+    offset === 0
+      ? 'Z'
+      : `${offset > 0 ? '+' : '-'}${pad(
+          Math.floor(Math.abs(offset) / 60),
+        )}:${pad(Math.abs(offset) % 60)}`;
+  return (
+    `${pad(local.getUTCFullYear(), 4)}-${pad(local.getUTCMonth() + 1)}-${pad(
+      local.getUTCDate(),
+    )} ` +
+    `${pad(local.getUTCHours())}:${pad(local.getUTCMinutes())}:${pad(
+      local.getUTCSeconds(),
+    )}${zone}`
+  );
 }
 
 const SI_PREFIXES: Record<number, string> = {
@@ -383,6 +461,8 @@ export function formatEip7730Field(
   ctx: Eip7730FieldContext,
 ): Eip7730FieldDisplay {
   if (value === null) return { text: '—' };
+  const encrypted = encryptedLabel(field);
+  if (encrypted !== null) return { text: encrypted, encryptedValue: value };
   try {
     switch (field.format) {
       case 'tokenAmount':
@@ -466,6 +546,18 @@ function fieldTexts(
   }
   const raw = field.value ?? ctx.resolvePath(field.path);
   if (raw === null) return null;
+  const encrypted = encryptedLabel(field);
+  if (encrypted !== null) return [encrypted];
+  if (field.format === 'interoperableAddressName') {
+    const interoperable = describeInteroperable(field, raw, format, ctx);
+    if (interoperable) {
+      return [
+        interoperable.sender
+          ? interoperable.address ?? SENDER_TEXT
+          : interoperable.name,
+      ];
+    }
+  }
   if (field.format === 'tokenTicker') {
     const ticker = describeTokenTicker(field, raw, format, ctx);
     if (ticker) return [ticker.token?.symbol ?? ticker.address ?? raw];

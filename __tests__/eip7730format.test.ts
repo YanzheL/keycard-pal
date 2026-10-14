@@ -2,9 +2,12 @@ import { UNLIMITED_APPROVAL_WARNING } from '../src/constants/approval';
 import {
   asAddress,
   describeAddress,
+  describeInteroperable,
   describeTokenTicker,
+  ENCRYPTED_TEXT,
   formatEip7730Field,
   interpolateIntent,
+  interoperableName,
   NOT_SIGNER_WARNING,
   SENDER_TEXT,
   UNKNOWN_TOKEN_WARNING,
@@ -32,7 +35,7 @@ const NATIVE = '0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee';
 const FORMAT: Eip7730DisplayFormat = {
   fields: [],
   metadata: {
-    tokens: { [TOKEN]: { decimals: 6, ticker: 'USDC' } },
+    tokens: { '*': { decimals: 6, ticker: 'USDC' } },
     enums: { orderType: { '0': 'BUY', '1': 'SELL' } },
   },
 };
@@ -46,7 +49,10 @@ function field(
 
 function ctx(
   paths: Record<string, string> = {},
-  extra: { chainId?: number; contractAddress?: string } = { chainId: 1 },
+  extra: { chainId?: number; contractAddress?: string } = {
+    chainId: 1,
+    contractAddress: TOKEN,
+  },
 ) {
   return { ...extra, resolvePath: (p: string) => paths[p] ?? null };
 }
@@ -71,15 +77,30 @@ describe('formatEip7730Field', () => {
     });
   });
 
-  it('formats a unix timestamp as a date', () => {
-    const { text } = formatEip7730Field(
-      field('date'),
-      '1700000000',
-      FORMAT,
-      ctx(),
-    );
-    expect(text).toMatch(/\d/);
-    expect(text).not.toBe('1700000000');
+  describe('date in RFC 3339, in the time zone of the phone', () => {
+    afterEach(() => jest.restoreAllMocks());
+    // Minutes behind UTC, as Date reports them: Belgrade in winter is -60.
+    const at = (minutesBehindUtc: number, value = '1800000000') => {
+      jest
+        .spyOn(Date.prototype, 'getTimezoneOffset')
+        .mockReturnValue(minutesBehindUtc);
+      return formatEip7730Field(field('date'), value, FORMAT, ctx()).text;
+    };
+
+    it('writes UTC with a Z', () => {
+      expect(at(0)).toBe('2027-01-15 08:00:00Z');
+    });
+
+    it('writes any other zone with its offset', () => {
+      expect(at(-60)).toBe('2027-01-15 09:00:00+01:00');
+      expect(at(-330)).toBe('2027-01-15 13:30:00+05:30');
+      expect(at(210)).toBe('2027-01-15 04:30:00-03:30');
+    });
+
+    it('pads every part, and crosses midnight into the local date', () => {
+      expect(at(0, '86461')).toBe('1970-01-02 00:01:01Z');
+      expect(at(60, '86461')).toBe('1970-01-01 23:01:01-01:00');
+    });
   });
 
   it('keeps a timestamp past any date, such as a deadline that never expires', () => {
@@ -550,6 +571,23 @@ describe('tokenTicker', () => {
   });
 });
 
+describe("an entry's own token metadata", () => {
+  it('names only the contract the entry describes, so no other address borrows its ticker', () => {
+    const amount = (contractAddress?: string) =>
+      formatEip7730Field(
+        field('tokenAmount', { tokenPath: 'token' }),
+        '1500000',
+        FORMAT,
+        ctx({ token: OTHER }, { chainId: 1, contractAddress }),
+      );
+    expect(amount(OTHER).text).toBe('1.5 USDC');
+    expect(amount(CONTRACT)).toMatchObject({
+      text: '1500000',
+      warnings: [UNKNOWN_TOKEN_WARNING],
+    });
+  });
+});
+
 describe('tokenAmount on another chain', () => {
   it('reads the token on the chain the field names', () => {
     lookupToken.mockReturnValue({ symbol: 'USDC', decimals: 6 });
@@ -588,6 +626,122 @@ describe('tokenAmount on another chain', () => {
         ctx({ token: NATIVE }),
       ).text,
     ).toMatch(/^2 (POL|MATIC)$/);
+  });
+});
+
+describe('encrypted fields', () => {
+  const HANDLE = `0x${'ab'.repeat(32)}`;
+  const encrypted = (
+    format: Eip7730Field['format'],
+    encryption: Eip7730Field['encryption'],
+  ): Eip7730Field => ({ path: 'v', label: 'Amount', format, encryption });
+
+  it('shows the fallback label and keeps the ciphertext for its own row', () => {
+    expect(
+      formatEip7730Field(
+        encrypted('tokenAmount', { fallbackLabel: '[Encrypted Amount]' }),
+        HANDLE,
+        FORMAT,
+        ctx(),
+      ),
+    ).toEqual({ text: '[Encrypted Amount]', encryptedValue: HANDLE });
+  });
+
+  it('says it is encrypted when the entry gives no label', () => {
+    expect(
+      formatEip7730Field(encrypted('amount', {}), HANDLE, FORMAT, ctx()).text,
+    ).toBe(ENCRYPTED_TEXT);
+  });
+
+  it('never reads an encrypted address handle as an address in a sentence', () => {
+    const fmt = {
+      intent: 'Send',
+      interpolatedIntent: 'Send to {v}',
+      fields: [encrypted('addressName', {})],
+    };
+    expect(interpolateIntent(fmt, ctx({ v: HANDLE }))).toBe(
+      `Send to ${ENCRYPTED_TEXT}`,
+    );
+  });
+
+  it('fills a sentence with the placeholder, never the handle', () => {
+    const fmt = {
+      intent: 'Transfer',
+      interpolatedIntent: 'Transfer {v}',
+      fields: [
+        encrypted('tokenAmount', { fallbackLabel: '[Encrypted Amount]' }),
+      ],
+    };
+    expect(interpolateIntent(fmt, ctx({ v: HANDLE }))).toBe(
+      'Transfer [Encrypted Amount]',
+    );
+  });
+});
+
+describe('interoperable addresses', () => {
+  const VITALIK = '0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045';
+  const interop = (chain: string, address: string) =>
+    `0x00010000${chain}14${address.slice(2).toLowerCase()}`;
+
+  it('writes the ERC-7730 and ERC-7828 examples with their checksums', () => {
+    expect(interoperableName(interop('0101', VITALIK))?.text).toBe(
+      `${VITALIK}@eip155:1#4CA88C9C`,
+    );
+    expect(
+      interoperableName(
+        interop('0101', '0xFe89cc7aBB2C4183683ab71653C4cdc9B02D44b7'),
+      )?.text,
+    ).toBe('0xFe89cc7aBB2C4183683ab71653C4cdc9B02D44b7@eip155:1#80B12379');
+  });
+
+  it('reads a chain ID of several bytes', () => {
+    expect(interoperableName(interop('03aa36a7', VITALIK))).toMatchObject({
+      chainId: 11155111,
+      address: VITALIK,
+    });
+  });
+
+  it('gives null for anything it cannot write as an EVM address', () => {
+    const good = interop('0101', VITALIK);
+    expect(interoperableName(`0x0002${good.slice(6)}`)).toBeNull();
+    expect(interoperableName(`0x00010002${good.slice(10)}`)).toBeNull();
+    expect(interoperableName(good.slice(0, -2))).toBeNull();
+    expect(interoperableName(`${good}00`)).toBeNull();
+    expect(interoperableName('0x000100000000')).toBeNull();
+    expect(interoperableName('0x0001000001001400')).toBeNull();
+    expect(interoperableName('hello')).toBeNull();
+  });
+
+  it("checks a token on the address's own chain, and fills a sentence with the name", () => {
+    lookupToken.mockReturnValue({ symbol: 'USDC', decimals: 6 });
+    const toField: Eip7730Field = {
+      path: 'to',
+      label: 'To',
+      format: 'interoperableAddressName',
+      params: { types: ['token'] },
+    };
+    const shown = describeInteroperable(
+      toField,
+      interop('0189', VITALIK),
+      FORMAT,
+      ctx(),
+    );
+    expect(shown).toMatchObject({
+      name: `${VITALIK}@eip155:137#${shown?.name.split('#')[1]}`,
+      token: { symbol: 'USDC' },
+      ens: false,
+    });
+    expect(lookupToken).toHaveBeenCalledWith(137, VITALIK.toLowerCase());
+    expect(
+      interpolateIntent(
+        {
+          intent: 'Send',
+          interpolatedIntent: 'Send to {to}',
+          fields: [toField],
+        },
+        ctx({ to: interop('0101', VITALIK) }),
+      ),
+    ).toBe(`Send to ${VITALIK}@eip155:1#4CA88C9C`);
   });
 });
 
@@ -768,13 +922,14 @@ describe('interpolateIntent', () => {
         },
         { path: 'owners.[]', label: 'Owner', format: 'addressName' as const },
       ],
-      metadata: {
-        tokens: {
-          [TOKEN]: { decimals: 6, ticker: 'USDC' },
-          [OTHER_TOKEN]: { decimals: 6, ticker: 'DAI' },
-        },
-      },
     });
+    lookupToken.mockImplementation((_chain: number, address: string) =>
+      address === TOKEN
+        ? { symbol: 'USDC', decimals: 6 }
+        : address === OTHER_TOKEN
+        ? { symbol: 'DAI', decimals: 6 }
+        : null,
+    );
     const context = {
       chainId: 1,
       resolvePath: (p: string) => resolveEach(p)[0] ?? null,
