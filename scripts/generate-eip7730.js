@@ -13,7 +13,10 @@ const fs = require('fs');
 const https = require('https');
 const path = require('path');
 
-const { processRegistryZip, isEmptyIndex } = require('../src/utils/eip7730/zip.ts');
+const {
+  processRegistryZip,
+  isEmptyIndex,
+} = require('../src/utils/eip7730/zip.ts');
 
 const ZIP_URL =
   process.env.EIP7730_REGISTRY_URL ||
@@ -52,10 +55,25 @@ function get(url, redirects = 0) {
   });
 }
 
+// GitHub writes the archive's commit into the zip comment; CI tests against that commit.
+function zipComment(buf) {
+  for (let i = buf.length - 22; i >= 0; i -= 1) {
+    if (buf.readUInt32LE(i) === 0x06054b50) {
+      const length = buf.readUInt16LE(i + 20);
+      return buf
+        .subarray(i + 22, i + 22 + length)
+        .toString('utf8')
+        .trim();
+    }
+  }
+  return '';
+}
+
 function entryCount(bucket) {
   let sum = 0;
   for (const byKey of Object.values(bucket)) {
-    for (const byChain of Object.values(byKey)) sum += Object.keys(byChain).length;
+    for (const byChain of Object.values(byKey))
+      sum += Object.keys(byChain).length;
   }
   return sum;
 }
@@ -67,21 +85,35 @@ async function main() {
 
   const index = processRegistryZip(new Uint8Array(buf));
   if (isEmptyIndex(index)) {
-    throw new Error('The registry zip yielded no descriptors; nothing written.');
+    throw new Error(
+      'The registry zip yielded no descriptors; nothing written.',
+    );
   }
 
+  const commit = zipComment(buf);
+  if (!/^[0-9a-f]{40}$/.test(commit)) {
+    throw new Error('The registry zip names no commit; nothing written.');
+  }
   fs.mkdirSync(path.dirname(OUT), { recursive: true });
   fs.writeFileSync(OUT, JSON.stringify(index, null, 2) + '\n');
   fs.writeFileSync(
     META,
-    JSON.stringify({ generatedAt: index.generatedAt }, null, 2) + '\n',
+    JSON.stringify(
+      { generatedAt: index.generatedAt, registryCommit: commit },
+      null,
+      2,
+    ) + '\n',
   );
 
   console.log(
     `Index v${index.version}: ${index.formats.length} formats for ` +
       `${entryCount(index.contracts)} calldata entries across ` +
-      `${Object.keys(index.contracts).length} contracts and ${entryCount(index.eip712)} ` +
-      `EIP-712 entries across ${Object.keys(index.eip712).length} verifying contracts.`,
+      `${Object.keys(index.contracts).length} contracts and ${entryCount(
+        index.eip712,
+      )} ` +
+      `EIP-712 entries across ${
+        Object.keys(index.eip712).length
+      } verifying contracts.`,
   );
   console.log(`Wrote ${OUT} and ${META}`);
 }

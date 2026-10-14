@@ -23,10 +23,7 @@ import {
   type Eip7730FieldContext,
 } from '@/utils/eip7730/format';
 import { lookupEip712 } from '@/utils/eip7730/lookup';
-import {
-  resolveEip712FieldValue,
-  resolveEip712FieldValues,
-} from '@/utils/eip7730/paths';
+import { buildEip712Resolvers } from '@/utils/eip7730/paths';
 import { fitsRequest, shownFields } from '@/utils/eip7730/visibility';
 import { classifyEthPayload } from '@/utils/ethPayload';
 
@@ -93,10 +90,10 @@ export default function Eip712JsonPanel({
     return {
       chainId: domainChainId,
       contractAddress: verifyingContract,
-      resolvePath: path =>
-        resolveEip712FieldValue(path, rawTypedData?.message, container),
-      resolveEach: path =>
-        resolveEip712FieldValues(path, rawTypedData?.message, container),
+      ...buildEip712Resolvers(
+        rawTypedData ?? { types: {}, primaryType: '', message: {} },
+        container,
+      ),
       depth: 0,
       // The Domain section above names it.
       shownContract: verifyingContract,

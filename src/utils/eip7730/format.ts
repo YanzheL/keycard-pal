@@ -60,7 +60,6 @@ function toBigInt(value: string): bigint | null {
   }
 }
 
-// `$.metadata.constants` references are not resolved yet, so only literal addresses count.
 function literalAddresses(value: unknown): string[] {
   const list = Array.isArray(value) ? value : [value];
   return list
@@ -178,10 +177,13 @@ export function describeInteroperable(
 ): (AddressNameDisplay & { name: string }) | null {
   const parsed = interoperableName(raw);
   if (!parsed) return null;
-  const shown = describeAddress(field, parsed.address, format, {
-    ...ctx,
-    chainId: parsed.chainId,
-  });
+  // The address's own chain decides its token; the request's chain stays the entry's.
+  const onItsChain =
+    field.params?.chainId === undefined &&
+    field.params?.chainIdPath === undefined
+      ? { ...field, params: { ...field.params, chainId: parsed.chainId } }
+      : field;
+  const shown = describeAddress(onItsChain, parsed.address, format, ctx);
   return shown && { ...shown, name: parsed.text, ens: false };
 }
 
@@ -208,13 +210,13 @@ function nativeToken(chainId: number | undefined): TokenInfo | null {
 }
 
 function tokenAddress(params: Params, ctx: Eip7730FieldContext): string | null {
-  const address =
-    typeof params?.tokenPath === 'string'
-      ? ctx.resolvePath(params.tokenPath)
-      : typeof params?.token === 'string'
-      ? params.token
-      : null;
-  return address && ADDRESS_RE.test(address) ? address.toLowerCase() : null;
+  if (typeof params?.tokenPath === 'string') {
+    // A path may reach an address kept in a uint256, as 1inch orders do.
+    const value = ctx.resolvePath(params.tokenPath);
+    return value === null ? null : asAddress(value)?.toLowerCase() ?? null;
+  }
+  const token = typeof params?.token === 'string' ? params.token : null;
+  return token && ADDRESS_RE.test(token) ? token.toLowerCase() : null;
 }
 
 function descriptorToken(
@@ -349,7 +351,9 @@ function formatAmount(
 // A maximum value means "never expires"; it is past any date RFC 3339 can write.
 function formatDate(value: string): string {
   const seconds = Number(value);
-  return (seconds > 0 && rfc3339(seconds * 1000)) || value;
+  return (
+    (value.trim() !== '' && seconds >= 0 && rfc3339(seconds * 1000)) || value
+  );
 }
 
 const SI_PREFIXES: Record<number, string> = {
@@ -542,6 +546,12 @@ function fieldTexts(
     field.format === 'addressName'
       ? describeAddress(field, raw, format, ctx)
       : null;
-  if (shown) return [shown.address ?? SENDER_TEXT];
+  if (shown) {
+    return [
+      shown.sender
+        ? shown.address ?? SENDER_TEXT
+        : shown.token?.symbol ?? shown.address ?? SENDER_TEXT,
+    ];
+  }
   return [formatEip7730Field(field, raw, format, ctx).text];
 }

@@ -5,6 +5,7 @@ import Eip712JsonPanel from '../src/components/SignRequestDetail/eth/DataTabPane
 import { DESCRIPTOR_CHECK_FAILED_WARNING } from '../src/constants/eip7730';
 
 import type { Eip712Summary } from '../src/utils/eip712';
+import { checksumEthAddress } from '../src/utils/ethereumAddress';
 import type { EthSignRequest } from '../src/types';
 
 jest.mock('react-native-paper', () => {
@@ -238,10 +239,49 @@ describe('Eip712JsonPanel EIP-7730 integration', () => {
         chainId={1}
       />,
     );
-    expect(screen.getByText(`Contract: ${VERIFYING}`)).toBeTruthy();
     expect(
-      screen.getByText('Signer: 0x00000000000000000000000000000000000000aa'),
+      screen.getByText(`Contract: ${checksumEthAddress(VERIFYING)}`),
     ).toBeTruthy();
+    expect(
+      screen.getByText(
+        `Signer: ${checksumEthAddress(
+          '0x00000000000000000000000000000000000000aa',
+        )}`,
+      ),
+    ).toBeTruthy();
+  });
+
+  it('writes an address field in ERC-55 and leaves a string that looks like one alone', () => {
+    const mixed = '0xa0b86991c6218b36C1d19d4a2e9eb0ce3606eb48';
+    mockLookupEip712.mockReturnValue({
+      intent: 'Permit',
+      fields: [
+        { path: 'spender', label: 'Spender', format: 'raw' },
+        { path: 'note', label: 'Note', format: 'raw' },
+      ],
+    });
+    const payload = {
+      ...buildPayload({ spender: mixed, sigDeadline: '1' }),
+      types: {
+        ...buildPayload({}).types,
+        PermitSingle: [
+          { name: 'spender', type: 'address' },
+          { name: 'note', type: 'string' },
+        ],
+      },
+      message: { spender: mixed, note: mixed },
+    };
+    render(
+      <Eip712JsonPanel
+        request={buildRequest(payload)}
+        eip712={buildSummary({ spender: mixed, note: mixed })}
+        chainId={1}
+      />,
+    );
+    expect(
+      screen.getByText(`Spender: ${checksumEthAddress(mixed)}`),
+    ).toBeTruthy();
+    expect(screen.getByText(`Note: ${mixed}`)).toBeTruthy();
   });
 
   it('falls back to SpecialEip712Section when descriptor not found', () => {

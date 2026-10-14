@@ -5,6 +5,9 @@ import {
   type AbiFunction,
 } from 'viem';
 
+import { eip712FieldType, type Eip712RawTypedData } from '@/utils/eip712';
+import { checksumEthAddress } from '@/utils/ethereumAddress';
+
 export type Eip7730Container = {
   from?: string;
   to?: string;
@@ -27,9 +30,9 @@ function containerValue(
 ): string | null {
   switch (key) {
     case 'from':
-      return container.from ?? null;
+      return container.from ? checksumEthAddress(container.from) : null;
     case 'to':
-      return container.to ?? null;
+      return container.to ? checksumEthAddress(container.to) : null;
     case 'value':
       return container.value ?? null;
     case 'chainId':
@@ -73,6 +76,39 @@ function wordHex(n: bigint): string | null {
   return v >= 0n && v < WORD ? v.toString(16).padStart(64, '0') : null;
 }
 
+const NUMBER_OR_HEX_RE = /^(0x[0-9a-f]*|-?\d+)$/i;
+
+function utf8Bytes(text: string): number[] | null {
+  let encoded: string;
+  try {
+    encoded = encodeURIComponent(text);
+  } catch {
+    return null;
+  }
+  const bytes: number[] = [];
+  for (let i = 0; i < encoded.length; i += 1) {
+    if (encoded[i] === '%') {
+      bytes.push(parseInt(encoded.slice(i + 1, i + 3), 16));
+      i += 2;
+    } else {
+      bytes.push(encoded.charCodeAt(i));
+    }
+  }
+  return bytes;
+}
+
+const hexOf = (bytes: number[]) =>
+  bytes.map(b => b.toString(16).padStart(2, '0')).join('');
+
+// A slice that cuts a character in two has no text, so it shows its bytes.
+function utf8Text(bytes: number[]): string {
+  try {
+    return decodeURIComponent(bytes.map(b => `%${hexOf([b])}`).join(''));
+  } catch {
+    return `0x${hexOf(bytes)}`;
+  }
+}
+
 // The spec slices a number as its 32-byte ABI word.
 function bytesHex(value: unknown): string | null {
   if (typeof value === 'bigint') return wordHex(value);
@@ -100,6 +136,12 @@ function select(value: unknown, selector: string): unknown[] {
   if (Array.isArray(value)) {
     const [start, end] = sliceRange(value.length, slice[1], slice[2]);
     return value.slice(start, end);
+  }
+  if (typeof value === 'string' && !NUMBER_OR_HEX_RE.test(value)) {
+    const bytes = utf8Bytes(value);
+    if (!bytes) return [];
+    const [start, end] = sliceRange(bytes.length, slice[1], slice[2]);
+    return start < end ? [utf8Text(bytes.slice(start, end))] : [];
   }
   const hex = bytesHex(value);
   if (hex === null) return [];
@@ -189,6 +231,8 @@ export function decodeArgsBySignature(
     if (toFunctionSelector(item) !== data.slice(0, 10).toLowerCase()) {
       return null;
     }
+    // viem refuses stray bytes after a call with no arguments, though it ignores them otherwise.
+    if (item.inputs.length === 0) return {};
     const values = decodeAbiParameters(
       item.inputs,
       `0x${data.slice(10)}` as `0x${string}`,
@@ -227,5 +271,30 @@ export function buildArgsPathResolver(
     // `$.` points into the descriptor itself, which is not available here.
     if (root === '$') return null;
     return valueAt(rest, args);
+  };
+}
+
+/** EIP-712 resolvers that write an `address` field in ERC-55, as the spec's raw format asks. */
+export function buildEip712Resolvers(
+  typed: Pick<Eip712RawTypedData, 'types' | 'primaryType' | 'message'>,
+  container: Eip7730Container = {},
+): {
+  resolvePath: (path: string) => string | null;
+  resolveEach: (path: string) => string[];
+} {
+  const write = (path: string, value: string) =>
+    !path.startsWith('@.') &&
+    eip712FieldType(typed.types, typed.primaryType, path) === 'address'
+      ? checksumEthAddress(value)
+      : value;
+  return {
+    resolvePath: path => {
+      const value = resolveEip712FieldValue(path, typed.message, container);
+      return value === null ? null : write(path, value);
+    },
+    resolveEach: path =>
+      resolveEip712FieldValues(path, typed.message, container).map(value =>
+        write(path, value),
+      ),
   };
 }

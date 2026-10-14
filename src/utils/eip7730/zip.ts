@@ -88,7 +88,7 @@ export type Eip7730IndexSlice = Pick<
   'formats' | 'contracts' | 'eip712'
 >;
 
-export const EIP7730_INDEX_VERSION = 8;
+export const EIP7730_INDEX_VERSION = 9;
 
 const SCHEMA_MAJOR = 2;
 const SELECTOR_RE = /^0x[0-9a-f]{8}$/i;
@@ -502,14 +502,24 @@ function processDescriptor(
   const eip712Ctx = isPlainObject(context.eip712) ? context.eip712 : null;
 
   if (contractCtx) {
+    // A factory binding needs the deploying event from chain data, which the app cannot read.
+    if (contractCtx.factory !== undefined) return;
     const deployments = extractDeployments(contractCtx.deployments);
     if (deployments.length === 0) return;
+    const entries: [string, Eip7730DisplayFormat][] = [];
+    const seen = new Set<string>();
     for (const [rawKey, rawFormat] of Object.entries(formats)) {
       const selector = normaliseSelector(rawKey);
       if (!selector) continue;
+      // The spec makes two keys with one type-only signature an invalid descriptor.
+      if (seen.has(selector)) return;
+      seen.add(selector);
       const format = extractDisplayFormat(rawFormat, metadata, sources);
       if (!format) continue;
       if (!SELECTOR_RE.test(rawKey)) format.signature = rawKey;
+      entries.push([selector, format]);
+    }
+    for (const [selector, format] of entries) {
       for (const d of deployments) {
         insertEntry(contracts, d, selector, format);
       }

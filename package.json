@@ -30,7 +30,8 @@
     "check:offline-bundle": "node scripts/check-offline-bundle.js",
     "check:bundles": "node scripts/check-bundles.js",
     "check:ios-bundle": "node scripts/check-ios-bundle.js",
-    "check:offline-apk": "node scripts/check-offline-apk.js"
+    "check:offline-apk": "node scripts/check-offline-apk.js",
+    "check:eip7730-vectors": "node scripts/check-eip7730-vectors.js"
   },
   "dependencies": {
     "@ethereumjs/rlp": "^10.1.1",

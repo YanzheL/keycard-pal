@@ -304,6 +304,27 @@ function structMembers(
   );
 }
 
+/** The declared type a field path reaches; null past a slice or a member the types do not list. */
+export function eip712FieldType(
+  types: Record<string, unknown>,
+  primaryType: string,
+  path: string,
+): string | null {
+  let type = primaryType;
+  for (const part of path.replace(/^#\./, '').split('.')) {
+    if (!part) continue;
+    if (part.startsWith('[')) {
+      if (part.includes(':') || !/\[\d*\]$/.test(type)) return null;
+      type = type.replace(/\[\d*\]$/, '');
+      continue;
+    }
+    const member = structMembers(types, type)?.find(m => m.name === part);
+    if (!member) return null;
+    type = member.type;
+  }
+  return type;
+}
+
 export function encodeEip712Type(
   primaryType: string,
   types: Record<string, unknown>,

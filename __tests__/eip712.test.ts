@@ -1,4 +1,5 @@
 import {
+  eip712FieldType,
   encodeEip712Type,
   parseEip712Prehashed,
   parseEip712RawTypedData,
@@ -556,5 +557,34 @@ describe('encodeEip712Type', () => {
   it('returns null when the primary type is not a struct', () => {
     expect(encodeEip712Type('Missing', mailTypes)).toBeNull();
     expect(encodeEip712Type('Mail', { Mail: 'not a list' })).toBeNull();
+  });
+});
+
+describe('eip712FieldType', () => {
+  const types = {
+    PermitBatch: [
+      { name: 'details', type: 'PermitDetails[]' },
+      { name: 'spender', type: 'address' },
+    ],
+    PermitDetails: [
+      { name: 'token', type: 'address' },
+      { name: 'amount', type: 'uint160' },
+    ],
+  };
+  const at = (path: string) => eip712FieldType(types, 'PermitBatch', path);
+
+  it('walks members, structs and array elements', () => {
+    expect(at('spender')).toBe('address');
+    expect(at('#.details')).toBe('PermitDetails[]');
+    expect(at('details.[].token')).toBe('address');
+    expect(at('details.[2].amount')).toBe('uint160');
+    expect(at('details.[-1].token')).toBe('address');
+  });
+
+  it('gives null past a slice, an index into no array, or a member it does not list', () => {
+    expect(at('details.[0:2]')).toBeNull();
+    expect(at('spender.[0]')).toBeNull();
+    expect(at('missing')).toBeNull();
+    expect(eip712FieldType(types, 'Nothing', 'spender')).toBeNull();
   });
 });

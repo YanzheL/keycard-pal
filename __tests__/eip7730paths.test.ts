@@ -3,6 +3,7 @@ import { encodeFunctionData, parseAbiItem, type AbiFunction } from 'viem';
 import {
   buildArgsEachResolver,
   buildArgsPathResolver,
+  buildEip712Resolvers,
   decodeArgsBySignature,
   resolveEip712FieldValue,
   resolveEip712FieldValues,
@@ -198,7 +199,15 @@ describe('slices of a value', () => {
   it('gives nothing for an empty slice or a value with no bytes', () => {
     expect(r('creds.[40:]')).toBeNull();
     expect(r('flag.[:1]')).toBeNull();
-    expect(r('text.[:1]')).toBeNull();
+  });
+
+  it('slices a string over its UTF-8 bytes and gives text back', () => {
+    const s = buildArgsPathResolver({ word: 'hello', euro: 'a€b' });
+    expect(s('word.[:2]')).toBe('he');
+    expect(s('word.[-3:]')).toBe('llo');
+    expect(s('euro.[1:4]')).toBe('€');
+    // Half a character has no text, so its bytes show.
+    expect(s('euro.[1:3]')).toBe('0xe282');
   });
 
   it('slices an EIP-712 number given as decimal or hex text', () => {
@@ -287,5 +296,49 @@ describe('resolveEip712FieldValue', () => {
   it('handles primitive values', () => {
     expect(resolveEip712FieldValue('x', { x: 42 })).toBe('42');
     expect(resolveEip712FieldValue('x', { x: true })).toBe('true');
+  });
+});
+
+describe('buildEip712Resolvers', () => {
+  const lower = '0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48';
+  const typed = {
+    primaryType: 'Batch',
+    types: {
+      Batch: [
+        { name: 'tokens', type: 'address[]' },
+        { name: 'memo', type: 'string' },
+        { name: 'raw', type: 'bytes32' },
+      ],
+    },
+    message: {
+      tokens: [lower, lower],
+      memo: lower,
+      raw: `0x${'00'.repeat(12)}${lower.slice(2)}`,
+    },
+  };
+  const { resolvePath, resolveEach } = buildEip712Resolvers(typed, {
+    to: lower,
+  });
+
+  it('writes address fields in ERC-55, one value or each', () => {
+    expect(resolvePath('tokens.[0]')).toBe(TOKEN);
+    expect(resolveEach('tokens.[]')).toEqual([TOKEN, TOKEN]);
+  });
+
+  it('leaves strings, bytes and slices as the message wrote them', () => {
+    expect(resolvePath('memo')).toBe(lower);
+    expect(resolvePath('raw.[-20:]')).toBe(lower);
+  });
+
+  it('checksums the container addresses too', () => {
+    expect(resolvePath('@.to')).toBe(TOKEN);
+  });
+});
+
+describe('a call with no arguments', () => {
+  it('decodes despite a stray byte after its selector', () => {
+    expect(decodeArgsBySignature('deposit()', '0xd0e30db076')).toEqual({});
+    expect(decodeArgsBySignature('deposit()', '0xd0e30db0')).toEqual({});
+    expect(decodeArgsBySignature('deposit()', '0x12345678')).toBeNull();
   });
 });

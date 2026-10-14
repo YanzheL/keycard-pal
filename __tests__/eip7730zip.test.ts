@@ -913,6 +913,52 @@ describe('encryption, separators and groups', () => {
     ]);
   });
 
+  it('drops an entry with a factory beside its deployments, which the app cannot check', () => {
+    const index = buildIndexFromDescriptors([
+      {
+        context: {
+          contract: {
+            deployments: [{ chainId: 1, address: ADDR }],
+            factory: {
+              deployEvent: 'event Deployed(address)',
+              deployments: [],
+            },
+          },
+        },
+        ...transferFormat([{ path: 'to', label: 'To', format: 'raw' }]),
+      },
+    ]);
+    expect(isEmptyIndex(index)).toBe(true);
+  });
+
+  it('drops an entry whose keys share one type-only signature, as the spec says', () => {
+    const descriptor = (keys: string[]) => ({
+      context: { contract: { deployments: [{ chainId: 1, address: ADDR }] } },
+      display: {
+        formats: Object.fromEntries(
+          keys.map(k => [k, { intent: 'Send', fields: [] }]),
+        ),
+      },
+    });
+    expect(
+      isEmptyIndex(
+        buildIndexFromDescriptors([
+          descriptor([
+            'transfer(address to,uint256 amount)',
+            'transfer(address dst,uint256 wad)',
+          ]),
+        ]),
+      ),
+    ).toBe(true);
+    expect(
+      isEmptyIndex(
+        buildIndexFromDescriptors([
+          descriptor(['transfer(address to,uint256 amount)', '0x095ea7b3']),
+        ]),
+      ),
+    ).toBe(false);
+  });
+
   it('never binds an entry only a factory deploys, which needs chain data to verify', () => {
     const index = buildIndexFromDescriptors([
       {
@@ -932,8 +978,8 @@ describe('encryption, separators and groups', () => {
 });
 
 describe('index shape', () => {
-  it('is version 8', () => {
-    expect(EIP7730_INDEX_VERSION).toBe(8);
+  it('is version 9', () => {
+    expect(EIP7730_INDEX_VERSION).toBe(9);
   });
 
   it('stores each key once per contract, its chains under it', () => {

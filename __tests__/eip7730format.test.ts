@@ -114,8 +114,16 @@ describe('formatEip7730Field', () => {
     }
   });
 
+  it('writes a zero timestamp as the epoch, which the spec does not exempt', () => {
+    jest.spyOn(Date.prototype, 'getTimezoneOffset').mockReturnValue(0);
+    expect(formatEip7730Field(field('date'), '0', FORMAT, ctx()).text).toBe(
+      '1970-01-01 00:00:00Z',
+    );
+    jest.restoreAllMocks();
+  });
+
   it('keeps a value that is not a timestamp', () => {
-    for (const value of ['0', 'soon', '-5']) {
+    for (const value of ['soon', '-5', '']) {
       expect(formatEip7730Field(field('date'), value, FORMAT, ctx()).text).toBe(
         value,
       );
@@ -742,6 +750,69 @@ describe('interoperable addresses', () => {
         ctx({ to: interop('0101', VITALIK) }),
       ),
     ).toBe(`Send to ${VITALIK}@eip155:1#4CA88C9C`);
+  });
+});
+
+describe('conformance fixes', () => {
+  it('reads a token kept in a uint256 through tokenPath', () => {
+    lookupToken.mockImplementation((_c: number, a: string) =>
+      a === OTHER ? { symbol: 'WETH', decimals: 18 } : null,
+    );
+    expect(
+      formatEip7730Field(
+        field('tokenAmount', { tokenPath: 'asset' }),
+        '1000000000000000000',
+        FORMAT,
+        ctx({ asset: BigInt(OTHER).toString() }, { chainId: 1 }),
+      ).text,
+    ).toBe('1 WETH');
+  });
+
+  it('still takes a literal token only as an address', () => {
+    expect(
+      formatEip7730Field(
+        field('tokenAmount', { token: BigInt(TOKEN).toString() }),
+        '1500000',
+        FORMAT,
+        ctx({}, { chainId: 1, contractAddress: TOKEN }),
+      ).warnings,
+    ).toEqual([UNKNOWN_TOKEN_WARNING]);
+  });
+
+  it("fills a sentence with an addressName token's ticker", () => {
+    lookupToken.mockReturnValue({ symbol: 'USDT', decimals: 6 });
+    expect(
+      interpolateIntent(
+        {
+          intent: 'Sell',
+          interpolatedIntent: 'Sell for {asset}',
+          fields: [
+            {
+              path: 'asset',
+              label: 'Asset',
+              format: 'addressName',
+              params: { types: ['token'] },
+            },
+          ],
+        },
+        ctx({ asset: OTHER }),
+      ),
+    ).toBe('Sell for USDT');
+  });
+
+  it("checks an interoperable address's token on its chain without moving the request's", () => {
+    // ERC-7930: version 1, eip155, chain 137 (0x89), a 20-byte address.
+    const interop = `0x00010000018914${TOKEN.slice(2)}`;
+    const toField: Eip7730Field = {
+      path: 'to',
+      label: 'To',
+      format: 'interoperableAddressName',
+      params: { types: ['token'] },
+    };
+    // The entry's own token metadata names its own contract, on its own chain only.
+    const shown = describeInteroperable(toField, interop, FORMAT, ctx());
+    expect(lookupToken).toHaveBeenCalledWith(137, TOKEN);
+    expect(shown?.token).toBeNull();
   });
 });
 
