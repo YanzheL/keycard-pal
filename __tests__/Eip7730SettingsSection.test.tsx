@@ -11,6 +11,7 @@ import Eip7730SettingsSectionOffline from '../src/components/settings/eip7730/Ei
 import Eip7730SettingsSectionOnline from '../src/components/settings/eip7730/Eip7730SettingsSection.online';
 import { IMPORT_SOURCE_WARNING } from '../src/constants/eip7730';
 import { setSavedIndex } from '../src/utils/eip7730/lookup';
+import { rfc3339 } from '../src/utils/rfc3339';
 
 import { testIndex } from './eip7730Index.testUtils';
 
@@ -60,7 +61,7 @@ const INDEX = testIndex({
   generatedAt: '2025-01-01T00:00:00.000Z',
   contracts: { '1:0xabc': { '0xa9059cbb': { fields: [] } } },
 });
-const INDEX_DATE = new Date(INDEX.generatedAt).toLocaleString();
+const INDEX_DATE = rfc3339(Date.parse(INDEX.generatedAt)) ?? INDEX.generatedAt;
 
 beforeEach(() => {
   jest.clearAllMocks();

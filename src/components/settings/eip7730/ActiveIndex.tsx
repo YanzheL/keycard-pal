@@ -8,6 +8,7 @@ import SettingsButton from './SettingsButton';
 
 import { getSavedIndex, subscribeSavedIndex } from '@/utils/eip7730/lookup';
 import { revertToBundledIndex } from '@/utils/eip7730/restore';
+import { rfc3339 } from '@/utils/rfc3339';
 
 type Props = {
   onReverted?: () => Promise<void>;
@@ -36,7 +37,7 @@ export default function ActiveIndex({ onReverted, disabled }: Props) {
         </Text>
         <Text variant="bodySmall" style={styles.value}>
           {index
-            ? new Date(index.generatedAt).toLocaleString()
+            ? rfc3339(Date.parse(index.generatedAt)) ?? index.generatedAt
             : 'Bundled (default)'}
         </Text>
       </View>

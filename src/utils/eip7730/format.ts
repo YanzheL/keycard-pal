@@ -4,6 +4,7 @@ import { UNLIMITED_APPROVAL_WARNING } from '@/constants/approval';
 
 import { getChainName, getNativeCurrencySymbol } from '@/utils/chainMetadata';
 import { checksumEthAddress } from '@/utils/ethereumAddress';
+import { rfc3339 } from '@/utils/rfc3339';
 import { lookupToken, type TokenMetadata } from '@/utils/tokenMetadata';
 
 import { arrayIndices, bindField, firstArraySelector } from './arrays';
@@ -345,35 +346,10 @@ function formatAmount(
   return { text: native ? amountText(amount, native) : value };
 }
 
-const pad = (n: number, width = 2) => String(n).padStart(width, '0');
-
-/** RFC 3339, as the spec recommends, in the phone's own time zone with its offset shown. */
+// A maximum value means "never expires"; it is past any date RFC 3339 can write.
 function formatDate(value: string): string {
-  const date = new Date(Number(value) * 1000);
-  // A maximum value means "never expires"; it is past any date RFC 3339 can write.
-  if (
-    !(Number(value) > 0) ||
-    Number.isNaN(date.getTime()) ||
-    date.getUTCFullYear() > 9999
-  ) {
-    return value;
-  }
-  const offset = -date.getTimezoneOffset();
-  const local = new Date(date.getTime() + offset * 60_000);
-  const zone =
-    offset === 0
-      ? 'Z'
-      : `${offset > 0 ? '+' : '-'}${pad(
-          Math.floor(Math.abs(offset) / 60),
-        )}:${pad(Math.abs(offset) % 60)}`;
-  return (
-    `${pad(local.getUTCFullYear(), 4)}-${pad(local.getUTCMonth() + 1)}-${pad(
-      local.getUTCDate(),
-    )} ` +
-    `${pad(local.getUTCHours())}:${pad(local.getUTCMinutes())}:${pad(
-      local.getUTCSeconds(),
-    )}${zone}`
-  );
+  const seconds = Number(value);
+  return (seconds > 0 && rfc3339(seconds * 1000)) || value;
 }
 
 const SI_PREFIXES: Record<number, string> = {
