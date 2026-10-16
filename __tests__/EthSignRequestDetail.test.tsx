@@ -9,7 +9,6 @@ import {
 } from 'viem';
 
 import SimulationAddressProvider from '../src/components/SignRequestDetail/SimulationAddressProvider';
-import { UNLIMITED_APPROVAL_WARNING } from '../src/constants/approval';
 import EthSignRequestDetail from '../src/components/SignRequestDetail/eth/SignRequestDetail';
 import type { EthSignRequest } from '../src/types';
 
@@ -500,10 +499,7 @@ describe('EthSignRequestDetail — EIP-712 special renderers', () => {
     };
   }
 
-  function unlimitedPermitSingle(
-    domainName: string,
-    token = '0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48',
-  ): EthSignRequest {
+  function unlimitedPermitSingle(domainName: string): EthSignRequest {
     return {
       signData: typedDataHex({
         types: {
@@ -532,7 +528,7 @@ describe('EthSignRequestDetail — EIP-712 special renderers', () => {
         },
         message: {
           details: {
-            token,
+            token: '0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48',
             amount: (2n ** 160n - 1n).toString(),
             expiration: '1712345000',
             nonce: '1',
@@ -562,17 +558,65 @@ describe('EthSignRequestDetail — EIP-712 special renderers', () => {
     expect(screen.queryByText('Message Fields')).toBeNull();
   });
 
-  it('shows the registry descriptor for a Permit it binds', () => {
+  function usdcTransferAuthorization(): EthSignRequest {
+    return {
+      signData: typedDataHex({
+        types: {
+          EIP712Domain: [
+            { name: 'name', type: 'string' },
+            { name: 'version', type: 'string' },
+            { name: 'chainId', type: 'uint256' },
+            { name: 'verifyingContract', type: 'address' },
+          ],
+          TransferWithAuthorization: [
+            { name: 'from', type: 'address' },
+            { name: 'to', type: 'address' },
+            { name: 'value', type: 'uint256' },
+            { name: 'validAfter', type: 'uint256' },
+            { name: 'validBefore', type: 'uint256' },
+            { name: 'nonce', type: 'bytes32' },
+          ],
+        },
+        primaryType: 'TransferWithAuthorization',
+        domain: {
+          name: 'USD Coin',
+          version: '2',
+          chainId: 1,
+          verifyingContract: '0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48',
+        },
+        message: {
+          from: '0x2222222222222222222222222222222222222222',
+          to: '0x1111111111111111111111111111111111111111',
+          value: '1000000',
+          validAfter: '0',
+          validBefore: '1712345678',
+          nonce: `0x${'ab'.repeat(32)}`,
+        },
+      }),
+      dataType: 2,
+      derivationPath: "m/44'/60'/0'/0",
+      chainId: 1,
+    };
+  }
+
+  it("keeps the app's Permit reviewer over a registry descriptor nobody reviewed", () => {
     renderDetail(usdcPermit('2'));
 
-    expect(screen.getByText('Authorize spending of tokens')).toBeTruthy();
-    expect(screen.getByText('Max spending amount')).toBeTruthy();
+    expect(screen.getByText('EIP-712 Permit')).toBeTruthy();
     expect(screen.getByText('1 USDC')).toBeTruthy();
-    expect(screen.queryByText('EIP-712 Permit')).toBeNull();
+    expect(screen.queryByText('Authorize spending of tokens')).toBeNull();
   });
 
-  it('shows the registry descriptor for a WalletConnect Permit, which carries no chainId', () => {
-    const { signData, ...rest } = usdcPermit('2');
+  it('shows a reviewed registry descriptor and who reviewed it', () => {
+    renderDetail(usdcTransferAuthorization());
+
+    expect(screen.getByText('Authorize USDC transfer')).toBeTruthy();
+    expect(screen.getByText('Reviewed by Cyfrin')).toBeTruthy();
+    expect(screen.getByText('1 USDC')).toBeTruthy();
+  });
+
+  it('shows the registry descriptor for a WalletConnect request, which carries no chainId', () => {
+    const { signData, ...rest } = usdcTransferAuthorization();
     renderDetail({
       ...rest,
       chainId: undefined,
@@ -582,7 +626,7 @@ describe('EthSignRequestDetail — EIP-712 special renderers', () => {
       origin: 'WalletConnect',
     });
 
-    expect(screen.getByText('Authorize spending of tokens')).toBeTruthy();
+    expect(screen.getByText('Authorize USDC transfer')).toBeTruthy();
     expect(screen.getByText('1 USDC')).toBeTruthy();
   });
 
@@ -593,29 +637,11 @@ describe('EthSignRequestDetail — EIP-712 special renderers', () => {
     expect(screen.getByText(/Unlimited permit/)).toBeTruthy();
   });
 
-  it('flags an unlimited PermitSingle in the registry descriptor', () => {
+  it("keeps the app's reviewer for Permit2, whose registry descriptor nobody reviewed", () => {
     renderDetail(unlimitedPermitSingle('Permit2'));
 
-    expect(screen.getByText('Authorize spending of token')).toBeTruthy();
-    expect(screen.getByText('Unlimited USDC')).toBeTruthy();
-    expect(screen.getByText(UNLIMITED_APPROVAL_WARNING)).toBeTruthy();
-    expect(screen.queryByText(/Unlimited permit/)).toBeNull();
-  });
-
-  it('names the token of a registry Permit2 approval the app does not know', () => {
-    renderDetail(
-      unlimitedPermitSingle(
-        'Permit2',
-        '0x000000000000000000000000000000000000dead',
-      ),
-    );
-
-    expect(screen.getByText('Unlimited')).toBeTruthy();
-    expect(screen.getByText('Unknown token')).toBeTruthy();
-    expect(screen.getByText('Token contract')).toBeTruthy();
-    expect(
-      screen.getByText('0x000000000000000000000000000000000000dEaD'),
-    ).toBeTruthy();
+    expect(screen.getByText(/Unlimited permit/)).toBeTruthy();
+    expect(screen.queryByText('Authorize spending of token')).toBeNull();
   });
 
   it('decodes SafeTx inner calldata through the selector database', () => {

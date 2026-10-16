@@ -8,7 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
-- Ethereum sign requests show what a contract call or EIP-712 message does when the ERC-7730 clear-signing registry describes it, in place of the decoded fields and the app's own Permit and SafeTx reviews; Settings can import a newer registry zip, and the online build can download one
+- Ethereum sign requests show what a contract call or EIP-712 message does when the ERC-7730 clear-signing registry describes it, and whether an auditor reviewed that description; it replaces the decoded fields, and the app's own Permit and SafeTx reviews only when reviewed. Settings can import a newer registry zip, and the online build can download one
 
 ### Fixed
 

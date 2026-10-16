@@ -4,6 +4,7 @@ import { act, render, screen, waitFor } from '@testing-library/react-native';
 
 import { Eip7730Context } from '../src/providers/eip7730/context';
 import { Eip7730DownloadProvider } from '../src/providers/eip7730/Provider.online';
+import { BUNDLED_ATTESTATIONS } from '../src/utils/eip7730/knownAttestations';
 
 import { testIndex } from './eip7730Index.testUtils';
 
@@ -158,7 +159,9 @@ describe('Eip7730DownloadProvider', () => {
       'https://example.test/registry.zip',
       expect.objectContaining({ headers: {} }),
     );
-    expect(mockProcess).toHaveBeenCalled();
+    expect(mockProcess).toHaveBeenCalledWith(expect.any(Uint8Array), {
+      verified: BUNDLED_ATTESTATIONS,
+    });
     expect(mockSaveIndex).toHaveBeenCalledWith(expect.anything(), 'download');
     expect(mockSaveEtag).toHaveBeenCalledWith('W/abc');
     expect(mockSetSavedIndex).toHaveBeenCalledWith({

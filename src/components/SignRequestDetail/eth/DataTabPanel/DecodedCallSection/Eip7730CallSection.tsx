@@ -4,7 +4,10 @@ import { Text } from 'react-native-paper';
 import theme from '@/theme';
 
 import Eip7730FieldList from '@/components/SignRequestDetail/eth/DataTabPanel/Eip7730FieldList';
-import { DescriptorSourceLine } from '@/components/SignRequestDetail/eth/DataTabPanel/shared';
+import {
+  DescriptorReviewLine,
+  DescriptorSourceLine,
+} from '@/components/SignRequestDetail/eth/DataTabPanel/shared';
 
 import { interpolateIntent } from '@/utils/eip7730/format';
 import type { Eip7730DisplayFormat } from '@/utils/eip7730/zip';
@@ -47,7 +50,12 @@ export default function Eip7730CallSection({
           </Text>
         </View>
       )}
-      {depth === 0 && <DescriptorSourceLine />}
+      {depth === 0 ? (
+        <DescriptorSourceLine reviewedBy={format.reviewedBy} />
+      ) : (
+        // An inner call's descriptor is another file, reviewed or not on its own.
+        <DescriptorReviewLine reviewedBy={format.reviewedBy} />
+      )}
       <Eip7730FieldList fields={format.fields} format={format} ctx={ctx} />
     </View>
   );

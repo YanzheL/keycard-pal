@@ -4,6 +4,7 @@ import RNFS from 'react-native-fs';
 
 import { saveIndex } from '@/storage/eip7730Index';
 
+import { BUNDLED_ATTESTATIONS } from './knownAttestations';
 import { setSavedIndex } from './lookup';
 import { isEmptyIndex, processRegistryZip } from './zip';
 
@@ -53,7 +54,7 @@ export async function importRegistryZipFromPicker(): Promise<ImportResult> {
 
   let index: Eip7730Index;
   try {
-    index = processRegistryZip(bytes);
+    index = processRegistryZip(bytes, { verified: BUNDLED_ATTESTATIONS });
   } catch {
     return { ok: false, reason: 'invalid' };
   }
