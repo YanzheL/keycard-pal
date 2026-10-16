@@ -1,30 +1,25 @@
 import { StyleSheet, View } from 'react-native';
 import { ProgressBar, Text } from 'react-native-paper';
 
+import type { Eip7730DownloadPhase } from '@/providers/eip7730/context';
 import theme from '@/theme';
 
 import { useEip7730Download } from '@/hooks/useEip7730Download.online';
 
-function labelFor(phase: string): string {
-  if (phase === 'checking') return 'Checking for descriptor updates…';
-  if (phase === 'downloading') return 'Downloading descriptors…';
-  if (phase === 'processing') return 'Processing descriptors…';
-  return '';
-}
+const LABELS: Partial<Record<Eip7730DownloadPhase, string>> = {
+  checking: 'Checking for descriptor updates…',
+  downloading: 'Downloading descriptors…',
+  processing: 'Processing descriptors…',
+};
 
 export default function Eip7730DownloadProgress() {
   const { phase, progress } = useEip7730Download();
-  if (
-    phase !== 'checking' &&
-    phase !== 'downloading' &&
-    phase !== 'processing'
-  ) {
-    return null;
-  }
+  const label = LABELS[phase];
+  if (!label) return null;
   return (
     <View style={styles.wrapper} testID="eip7730-progress">
       <Text variant="bodySmall" style={styles.label}>
-        {labelFor(phase)}
+        {label}
       </Text>
       <ProgressBar
         indeterminate={progress === undefined}

@@ -32,6 +32,21 @@ describe('Eip7730DownloadProgress', () => {
     expect(screen.getByText(/Downloading descriptors/i)).toBeTruthy();
   });
 
+  it('labels each busy phase, with a moving bar while the size is unknown', () => {
+    for (const [phase, label] of [
+      ['checking', 'Checking for descriptor updates…'],
+      ['processing', 'Processing descriptors…'],
+    ]) {
+      mockUseDownload.mockReturnValue({ phase, triggerDownload: () => {} });
+      const { unmount, UNSAFE_getByProps } = render(
+        <Eip7730DownloadProgress />,
+      );
+      expect(screen.getByText(label)).toBeTruthy();
+      expect(UNSAFE_getByProps({ indeterminate: true })).toBeTruthy();
+      unmount();
+    }
+  });
+
   it('renders nothing when phase is done', () => {
     mockUseDownload.mockReturnValue({
       phase: 'done',

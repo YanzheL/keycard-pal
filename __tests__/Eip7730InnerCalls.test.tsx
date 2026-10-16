@@ -175,6 +175,16 @@ describe('Eip7730InnerCalls', () => {
     expect(screen.getByText('Calls: —')).toBeTruthy();
   });
 
+  it('shows a dash when a single-value resolver finds no call', () => {
+    render(
+      <Eip7730InnerCalls
+        field={callsField}
+        ctx={{ chainId: 1, resolvePath: () => null, depth: 0 }}
+      />,
+    );
+    expect(screen.getByText('Calls: —')).toBeTruthy();
+  });
+
   it('reads a fixed call and works with only a single-value resolver', async () => {
     const field: Eip7730Field = {
       path: '',
