@@ -2,6 +2,13 @@
 import { unzipSync, strFromU8 } from 'fflate';
 import { toFunctionSelector } from 'viem';
 
+import {
+  attestationFiles,
+  reviewersOf,
+  type AcceptedAttestation,
+  type AttestationOptions,
+} from './attestation';
+
 export type Eip7730FieldFormat =
   | 'raw'
   | 'amount'
@@ -65,6 +72,8 @@ export type Eip7730DisplayFormat = {
     tokens?: Record<string, Eip7730TokenMetadata>;
     owner?: string;
   };
+  /** Trusted attesters whose ERC-8176 attestation covers the descriptor this format came from. */
+  reviewedBy?: string[];
 };
 
 /** Address, then selector or encodeType, then chain ID, to a position in `formats`. */
@@ -88,7 +97,7 @@ export type Eip7730IndexSlice = Pick<
   'formats' | 'contracts' | 'eip712'
 >;
 
-export const EIP7730_INDEX_VERSION = 9;
+export const EIP7730_INDEX_VERSION = 10;
 
 const SCHEMA_MAJOR = 2;
 const SELECTOR_RE = /^0x[0-9a-f]{8}$/i;
@@ -494,13 +503,17 @@ function insertEntry(
 ): void {
   if (!isSafeKey(key)) return;
   const byKey = (bucket[deployment.address] ??= {});
-  (byKey[key] ??= {})[deployment.chainId] = value;
+  const byChain = (byKey[key] ??= {});
+  // A file nobody reviewed must not take over a reviewed descriptor's deployment.
+  if (byChain[deployment.chainId]?.reviewedBy && !value.reviewedBy) return;
+  byChain[deployment.chainId] = value;
 }
 
 function processDescriptor(
   raw: unknown,
   contracts: FormatsByDeployment,
   eip712: FormatsByDeployment,
+  reviewedBy: string[] | undefined,
 ): void {
   if (!isPlainObject(raw)) return;
   const context = isPlainObject(raw.context) ? raw.context : null;
@@ -537,6 +550,7 @@ function processDescriptor(
       const format = extractDisplayFormat(rawFormat, metadata, sources);
       if (!format) continue;
       if (!SELECTOR_RE.test(rawKey)) format.signature = rawKey;
+      if (reviewedBy) format.reviewedBy = reviewedBy;
       entries.push([selector, format]);
     }
     for (const [selector, format] of entries) {
@@ -558,6 +572,7 @@ function processDescriptor(
       const format = extractDisplayFormat(rawFormat, metadata, sources);
       if (!format) continue;
       if (domain) format.domain = domain;
+      if (reviewedBy) format.reviewedBy = reviewedBy;
       for (const d of deployments) {
         insertEntry(eip712, d, encodedType, format);
       }
@@ -595,14 +610,20 @@ function pointAtFormats(
   return out;
 }
 
+type IndexSource = { descriptor: unknown; reviewedBy?: string[] };
+
 export function buildIndexFromDescriptors(
   descriptors: unknown[],
 ): Eip7730Index {
+  return buildIndex(descriptors.map(descriptor => ({ descriptor })));
+}
+
+function buildIndex(sources: IndexSource[]): Eip7730Index {
   const contracts: FormatsByDeployment = {};
   const eip712: FormatsByDeployment = {};
-  for (const raw of descriptors) {
+  for (const { descriptor, reviewedBy } of sources) {
     try {
-      processDescriptor(raw, contracts, eip712);
+      processDescriptor(descriptor, contracts, eip712, reviewedBy);
     } catch {
       // A descriptor this parser cannot read costs only itself.
     }
@@ -739,7 +760,9 @@ function isDescriptorPath(path: string): boolean {
   const segments = path.split('/');
   return (
     (segments.includes('registry') || segments.includes('ercs')) &&
-    !segments.some(s => s === 'tests' || s === 'testsv2' || s === 'specs')
+    !segments.some(
+      s => s === 'tests' || s === 'testsv2' || s === 'specs' || s === 'sigs',
+    )
   );
 }
 
@@ -774,9 +797,14 @@ function readJsonFiles(zipBytes: Uint8Array): JsonFiles {
   return files;
 }
 
-export function processRegistryZip(zipBytes: Uint8Array): Eip7730Index {
+function readRegistry(
+  zipBytes: Uint8Array,
+  options: AttestationOptions,
+): { sources: IndexSource[]; accepted: AcceptedAttestation[] } {
   const files = readJsonFiles(zipBytes);
-  const descriptors: Json[] = [];
+  const attestations = attestationFiles(files);
+  const sources: IndexSource[] = [];
+  const accepted: AcceptedAttestation[] = [];
   for (const path of files.keys()) {
     try {
       if (
@@ -786,12 +814,34 @@ export function processRegistryZip(zipBytes: Uint8Array): Eip7730Index {
         continue;
       }
       const resolved = resolveIncludes(path, files);
-      if (resolved) descriptors.push(resolved);
+      if (!resolved) continue;
+      // Hashed as resolved here, the object the index is built from, so what is verified is shown.
+      const reviewedBy = reviewersOf(
+        resolved,
+        attestations.get(path),
+        options,
+        accepted,
+      );
+      sources.push({ descriptor: resolved, reviewedBy });
     } catch {
       // Includes nested past what the stack holds, for one: skip that descriptor.
     }
   }
-  return buildIndexFromDescriptors(descriptors);
+  return { sources, accepted };
+}
+
+export function processRegistryZip(
+  zipBytes: Uint8Array,
+  options: AttestationOptions = {},
+): Eip7730Index {
+  return buildIndex(readRegistry(zipBytes, options).sources);
+}
+
+/** Every attestation that passes the offline checks, for the generator to look up revocations. */
+export function acceptedAttestations(
+  zipBytes: Uint8Array,
+): AcceptedAttestation[] {
+  return readRegistry(zipBytes, {}).accepted;
 }
 
 /** A saved index is split by the address's first byte, so a review reads one small file. */

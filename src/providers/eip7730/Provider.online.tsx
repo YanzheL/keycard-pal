@@ -18,6 +18,7 @@ import {
 import { saveIndex } from '@/storage/eip7730Index';
 
 import { isOnWifi } from '@/utils/connectivity.online';
+import { BUNDLED_ATTESTATIONS } from '@/utils/eip7730/knownAttestations';
 import { getSavedIndex, setSavedIndex } from '@/utils/eip7730/lookup';
 import { restorePersistedIndex } from '@/utils/eip7730/restore';
 import { isEmptyIndex, processRegistryZip } from '@/utils/eip7730/zip';
@@ -170,7 +171,9 @@ export function Eip7730DownloadProvider({
 
       setPhase('processing');
       setProgress(undefined);
-      const index = processRegistryZip(result.bytes);
+      const index = processRegistryZip(result.bytes, {
+        verified: BUNDLED_ATTESTATIONS,
+      });
       if (isEmptyIndex(index)) {
         throw new Error('The file has no descriptors this app can read.');
       }

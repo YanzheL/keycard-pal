@@ -57,6 +57,7 @@ console.log(`Bumping ${pkg.version} → ${newVersion} (code: ${versionCode})`);
 
 const GENERATED = [
   'src/data/contributors.json',
+  'src/data/eip7730.attestations.json',
   'src/data/eip7730.json',
   'src/data/eip7730.meta.json',
   'src/data/token-logos-index.json',

@@ -1,6 +1,7 @@
 import { Platform } from 'react-native';
 
 import { importRegistryZipFromPicker } from '../src/utils/eip7730/import';
+import { BUNDLED_ATTESTATIONS } from '../src/utils/eip7730/knownAttestations';
 
 import { testIndex } from './eip7730Index.testUtils';
 
@@ -57,6 +58,13 @@ describe('importRegistryZipFromPicker', () => {
     expect(mockSetSavedIndex).toHaveBeenCalledWith({
       generatedAt: '2026-10-12T00:00:00.000Z',
       source: 'import',
+    });
+  });
+
+  it('skips the signatures the bundled index already verified', async () => {
+    await importRegistryZipFromPicker();
+    expect(mockProcess.mock.calls[0][1]).toEqual({
+      verified: BUNDLED_ATTESTATIONS,
     });
   });
 

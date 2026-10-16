@@ -5,8 +5,11 @@ import Eip712JsonPanel from '../src/components/SignRequestDetail/eth/DataTabPane
 import { DESCRIPTOR_CHECK_FAILED_WARNING } from '../src/constants/eip7730';
 
 import type { Eip712Summary } from '../src/utils/eip712';
+import { NOT_REVIEWED_TEXT } from '../src/utils/eip7730/source';
 import { checksumEthAddress } from '../src/utils/ethereumAddress';
 import type { EthSignRequest } from '../src/types';
+
+const CYFRIN = '0x3846c3A30E62075Fa916216b35EF04B8F53931f6';
 
 jest.mock('react-native-paper', () => {
   const { Text, TouchableOpacity, View } = require('react-native');
@@ -151,6 +154,7 @@ describe('Eip712JsonPanel EIP-7730 integration', () => {
 
     expect(screen.getByText('Approve spender')).toBeTruthy();
     expect(screen.getByTestId('descriptor-source')).toBeTruthy();
+    expect(screen.getByText(NOT_REVIEWED_TEXT)).toBeTruthy();
     expect(
       screen.getByText(
         'ADDR Spender: 0xABC0000000000000000000000000000000000001',
@@ -159,8 +163,7 @@ describe('Eip712JsonPanel EIP-7730 integration', () => {
     expect(screen.queryByText('SpecialEip712Section')).toBeNull();
   });
 
-  it("lets a matching descriptor replace the app's own Permit reviewer", () => {
-    mockLookupEip712.mockReturnValue({ intent: 'Approve spender', fields: [] });
+  function renderPermit() {
     const eip712 = {
       ...buildSummary({ spender: '0xabc', sigDeadline: '1' }),
       special: { kind: 'permit' } as any,
@@ -174,8 +177,35 @@ describe('Eip712JsonPanel EIP-7730 integration', () => {
         chainId={1}
       />,
     );
+  }
+
+  it("lets a reviewed descriptor replace the app's own Permit reviewer", () => {
+    mockLookupEip712.mockReturnValue({
+      intent: 'Approve spender',
+      fields: [],
+      reviewedBy: [CYFRIN],
+    });
+    renderPermit();
     expect(screen.getByText('Approve spender')).toBeTruthy();
+    expect(screen.getByText('Reviewed by Cyfrin')).toBeTruthy();
     expect(screen.queryByText('SpecialEip712Section')).toBeNull();
+  });
+
+  it("keeps the app's own Permit reviewer over a descriptor nobody reviewed", () => {
+    mockLookupEip712.mockReturnValue({ intent: 'Approve spender', fields: [] });
+    renderPermit();
+    expect(screen.getByText('SpecialEip712Section')).toBeTruthy();
+    expect(screen.queryByText('Approve spender')).toBeNull();
+  });
+
+  it('counts only a trusted attester as a review', () => {
+    mockLookupEip712.mockReturnValue({
+      intent: 'Approve spender',
+      fields: [],
+      reviewedBy: ['0x00000000000000000000000000000000000000aa'],
+    });
+    renderPermit();
+    expect(screen.getByText('SpecialEip712Section')).toBeTruthy();
   });
 
   it('looks the descriptor up by encoded type and passes the message domain', () => {
@@ -345,7 +375,9 @@ describe('Eip712JsonPanel EIP-7730 integration', () => {
     );
     expect(screen.queryByText('SpecialEip712Section')).toBeNull();
 
-    await act(async () => finish({ intent: 'Approve spender', fields: [] }));
+    await act(async () =>
+      finish({ intent: 'Approve spender', fields: [], reviewedBy: [CYFRIN] }),
+    );
     expect(screen.getByText('Approve spender')).toBeTruthy();
     expect(screen.queryByText('SpecialEip712Section')).toBeNull();
   });

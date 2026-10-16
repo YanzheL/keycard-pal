@@ -24,6 +24,7 @@ import {
 } from '@/utils/eip7730/format';
 import { lookupEip712 } from '@/utils/eip7730/lookup';
 import { buildEip712Resolvers } from '@/utils/eip7730/paths';
+import { reviewerNames } from '@/utils/eip7730/source';
 import { fitsRequest, shownFields } from '@/utils/eip7730/visibility';
 import { classifyEthPayload } from '@/utils/ethPayload';
 
@@ -102,7 +103,12 @@ export default function Eip712JsonPanel({
 
   const rejected =
     matchedFormat !== null && !fitsRequest(matchedFormat, fieldContext);
-  const eip7730Descriptor = rejected ? null : matchedFormat;
+  const fitting = rejected ? null : matchedFormat;
+  // The app's Permit and SafeTx reviews are reviewed code; an unreviewed descriptor is not.
+  const eip7730Descriptor =
+    fitting && (!specialEip712 || reviewerNames(fitting.reviewedBy).length > 0)
+      ? fitting
+      : null;
   const eip7730Fields = eip7730Descriptor
     ? shownFields(eip7730Descriptor, fieldContext)
     : [];
@@ -159,7 +165,9 @@ export default function Eip712JsonPanel({
                     </Text>
                   </View>
                 )}
-                <DescriptorSourceLine />
+                <DescriptorSourceLine
+                  reviewedBy={eip7730Descriptor.reviewedBy}
+                />
                 {eip7730Fields.length > 0 && <SectionHeader title="Message" />}
                 <Eip7730FieldList
                   fields={eip7730Descriptor.fields}

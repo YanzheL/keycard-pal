@@ -982,8 +982,8 @@ describe('encryption, separators and groups', () => {
 });
 
 describe('index shape', () => {
-  it('is version 9', () => {
-    expect(EIP7730_INDEX_VERSION).toBe(9);
+  it('is version 10', () => {
+    expect(EIP7730_INDEX_VERSION).toBe(10);
   });
 
   it('stores each key once per contract, its chains under it', () => {
