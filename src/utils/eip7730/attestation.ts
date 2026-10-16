@@ -102,7 +102,8 @@ function isUint64(value: unknown): value is string {
 
 function recoverAttester(digest: Hex, signature: Json): string | null {
   const { r, s, v } = signature;
-  const recovery = Number(v) >= 27 ? Number(v) - 27 : Number(v);
+  if (typeof v !== 'number' || !Number.isInteger(v)) return null;
+  const recovery = v >= 27 ? v - 27 : v;
   if (!isBytes32(r) || !isBytes32(s) || (recovery !== 0 && recovery !== 1)) {
     return null;
   }

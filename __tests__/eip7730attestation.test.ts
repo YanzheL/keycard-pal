@@ -149,6 +149,8 @@ describe('checkAttestation with registry attestations', () => {
   it.each([
     ['an unknown recovery id', { v: 30 }],
     ['an r of zero', { r: `0x${'00'.repeat(32)}` }],
+    ['a v that is text', { v: '28' }],
+    ['a v that is not a whole number', { v: 27.5 }],
   ])('refuses a signature with %s', (_, change) => {
     const tampered = structuredClone(attestation);
     tampered.sig.signature = { ...tampered.sig.signature, ...change };
@@ -338,9 +340,8 @@ describe('processRegistryZip with attestations', () => {
   it('shows a descriptor it cannot hash, unreviewed', () => {
     const files = registryFiles();
     // 1e400 parses to Infinity, which RFC 8785 cannot write.
-    files['registry/weth/calldata-weth.json'] = JSON.stringify(
-      files['registry/weth/calldata-weth.json'],
-    ).replace('{', '{"x":1e400,');
+    const json = JSON.stringify(files['registry/weth/calldata-weth.json']);
+    files['registry/weth/calldata-weth.json'] = `{"x":1e400,${json.slice(1)}`;
     const format = wethFormat(processRegistryZip(zip(files)));
     expect(format?.intent).toBeDefined();
     expect(format?.reviewedBy).toBeUndefined();
