@@ -14,7 +14,7 @@ import TxDataPanel from './DataTabPanel/TxDataPanel';
 
 import { getChainName, getNativeCurrencySymbol } from '@/utils/chainMetadata';
 import { parseEip712Prehashed, parseEip712Summary } from '@/utils/eip712';
-import { classifyEthPayload } from '@/utils/ethPayload';
+import { classifyEthPayload, payloadChainId } from '@/utils/ethPayload';
 import { checksumEthAddress } from '@/utils/ethereumAddress';
 import { getTxLabel, parseTx, type DecodedCall } from '@/utils/txParser';
 
@@ -32,18 +32,21 @@ export default function SignRequestDetail({
 }: {
   request: EthSignRequest;
 }) {
+  const payload = useMemo(
+    () =>
+      classifyEthPayload(request.signData, request.dataType, request.chainId),
+    [request.signData, request.dataType, request.chainId],
+  );
+  const chainId = payloadChainId(payload, request.chainId);
   const nativeSymbol =
-    request.chainId !== undefined
-      ? getNativeCurrencySymbol(request.chainId)
-      : 'ETH';
+    chainId !== undefined ? getNativeCurrencySymbol(chainId) : 'ETH';
   // Parse the request once per request, not once per render.
-  const { payload, eip712, eip712Prehashed, tx } = useMemo(() => {
+  const { eip712, eip712Prehashed, tx } = useMemo(() => {
     // WC EIP-712 requests carry original JSON in reviewData (dataType=0 + digest in signData)
     const eip712Source =
       request.reviewData ?? (request.dataType === 2 ? request.signData : null);
     const summary = eip712Source ? parseEip712Summary(eip712Source) : null;
     return {
-      payload: classifyEthPayload(request.signData, request.dataType),
       eip712: summary,
       eip712Prehashed:
         eip712Source && !summary ? parseEip712Prehashed(eip712Source) : null,
@@ -95,9 +98,9 @@ export default function SignRequestDetail({
         </View>
       )}
 
-      {request.chainId !== undefined && (
+      {chainId !== undefined && (
         <View style={styles.row}>
-          <InfoRow label="Chain" value={getChainName(request.chainId)} />
+          <InfoRow label="Chain" value={getChainName(chainId)} />
         </View>
       )}
 
@@ -134,7 +137,7 @@ export default function SignRequestDetail({
           request={request}
         />
       ) : tx ? (
-        <TxDataPanel tx={tx} request={request} chainId={request.chainId} />
+        <TxDataPanel tx={tx} request={request} chainId={chainId} />
       ) : payload.kind === 'personal-message' ? (
         <PersonalMessagePanel message={payload} request={request} />
       ) : (

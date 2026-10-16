@@ -13,6 +13,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Fixed
 
 - The transaction review shows the destination address for a call the app cannot decode and for a Uniswap Universal Router call
+- A transaction is reviewed and signed for the chain it names itself, and refused when the request names another one
 
 ## [1.14.0] - 2026-10-07
 

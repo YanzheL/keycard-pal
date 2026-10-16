@@ -900,6 +900,34 @@ describe('EthSignRequestDetail — personal_sign', () => {
 // Invalid payload banner (classifyEthPayload → kind 'invalid')
 // ---------------------------------------------------------------------------
 
+describe('EthSignRequestDetail — the chain a transaction signs for', () => {
+  it('refuses a transaction for another chain than the request names', () => {
+    renderDetail({
+      signData: eip1559TxHex(1n),
+      dataType: 4,
+      derivationPath: "m/44'/60'/0'/0",
+      chainId: 11155111,
+    });
+    expect(
+      screen.getByText(
+        /The transaction is for Ethereum Mainnet, but the request says Ethereum Sepolia\./,
+      ),
+    ).toBeTruthy();
+    expect(screen.getByText('Ethereum Mainnet')).toBeTruthy();
+    expect(screen.queryByText('Ethereum Sepolia')).toBeNull();
+  });
+
+  it("reviews a request that names no chain on the transaction's own", () => {
+    renderDetail({
+      signData: eip1559TxHex(137n),
+      dataType: 4,
+      derivationPath: "m/44'/60'/0'/0",
+    });
+    expect(screen.getByText('Polygon Mainnet')).toBeTruthy();
+    expect(screen.queryByText(/This request cannot be signed/)).toBeNull();
+  });
+});
+
 describe('EthSignRequestDetail — invalid payload banner', () => {
   it('shows the cannot-sign banner with the classification reason', () => {
     renderDetail({

@@ -137,6 +137,39 @@ describe('eth sign flow', () => {
     expect(buildEthSignatureURFromResult).not.toHaveBeenCalled();
   });
 
+  it('signs a legacy EIP-155 transaction for the chain it names', () => {
+    // RLP([0, 1, 21000, to, 0, 0x, 1, 0, 0]): chain 1, the request names none.
+    const flowRun = prepareKeycardFlow({
+      ...ethParams,
+      signData:
+        'df8001825208' +
+        '94aabbccddeeff00112233445566778899aabbccdd' +
+        '8080018080',
+      dataType: 1,
+      chainId: undefined,
+    });
+    flowRun.buildOutput(new Uint8Array(65));
+    expect(buildEthSignatureURFromResult).toHaveBeenCalledWith(
+      expect.any(Uint8Array),
+      expect.any(Uint8Array),
+      'tx-legacy',
+      1,
+      ethParams.requestId,
+    );
+  });
+
+  it('refuses a transaction for another chain than the request names', () => {
+    expect(() =>
+      prepareKeycardFlow({
+        ...ethParams,
+        signData:
+          '02df0180010182520894aabbccddeeff00112233445566778899aabbccdd8080c0',
+        dataType: 4,
+        chainId: 11155111,
+      }),
+    ).toThrow(/for Ethereum Mainnet, but the request says Ethereum Sepolia/);
+  });
+
   it('prepare throws for a payload that classifies as invalid', () => {
     expect(() =>
       prepareKeycardFlow({ ...ethParams, signData: 'ab'.repeat(31) }),

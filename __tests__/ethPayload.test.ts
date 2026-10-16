@@ -1,8 +1,11 @@
+import { RLP } from '@ethereumjs/rlp';
 import { keccak_256 } from '@noble/hashes/sha3.js';
 import { hashTypedData } from 'viem';
 
+import { getChainName } from '../src/utils/chainMetadata';
 import {
   classifyEthPayload,
+  payloadChainId,
   signingDigest,
   type EthPayload,
 } from '../src/utils/ethPayload';
@@ -205,6 +208,88 @@ describe('classifyEthPayload', () => {
 });
 
 // ── Signing digest ───────────────────────────────────────────────────────────
+
+describe('the chain a transaction signs for', () => {
+  const n = (v: number) => {
+    const h = v.toString(16);
+    return v === 0
+      ? new Uint8Array()
+      : Buffer.from(h.length % 2 ? `0${h}` : h, 'hex');
+  };
+  const TO = Buffer.from('aabbccddeeff00112233445566778899aabbccdd', 'hex');
+  const enc = (fields: unknown[]) =>
+    Buffer.from(RLP.encode(fields as never)).toString('hex');
+  const eip1559 = (chain: number) =>
+    '02' + enc([n(chain), n(0), n(1), n(1), n(21000), TO, n(0), n(0), []]);
+  const eip2930 = (chain: number) =>
+    '01' + enc([n(chain), n(0), n(1), n(21000), TO, n(0), n(0), []]);
+  const legacy155 = (chain: number) =>
+    enc([n(0), n(1), n(21000), TO, n(0), n(0), n(chain), n(0), n(0)]);
+  const legacyPre155 = enc([n(0), n(1), n(21000), TO, n(0), n(0)]);
+  const SEPOLIA = 11155111;
+  const mismatch = `The transaction is for ${getChainName(
+    1,
+  )}, but the request says ${getChainName(SEPOLIA)}.`;
+
+  it('reads it from every transaction type that names one', () => {
+    expect(classifyEthPayload(eip1559(1), 4, 1)).toMatchObject({
+      kind: 'tx-eip1559',
+      chainId: 1,
+    });
+    expect(classifyEthPayload(eip2930(1), 1, 1)).toMatchObject({
+      kind: 'tx-eip2930',
+      chainId: 1,
+    });
+    expect(classifyEthPayload(eip2930(1), 4)).toMatchObject({ chainId: 1 });
+    expect(classifyEthPayload(legacy155(1), 1, 1)).toMatchObject({
+      kind: 'tx-legacy',
+      chainId: 1,
+    });
+  });
+
+  it('refuses a transaction for another chain than the request names', () => {
+    for (const [signData, dataType] of [
+      [eip1559(1), 4],
+      [eip2930(1), 1],
+      [eip2930(1), 4],
+      [legacy155(1), 1],
+    ] as const) {
+      expect(classifyEthPayload(signData, dataType, SEPOLIA)).toEqual({
+        kind: 'invalid',
+        reason: mismatch,
+        chainId: 1,
+      });
+    }
+  });
+
+  it("reviews and signs for the transaction's chain when the request names none", () => {
+    const payload = classifyEthPayload(eip1559(137), 4);
+    expect(payloadChainId(payload, undefined)).toBe(137);
+  });
+
+  it("keeps the request's chain for a legacy transaction without EIP-155", () => {
+    const payload = classifyEthPayload(legacyPre155, 1, 137);
+    expect(payload).toEqual({ kind: 'tx-legacy', raw: expect.any(Uint8Array) });
+    expect(payloadChainId(payload, 137)).toBe(137);
+  });
+
+  it('refuses a chain ID past what a number can hold', () => {
+    const huge =
+      '02' +
+      enc([
+        Buffer.from('20000000000000', 'hex'),
+        n(0),
+        n(1),
+        n(1),
+        n(21000),
+        TO,
+        n(0),
+        n(0),
+        [],
+      ]);
+    expect(classifyEthPayload(huge, 4).kind).toBe('invalid');
+  });
+});
 
 describe('signingDigest', () => {
   it('tx kinds: keccak256 of the raw payload', () => {

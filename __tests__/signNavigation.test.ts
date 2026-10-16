@@ -38,6 +38,27 @@ describe('buildSignKeycardParams', () => {
     expect(buildSignKeycardParams(result)).toBeNull();
   });
 
+  it('returns null for a transaction for another chain than the request names', () => {
+    // EIP-1559 on chain 1: 0x02 || RLP([1, 0, 1, 1, 21000, to, 0, 0x, []])
+    const result: ScanResult = {
+      kind: 'eth-sign-request',
+      request: {
+        signData:
+          '02df0180010182520894aabbccddeeff00112233445566778899aabbccdd8080c0',
+        dataType: 4,
+        chainId: 11155111,
+        derivationPath: "m/44'/60'/0'/0",
+      },
+    };
+    expect(buildSignKeycardParams(result)).toBeNull();
+    expect(
+      buildSignKeycardParams({
+        ...result,
+        request: { ...result.request, chainId: 1 },
+      }),
+    ).not.toBeNull();
+  });
+
   it('returns null for a WC digest request that is not 32 bytes', () => {
     const result: ScanResult = {
       kind: 'eth-sign-request',
