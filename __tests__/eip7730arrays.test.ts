@@ -107,6 +107,58 @@ describe('bindField', () => {
     );
   });
 
+  it('pairs a sliced param with the element by position in each selection', () => {
+    const bound = (
+      path: string,
+      tokenPath: string,
+      args: Record<string, unknown>,
+    ) => {
+      const f: Eip7730Field = {
+        path,
+        label: 'Amount',
+        format: 'tokenAmount',
+        params: { tokenPath },
+      };
+      const resolveEach = buildArgsEachResolver(args);
+      const indices = arrayIndices(firstArraySelector(path)!, { resolveEach })!;
+      return indices.map((_, n) => {
+        const b = bindField(f, firstArraySelector(path)!, n, { resolveEach });
+        return [b.path, b.params?.tokenPath];
+      });
+    };
+    const tokens = ['USDC', 'USDT', 'DAI', 'WETH'];
+    expect(
+      bound('amounts.[1:]', 'tokens.[1:]', {
+        amounts: [1n, 2n, 3n, 4n],
+        tokens,
+      }),
+    ).toEqual([
+      ['amounts.[1]', 'tokens.[1]'],
+      ['amounts.[2]', 'tokens.[2]'],
+      ['amounts.[3]', 'tokens.[3]'],
+    ]);
+    expect(
+      bound('amounts.[]', 'tokens.[1:]', { amounts: [1n, 2n, 3n], tokens }),
+    ).toEqual([
+      ['amounts.[0]', 'tokens.[1]'],
+      ['amounts.[1]', 'tokens.[2]'],
+      ['amounts.[2]', 'tokens.[3]'],
+    ]);
+  });
+
+  it('leaves a param that slices bytes as one value', () => {
+    const f: Eip7730Field = {
+      path: 'details.[].amount',
+      label: 'Amount',
+      format: 'tokenAmount',
+      params: { tokenPath: 'packed.[-20:]' },
+    };
+    expect(
+      bindField(f, firstArraySelector(f.path)!, 1, { resolveEach: each })
+        .params,
+    ).toEqual({ tokenPath: 'packed.[-20:]' });
+  });
+
   it('binds nested arrays one level at a time', () => {
     const nested: Eip7730Field = {
       path: 'swaps.[].route.[].amount',

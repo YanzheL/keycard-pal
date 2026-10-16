@@ -58,7 +58,6 @@ function itemsOf(fields: Eip7730Field[]): Item[] {
   );
 }
 
-/** The spec's `separator`, `{index}` filled in; null when it uses anything else. */
 function separatorTitle(entries: Entry[], index: number): string | null {
   const template = entries.find(e => e.field.separator)?.field.separator;
   const parts = template ? interpolationParts(template) : null;
@@ -112,15 +111,8 @@ function ArrayItem({
   if (!indices || indices.length === 0) {
     return <Rows fields={fields} format={format} ctx={ctx} />;
   }
-  const perEntry = entries.map(({ selector }) =>
-    selector.prefix === entries[0].selector.prefix
-      ? indices
-      : arrayIndices(selector, ctx) ?? [],
-  );
   const bound = (n: number) =>
-    entries.map(({ field, selector }, k) =>
-      bindField(field, selector, perEntry[k][n] ?? indices[n]),
-    );
+    entries.map(({ field, selector }) => bindField(field, selector, n, ctx));
   const titled = entries.some(e => e.field.separator);
   if (indices.length === 1 && !titled) {
     return (

@@ -30,6 +30,7 @@ const FORBIDDEN_MARKERS = [
   'eip7730_source',
   'eip7730_url',
   'eip7730_wifi_only',
+  'archive/refs/heads/master.zip',
   'Auto-download',
   'Download on Wi-Fi only',
 ];

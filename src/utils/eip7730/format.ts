@@ -476,6 +476,16 @@ export function formatEip7730Field(
   }
 }
 
+// The spec's injection rule: a value that could fake, hide or crowd out text sends the review back to `intent`.
+const UNSAFE_TEXT_RE =
+  // eslint-disable-next-line no-control-regex
+  /[\u0000-\u001f\u007f-\u009f\u061c\u200b-\u200f\u2028-\u202e\u2066-\u2069\ufeff]/;
+const MAX_INTERPOLATED_VALUE = 80;
+const MAX_INTERPOLATED_SENTENCE = 200;
+
+const isSafeInterpolation = (text: string) =>
+  text.length <= MAX_INTERPOLATED_VALUE && !UNSAFE_TEXT_RE.test(text);
+
 /** The sentence with every placeholder formatted as its field is; null means show `intent`. */
 export function interpolateIntent(
   format: Eip7730DisplayFormat,
@@ -495,10 +505,10 @@ export function interpolateIntent(
     const field = format.fields.find(f => normalizeFieldPath(f.path) === path);
     if (!field || field.format === 'calldata') return null;
     const texts = fieldTexts(field, format, ctx);
-    if (!texts) return null;
+    if (!texts || !texts.every(isSafeInterpolation)) return null;
     sentence += texts.join(', ');
   }
-  return sentence;
+  return sentence.length <= MAX_INTERPOLATED_SENTENCE ? sentence : null;
 }
 
 // Formatted as the rows show it, one text per array element.
@@ -513,9 +523,9 @@ function fieldTexts(
   if (selector && indices) {
     if (indices.length === 0) return null;
     const texts: string[] = [];
-    for (const index of indices) {
+    for (let n = 0; n < indices.length; n += 1) {
       const element = fieldTexts(
-        bindField(field, selector, index),
+        bindField(field, selector, n, ctx),
         format,
         ctx,
       );

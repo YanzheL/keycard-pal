@@ -156,7 +156,7 @@ describe('Eip7730DownloadProvider', () => {
     });
     expect((global as any).fetch).toHaveBeenCalledWith(
       'https://example.test/registry.zip',
-      { headers: {} },
+      expect.objectContaining({ headers: {} }),
     );
     expect(mockProcess).toHaveBeenCalled();
     expect(mockSaveIndex).toHaveBeenCalledWith(expect.anything(), 'download');
@@ -202,7 +202,7 @@ describe('Eip7730DownloadProvider', () => {
     });
     expect((global as any).fetch).toHaveBeenCalledWith(
       'https://example.test/registry.zip',
-      { headers: { 'If-None-Match': 'W/old' } },
+      expect.objectContaining({ headers: { 'If-None-Match': 'W/old' } }),
     );
     expect(mockProcess).not.toHaveBeenCalled();
     expect(mockSaveIndex).not.toHaveBeenCalled();
@@ -226,7 +226,7 @@ describe('Eip7730DownloadProvider', () => {
     });
     expect((global as any).fetch).toHaveBeenCalledWith(
       'https://example.test/registry.zip',
-      { headers: {} },
+      expect.objectContaining({ headers: {} }),
     );
     expect(mockSetSavedIndex).toHaveBeenCalledWith({
       generatedAt: '2026-10-12T00:00:00.000Z',
@@ -400,6 +400,82 @@ describe('Eip7730DownloadProvider', () => {
       expect(screen.getByTestId('phase').children[0]).toBe('done');
     });
     expect(mockIsOnWifi).not.toHaveBeenCalled();
+  });
+
+  it('refuses a registry URL that is not https', async () => {
+    mockLoadSource.mockResolvedValue('auto');
+    mockLoadUrl.mockResolvedValue('http://example.test/registry.zip');
+    render(
+      <Eip7730DownloadProvider>
+        <PhaseProbe />
+      </Eip7730DownloadProvider>,
+    );
+    await waitFor(() => {
+      expect(screen.getByTestId('phase').children[0]).toBe('error');
+    });
+    expect(screen.getByTestId('error').children[0]).toBe(
+      'The registry zip URL must start with https://.',
+    );
+    expect((global as any).fetch).not.toHaveBeenCalled();
+  });
+
+  it('refuses a download larger than any registry zip', async () => {
+    mockLoadSource.mockResolvedValue('auto');
+    (global as any).fetch.mockResolvedValue({
+      ...buildResponse(),
+      headers: {
+        get: (k: string) =>
+          k.toLowerCase() === 'content-length'
+            ? String(64 * 1024 * 1024)
+            : null,
+      },
+    });
+    render(
+      <Eip7730DownloadProvider>
+        <PhaseProbe />
+      </Eip7730DownloadProvider>,
+    );
+    await waitFor(() => {
+      expect(screen.getByTestId('phase').children[0]).toBe('error');
+    });
+    expect(screen.getByTestId('error').children[0]).toBe(
+      'The file is larger than any registry zip.',
+    );
+    expect(mockProcess).not.toHaveBeenCalled();
+  });
+
+  it('gives up on a download that never finishes', async () => {
+    const timeouts = jest.spyOn(global, 'setTimeout');
+    try {
+      mockLoadSource.mockResolvedValue('auto');
+      (global as any).fetch.mockImplementation(
+        (_url: string, init: { signal: AbortSignal }) =>
+          new Promise((_resolve, reject) =>
+            init.signal.addEventListener('abort', () =>
+              reject(new Error('Aborted')),
+            ),
+          ),
+      );
+      render(
+        <Eip7730DownloadProvider>
+          <PhaseProbe />
+        </Eip7730DownloadProvider>,
+      );
+      await waitFor(() => expect((global as any).fetch).toHaveBeenCalled());
+      const giveUp = timeouts.mock.calls.find(
+        ([, ms]) => ms === 120_000,
+      )?.[0] as () => void;
+      expect(screen.getByTestId('phase').children[0]).toBe('downloading');
+      act(() => giveUp());
+      await waitFor(() => {
+        expect(screen.getByTestId('phase').children[0]).toBe('error');
+      });
+      expect(screen.getByTestId('error').children[0]).toBe(
+        'The download took too long. Try again.',
+      );
+    } finally {
+      timeouts.mockRestore();
+    }
   });
 
   it('reports an HTTP error status', async () => {

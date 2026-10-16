@@ -205,6 +205,54 @@ describe('building an index from untrusted descriptors', () => {
     expect(Object.keys(nested(index).contracts)).toEqual([`10:${ADDRESS}`]);
   });
 
+  it('never lets a descriptor key reach Object.prototype', () => {
+    // JSON.parse keeps "__proto__" as an own key, as a downloaded file would.
+    const descriptor = JSON.parse(`{
+      "context": { "eip712": {
+        "deployments": [{ "chainId": 1, "address": "${ADDRESS}" }],
+        "domain": { "__proto__": { "polluted": "domain" } }
+      } },
+      "metadata": { "enums": { "__proto__": { "1": "enum" } } },
+      "display": { "formats": {
+        "__proto__": { "intent": "Proto", "fields": [] },
+        "constructor": { "intent": "Constructor", "fields": [] },
+        "Mail(address to)": { "intent": "Mail", "fields": [
+          { "path": "to", "label": "To", "format": "raw",
+            "params": { "__proto__": { "polluted": "params" } } }
+        ] }
+      } }
+    }`);
+    try {
+      const index = buildIndexFromDescriptors([descriptor]);
+      expect(Object.prototype.hasOwnProperty.call(Object.prototype, '1')).toBe(
+        false,
+      );
+      expect(({} as Record<string, unknown>).polluted).toBeUndefined();
+      expect(index.formats.map(f => f.intent)).toEqual(['Mail']);
+    } finally {
+      delete (Object.prototype as Record<string, unknown>)['1'];
+    }
+  });
+
+  it('shows an intent given as labels and values on one line', () => {
+    const intentOf = (intent: unknown, fields: unknown[] = []) =>
+      buildIndexFromDescriptors([
+        {
+          context: {
+            contract: { deployments: [{ chainId: 1, address: ADDRESS }] },
+          },
+          display: { formats: { '0xa9059cbb': { intent, fields } } },
+        },
+      ]).formats[0]?.intent;
+    const field = { path: 'to', label: 'To', format: 'raw' };
+    expect(
+      intentOf({ 'Native Staking': 'Withdraw', Rewards: 'Consensus & Exec' }),
+    ).toBe('Native Staking: Withdraw, Rewards: Consensus & Exec');
+    expect(intentOf({ Action: { nested: 'x' } }, [field])).toBeUndefined();
+    expect(intentOf({}, [field])).toBeUndefined();
+    expect(intentOf({ Action: 'x' }, [])).toBe('Action: x');
+  });
+
   it('keeps token decimals only when they fit a uint8', () => {
     const decimalsOf = (decimals: unknown) =>
       buildIndexFromDescriptors([

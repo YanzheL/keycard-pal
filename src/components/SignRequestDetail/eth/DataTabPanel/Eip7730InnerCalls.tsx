@@ -10,6 +10,7 @@ import { useCalldataDescriptor } from '@/hooks/useCalldataDescriptor';
 
 import { checksumEthAddress } from '@/utils/ethereumAddress';
 import type { Eip7730FieldContext } from '@/utils/eip7730/format';
+import { WHOLE_BYTES_RE } from '@/utils/eip7730/paths';
 import type { Eip7730Field } from '@/utils/eip7730/zip';
 import { decodeCalldata } from '@/utils/txParser';
 
@@ -37,6 +38,9 @@ function InnerCall({
   depth,
 }: InnerCallProps) {
   const tooDeep = depth > MAX_DEPTH;
+  // Data that is not whole bytes decodes shifted, so it is only ever shown as written.
+  const wholeBytes = WHOLE_BYTES_RE.test(data);
+  const decodable = !tooDeep && wholeBytes;
   const container = useMemo(
     () => ({ to: callee, value: amount, from: spender, chainId }),
     [callee, amount, spender, chainId],
@@ -46,11 +50,11 @@ function InnerCall({
     contract: callee,
     data,
     container,
-    enabled: !tooDeep,
+    enabled: decodable,
   });
   if (loading) return null;
 
-  const call = tooDeep ? null : decodeCalldata(data);
+  const call = decodable ? decodeCalldata(data) : null;
   const warning = rejected && (
     <WarningRow text={DESCRIPTOR_CHECK_FAILED_WARNING} />
   );
@@ -80,7 +84,7 @@ function InnerCall({
     );
   }
   // A call with no data only moves value, so it has no function to name.
-  const hasSelector = data.length >= 10;
+  const hasSelector = wholeBytes && data.length >= 10;
   return (
     <>
       {warning}
@@ -122,7 +126,6 @@ function pick(
     : [];
 }
 
-/** A `calldata` field: every call it holds, each with its own entry or the app's decoding. */
 export default function Eip7730InnerCalls({
   field,
   ctx,
@@ -142,7 +145,7 @@ export default function Eip7730InnerCalls({
   const spenders = pick(field.params, 'spenderPath', 'spender', each);
   const chainIds = pick(field.params, 'chainIdPath', 'chainId', each);
   const selectors = pick(field.params, 'selectorPath', 'selector', each);
-  // One value applies to every call; a list pairs with the calls by position.
+  // The spec lets one callee or value stand for every call.
   const at = (list: string[], i: number) =>
     list.length === 1 ? list[0] : list[i];
   const depth = (ctx.depth ?? 0) + 1;

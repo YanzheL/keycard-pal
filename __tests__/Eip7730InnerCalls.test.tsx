@@ -267,6 +267,17 @@ describe('Eip7730InnerCalls', () => {
     );
     expect(screen.getByText('Amount: 1.5 USDT')).toBeTruthy();
   });
+  it('shows data that is not whole bytes as written, never decoded', () => {
+    const odd = transfer.slice(0, -1);
+    const ctx = ctxFor({ calls: [{ to: USDT, data: odd, value: 0n }] });
+    render(<Eip7730InnerCalls field={callsField} ctx={ctx} />);
+    expect(screen.queryByText('Send')).toBeNull();
+    expect(screen.queryByText(/Transfer/)).toBeNull();
+    expect(screen.queryByText(/Contract call/)).toBeNull();
+    expect(screen.getByText(`Contract: ${USDT}`)).toBeTruthy();
+    expect(screen.getByText(`Data: ${odd}`)).toBeTruthy();
+  });
+
   it('shows a call with no data by its contract alone', () => {
     const ctx = ctxFor({
       calls: [{ to: SOME_CONTRACT, data: '0x', value: 5n }],

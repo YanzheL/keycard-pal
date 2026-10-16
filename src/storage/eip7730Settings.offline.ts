@@ -1,5 +1,6 @@
-import { DEFAULT_EIP7730_REGISTRY_URL } from '@/constants/eip7730';
 import type { SatisfiesOnline } from '@/utils/onlineParity';
+
+export const DEFAULT_EIP7730_REGISTRY_URL = '';
 
 export type Eip7730DescriptorSource = 'auto' | 'manual';
 
@@ -14,7 +15,7 @@ export async function saveDescriptorSource(
 }
 
 export async function loadDescriptorUrl(): Promise<string> {
-  return DEFAULT_EIP7730_REGISTRY_URL;
+  return '';
 }
 
 export async function saveDescriptorUrl(_url: string): Promise<void> {

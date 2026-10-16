@@ -2,7 +2,6 @@ import { useCallback, useEffect, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { SegmentedButtons, Text } from 'react-native-paper';
 
-import { DEFAULT_EIP7730_REGISTRY_URL } from '@/constants/eip7730';
 import theme from '@/theme';
 
 import ActiveIndex from './ActiveIndex';
@@ -14,6 +13,7 @@ import TextInputSetting from '@/components/settings/TextInputSetting';
 import { useEip7730Download } from '@/hooks/useEip7730Download.online';
 
 import {
+  DEFAULT_EIP7730_REGISTRY_URL,
   type Eip7730DescriptorSource,
   clearEtag,
   clearLastModified,
@@ -29,6 +29,7 @@ export default function Eip7730SettingsSection() {
   const download = useEip7730Download();
 
   const [loaded, setLoaded] = useState(false);
+  const [importing, setImporting] = useState(false);
   const [source, setSource] = useState<Eip7730DescriptorSource>('manual');
   const [wifiOnly, setWifiOnly] = useState(false);
   const [savedUrl, setSavedUrl] = useState(DEFAULT_EIP7730_REGISTRY_URL);
@@ -57,7 +58,7 @@ export default function Eip7730SettingsSection() {
     async (value: string) => {
       const next: Eip7730DescriptorSource =
         value === 'auto' ? 'auto' : 'manual';
-      if (next === source) return;
+      if (next === source || importing) return;
       setSource(next);
       await saveDescriptorSource(next);
       // The validators describe the last download; an import or a reset may have replaced it since.
@@ -66,7 +67,7 @@ export default function Eip7730SettingsSection() {
         await clearLastModified();
       }
     },
-    [source],
+    [source, importing],
   );
 
   const handleWifiToggle = useCallback(async (value: boolean) => {
@@ -110,12 +111,15 @@ export default function Eip7730SettingsSection() {
         value={source}
         onValueChange={handleSourceChange}
         buttons={[
-          { value: 'manual', label: 'Manual' },
-          { value: 'auto', label: 'Auto-download' },
+          { value: 'manual', label: 'Manual', disabled: importing },
+          { value: 'auto', label: 'Auto-download', disabled: importing },
         ]}
       />
       {source === 'manual' ? (
-        <ImportRegistryButton disabled={downloadInProgress} />
+        <ImportRegistryButton
+          disabled={downloadInProgress}
+          onBusyChange={setImporting}
+        />
       ) : (
         <View style={styles.autoBlock}>
           <TextInputSetting
@@ -144,7 +148,10 @@ export default function Eip7730SettingsSection() {
           )}
         </View>
       )}
-      <ActiveIndex onReverted={handleReverted} disabled={downloadInProgress} />
+      <ActiveIndex
+        onReverted={handleReverted}
+        disabled={downloadInProgress || importing}
+      />
       <Text style={styles.helper}>
         Descriptors enrich review screens with human-readable intents and
         formatted values. Auto-download contacts the configured server on app

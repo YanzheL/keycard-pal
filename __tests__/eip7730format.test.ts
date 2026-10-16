@@ -12,7 +12,10 @@ import {
   SENDER_TEXT,
   UNKNOWN_TOKEN_WARNING,
 } from '../src/utils/eip7730/format';
-import { buildArgsEachResolver } from '../src/utils/eip7730/paths';
+import {
+  buildArgsEachResolver,
+  buildArgsPathResolver,
+} from '../src/utils/eip7730/paths';
 
 import type {
   Eip7730DisplayFormat,
@@ -750,6 +753,50 @@ describe('interoperable addresses', () => {
         ctx({ to: interop('0101', VITALIK) }),
       ),
     ).toBe(`Send to ${VITALIK}@eip155:1#4CA88C9C`);
+  });
+});
+
+describe('interpolated intent safety', () => {
+  const uri = {
+    intent: 'Set base URI',
+    interpolatedIntent: 'Set base URI to {uri}',
+    fields: [{ path: 'uri', label: 'URI', format: 'raw' as const }],
+  };
+
+  it('fills a plain value', () => {
+    expect(interpolateIntent(uri, ctx({ uri: 'ipfs://abc' }))).toBe(
+      'Set base URI to ipfs://abc',
+    );
+  });
+
+  it('falls back to the intent when a value could fake or hide text', () => {
+    for (const value of [
+      'ipfs://x\nNo approval or transfer is made',
+      'ipfs://x\u2028second line',
+      '\u202eHTE 01 dnes',
+      'ipfs://\u200bx',
+      'x\u0007',
+    ])
+      expect(interpolateIntent(uri, ctx({ uri: value }))).toBeNull();
+  });
+
+  it('falls back to the intent when a value or the sentence runs long', () => {
+    expect(interpolateIntent(uri, ctx({ uri: 'a'.repeat(81) }))).toBeNull();
+    expect(interpolateIntent(uri, ctx({ uri: 'a'.repeat(80) }))).not.toBeNull();
+    const list = {
+      intent: 'Pay',
+      interpolatedIntent: 'Pay {to.[]}',
+      fields: [{ path: 'to.[]', label: 'To', format: 'raw' as const }],
+    };
+    const listCtx = (to: string[]) => ({
+      chainId: 1,
+      resolvePath: buildArgsPathResolver({ to }),
+      resolveEach: buildArgsEachResolver({ to }),
+    });
+    expect(interpolateIntent(list, listCtx(['a', 'b']))).toBe('Pay a, b');
+    expect(
+      interpolateIntent(list, listCtx(Array(10).fill('a'.repeat(20)))),
+    ).toBeNull();
   });
 });
 

@@ -37,6 +37,13 @@ function asString(headerValue: string | null | undefined): string | null {
     : null;
 }
 
+// A registry zip is a few MB. Past these limits the server, or the URL, is wrong.
+const MAX_DOWNLOAD_BYTES = 32 * 1024 * 1024;
+const DOWNLOAD_TIMEOUT_MS = 120_000;
+const NOT_HTTPS = 'The registry zip URL must start with https://.';
+const TOO_LARGE = 'The file is larger than any registry zip.';
+const TOO_SLOW = 'The download took too long. Try again.';
+
 async function downloadZip(
   url: string,
   etag: string | null,
@@ -51,54 +58,67 @@ async function downloadZip(
       lastModified: string | null;
     }
 > {
+  if (!/^https:\/\//i.test(url)) throw new Error(NOT_HTTPS);
   const headers: Record<string, string> = {};
   if (etag) headers['If-None-Match'] = etag;
   if (lastModified) headers['If-Modified-Since'] = lastModified;
 
-  const res = await fetch(url, { headers });
-  if (res.status === 304) return { status: 'not-modified' };
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  // React Native's fetch has no timeout of its own, so a stalled server would hold the download.
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), DOWNLOAD_TIMEOUT_MS);
+  try {
+    const res = await fetch(url, {
+      headers,
+      // React Native types RequestInit with its own AbortSignal; the object is the same.
+      signal: controller.signal as RequestInit['signal'],
+    });
+    if (res.status === 304) return { status: 'not-modified' };
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
-  const contentLengthHeader = res.headers.get('content-length');
-  const total = contentLengthHeader ? Number(contentLengthHeader) : 0;
-
-  const body = (res as unknown as { body?: ReadableStream<Uint8Array> | null })
-    .body;
-  if (body && typeof body.getReader === 'function') {
-    const reader = body.getReader();
-    const chunks: Uint8Array[] = [];
-    let received = 0;
-    while (true) {
-      const { value, done } = await reader.read();
-      if (done) break;
-      if (value) {
-        chunks.push(value);
-        received += value.byteLength;
-        if (total > 0) onProgress(Math.min(received / total, 1));
-      }
-    }
-    const merged = new Uint8Array(received);
-    let offset = 0;
-    for (const c of chunks) {
-      merged.set(c, offset);
-      offset += c.byteLength;
-    }
-    return {
-      status: 'ok',
-      bytes: merged,
+    const contentLengthHeader = res.headers.get('content-length');
+    const total = contentLengthHeader ? Number(contentLengthHeader) : 0;
+    if (total > MAX_DOWNLOAD_BYTES) throw new Error(TOO_LARGE);
+    const validators = {
       etag: asString(res.headers.get('etag')),
       lastModified: asString(res.headers.get('last-modified')),
     };
-  }
 
-  const buf = await res.arrayBuffer();
-  onProgress(1);
-  return {
-    status: 'ok',
-    bytes: new Uint8Array(buf),
-    etag: asString(res.headers.get('etag')),
-    lastModified: asString(res.headers.get('last-modified')),
-  };
+    const body = (
+      res as unknown as { body?: ReadableStream<Uint8Array> | null }
+    ).body;
+    if (body && typeof body.getReader === 'function') {
+      const reader = body.getReader();
+      const chunks: Uint8Array[] = [];
+      let received = 0;
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        if (value) {
+          chunks.push(value);
+          received += value.byteLength;
+          if (received > MAX_DOWNLOAD_BYTES) throw new Error(TOO_LARGE);
+          if (total > 0) onProgress(Math.min(received / total, 1));
+        }
+      }
+      const merged = new Uint8Array(received);
+      let offset = 0;
+      for (const c of chunks) {
+        merged.set(c, offset);
+        offset += c.byteLength;
+      }
+      return { status: 'ok', bytes: merged, ...validators };
+    }
+
+    const buf = await res.arrayBuffer();
+    if (buf.byteLength > MAX_DOWNLOAD_BYTES) throw new Error(TOO_LARGE);
+    onProgress(1);
+    return { status: 'ok', bytes: new Uint8Array(buf), ...validators };
+  } catch (e) {
+    if (controller.signal.aborted) throw new Error(TOO_SLOW);
+    throw e;
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 export function Eip7730DownloadProvider({

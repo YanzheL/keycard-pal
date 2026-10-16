@@ -32,6 +32,8 @@ const mockClearEtag = jest.fn();
 const mockClearLastModified = jest.fn();
 
 jest.mock('../src/storage/eip7730Settings.online', () => ({
+  DEFAULT_EIP7730_REGISTRY_URL:
+    'https://github.com/ethereum/clear-signing-erc7730-registry/archive/refs/heads/master.zip',
   loadDescriptorSource: (...args: any[]) => mockLoadSource(...args),
   loadDescriptorUrl: (...args: any[]) => mockLoadUrl(...args),
   loadWifiOnly: (...args: any[]) => mockLoadWifi(...args),
@@ -147,6 +149,22 @@ describe('Eip7730SettingsSection.offline', () => {
     expect(mockImport).toHaveBeenCalled();
     expect(screen.queryByText(/registry zip\./)).toBeNull();
     expect(screen.queryByText(/Could not read/)).toBeNull();
+  });
+
+  it('keeps the index while an import is running', async () => {
+    setSavedIndex(INDEX);
+    let finish: (value: unknown) => void = () => {};
+    mockImport.mockReturnValue(new Promise(resolve => (finish = resolve)));
+    render(<Eip7730SettingsSectionOffline />);
+    fireEvent.press(screen.getByTestId('eip7730-import-button'));
+    fireEvent.press(screen.getByTestId('eip7730-use-bundled'));
+    await act(async () => {
+      for (let i = 0; i < 10; i += 1) await Promise.resolve();
+    });
+    expect(mockClearSavedIndex).not.toHaveBeenCalled();
+    await act(async () => finish({ ok: false, reason: 'cancelled' }));
+    fireEvent.press(screen.getByTestId('eip7730-use-bundled'));
+    await waitFor(() => expect(mockClearSavedIndex).toHaveBeenCalled());
   });
 
   it('goes back to the bundled index', async () => {
@@ -352,6 +370,27 @@ describe('Eip7730SettingsSection.online', () => {
     await waitFor(() => {
       expect(screen.getByTestId('eip7730-import-button')).toBeTruthy();
     });
+  });
+
+  it('keeps the index and the mode while an import is running', async () => {
+    setSavedIndex(INDEX);
+    let finish: (value: unknown) => void = () => {};
+    mockImport.mockReturnValue(new Promise(resolve => (finish = resolve)));
+    render(<Eip7730SettingsSectionOnline />);
+    await waitFor(() => {
+      expect(screen.getByTestId('eip7730-import-button')).toBeTruthy();
+    });
+    fireEvent.press(screen.getByTestId('eip7730-import-button'));
+    fireEvent.press(screen.getByTestId('eip7730-use-bundled'));
+    fireEvent.press(screen.getByText('Auto-download'));
+    await act(async () => {
+      for (let i = 0; i < 10; i += 1) await Promise.resolve();
+    });
+    expect(mockClearSavedIndex).not.toHaveBeenCalled();
+    expect(mockSaveSource).not.toHaveBeenCalled();
+    await act(async () => finish({ ok: false, reason: 'cancelled' }));
+    fireEvent.press(screen.getByText('Auto-download'));
+    await waitFor(() => expect(mockSaveSource).toHaveBeenCalledWith('auto'));
   });
 
   it('keeps the index while a download is running', async () => {

@@ -87,6 +87,8 @@ const usdcContractDescriptor = {
   },
 };
 
+const PERMIT_TYPE = 'Permit(address spender,uint256 value)';
+
 const permitEip712Descriptor = {
   context: {
     eip712: {
@@ -97,7 +99,7 @@ const permitEip712Descriptor = {
   },
   display: {
     formats: {
-      Permit: {
+      [PERMIT_TYPE]: {
         intent: 'Sign permit',
         fields: [{ path: 'spender', label: 'Spender', format: 'addressName' }],
       },
@@ -147,12 +149,14 @@ describe('processRegistryZip', () => {
     ).toBeDefined();
   });
 
-  it('indexes EIP-712 descriptors by chainId:address and primary type', () => {
+  it('indexes EIP-712 descriptors by chainId:address and encodeType', () => {
     const zip = makeZip({ 'registry/permit.json': permitEip712Descriptor });
     const index = processRegistryZip(zip);
     const key = '1:0x000000000022d473030f116ddee9f6b43ac78ba3';
-    expect(nested(index).eip712[key].Permit.intent).toBe('Sign permit');
-    expect(nested(index).eip712[key].Permit.fields[0].path).toBe('spender');
+    expect(nested(index).eip712[key][PERMIT_TYPE].intent).toBe('Sign permit');
+    expect(nested(index).eip712[key][PERMIT_TYPE].fields[0].path).toBe(
+      'spender',
+    );
   });
 
   it('stores the EIP-712 domain constraint on every format', () => {
@@ -169,7 +173,7 @@ describe('processRegistryZip', () => {
     });
     const index = processRegistryZip(zip);
     const key = '1:0x000000000022d473030f116ddee9f6b43ac78ba3';
-    expect(nested(index).eip712[key].Permit.domain).toEqual({
+    expect(nested(index).eip712[key][PERMIT_TYPE].domain).toEqual({
       name: 'Permit2',
       chainId: '1',
     });
@@ -180,7 +184,7 @@ describe('processRegistryZip', () => {
       makeZip({ 'registry/permit.json': permitEip712Descriptor }),
     );
     const key = '1:0x000000000022d473030f116ddee9f6b43ac78ba3';
-    expect(nested(index).eip712[key].Permit.domain).toBeUndefined();
+    expect(nested(index).eip712[key][PERMIT_TYPE].domain).toBeUndefined();
   });
 
   it('skips an EIP-712 descriptor bound by a domain separator', () => {

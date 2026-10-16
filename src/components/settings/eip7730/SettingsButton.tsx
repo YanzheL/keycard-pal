@@ -22,10 +22,14 @@ export default function SettingsButton({
   return (
     <Pressable
       style={[styles.button, inactive && styles.buttonDisabled]}
-      android_ripple={{ color: 'rgba(255,255,255,0.2)' }}
+      android_ripple={{ color: theme.colors.ripple }}
       onPress={inactive ? undefined : onPress}
       disabled={inactive}
       testID={testID}
+      accessibilityRole="button"
+      // The spinner replaces the label, so the name has to come from here.
+      accessibilityLabel={label}
+      accessibilityState={{ disabled: !!inactive, busy: !!busy }}
     >
       {busy ? (
         <ActivityIndicator color={theme.colors.primary} />

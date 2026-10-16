@@ -1,16 +1,21 @@
 const mockLoadManifest = jest.fn();
 const mockClearSavedIndex = jest.fn();
 jest.mock('../src/storage/eip7730Index', () => ({
+  BUNDLED_REGISTRY: 'registry-b',
   loadManifest: (...args: any[]) => mockLoadManifest(...args),
   clearSavedIndex: (...args: any[]) => mockClearSavedIndex(...args),
 }));
 
-jest.mock('../src/data/eip7730.meta.json', () => ({
-  generatedAt: '2026-10-10T00:00:00.000Z',
-}));
-
-const SAVED = { version: 3, generatedAt: '2026-10-11T00:00:00.000Z' };
-const OLDER = { version: 3, generatedAt: '2026-10-09T00:00:00.000Z' };
+const SAVED = {
+  version: 3,
+  generatedAt: '2026-10-11T00:00:00.000Z',
+  bundled: 'registry-b',
+};
+const OLDER = {
+  version: 3,
+  generatedAt: '2026-10-11T00:00:00.000Z',
+  bundled: 'registry-a',
+};
 
 function load() {
   let modules: {
@@ -60,7 +65,20 @@ describe('restorePersistedIndex', () => {
     expect(mockLoadManifest).toHaveBeenCalledTimes(1);
   });
 
-  it('drops a saved index older than the bundled one an update brought', async () => {
+  it('keeps an index saved under this build whatever the clock said', async () => {
+    mockLoadManifest.mockResolvedValue({
+      ...SAVED,
+      generatedAt: '2000-01-01T00:00:00.000Z',
+    });
+    const { restore, lookup } = load();
+    await restore.restorePersistedIndex();
+    expect(mockClearSavedIndex).not.toHaveBeenCalled();
+    expect(lookup.getSavedIndex()?.generatedAt).toBe(
+      '2000-01-01T00:00:00.000Z',
+    );
+  });
+
+  it('drops an index saved before an update brought another registry', async () => {
     mockLoadManifest.mockResolvedValue(OLDER);
     const { restore, lookup } = load();
     await restore.restorePersistedIndex();

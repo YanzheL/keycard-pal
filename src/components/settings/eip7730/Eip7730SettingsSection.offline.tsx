@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { Text } from 'react-native-paper';
 
@@ -9,13 +10,14 @@ import ImportRegistryButton from './ImportRegistryButton';
 import type { SatisfiesOnline } from '@/utils/onlineParity';
 
 export default function Eip7730SettingsSection() {
+  const [importing, setImporting] = useState(false);
   return (
     <View style={styles.section}>
       <Text variant="titleMedium" style={styles.header}>
         Clear Signing Descriptors
       </Text>
-      <ImportRegistryButton />
-      <ActiveIndex />
+      <ImportRegistryButton onBusyChange={setImporting} />
+      <ActiveIndex disabled={importing} />
       <Text style={styles.helper}>
         On another device, download the clear-signing registry zip from
         github.com/ethereum/clear-signing-erc7730-registry, then import it here.

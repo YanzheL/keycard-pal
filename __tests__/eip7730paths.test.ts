@@ -335,10 +335,29 @@ describe('buildEip712Resolvers', () => {
   });
 });
 
+describe('numbers in an EIP-712 message', () => {
+  it('reads a large integer as its digits, not exponent notation', () => {
+    expect(resolveEip712FieldValues('n', { n: 1e21 })).toEqual([
+      '1000000000000000000000',
+    ]);
+    expect(resolveEip712FieldValues('n', { n: 42 })).toEqual(['42']);
+    expect(resolveEip712FieldValues('n', { n: 1.5 })).toEqual(['1.5']);
+  });
+});
+
 describe('a call with no arguments', () => {
   it('decodes despite a stray byte after its selector', () => {
     expect(decodeArgsBySignature('deposit()', '0xd0e30db076')).toEqual({});
     expect(decodeArgsBySignature('deposit()', '0xd0e30db0')).toEqual({});
     expect(decodeArgsBySignature('deposit()', '0x12345678')).toBeNull();
+  });
+
+  it('refuses data that is not whole bytes, which would decode shifted', () => {
+    const transfer =
+      '0xa9059cbb000000000000000000000000dac17f958d2ee523a2206206994597c13d831ec7000000000000000000000000000000000000000000000000000000000000007b';
+    const sig = 'transfer(address to,uint256 value)';
+    expect(decodeArgsBySignature(sig, transfer)).not.toBeNull();
+    expect(decodeArgsBySignature(sig, transfer.slice(0, -1))).toBeNull();
+    expect(decodeArgsBySignature(sig, `${transfer.slice(0, -2)}zz`)).toBeNull();
   });
 });

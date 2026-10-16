@@ -186,6 +186,10 @@ function toText(value: unknown): string {
       typeof v === 'bigint' ? v.toString() : v,
     );
   }
+  // String(1e21) is "1e+21"; an integer goes out as the digits it is signed as.
+  if (typeof value === 'number' && Number.isInteger(value)) {
+    return BigInt(value).toString();
+  }
   return String(value);
 }
 
@@ -221,11 +225,15 @@ export function resolveEip712FieldValue(
   return valueAt(rest, message);
 }
 
+export const WHOLE_BYTES_RE = /^0x(?:[0-9a-f]{2})*$/i;
+
 /** Arguments named as the descriptor's own signature names them, or null when it does not fit. */
 export function decodeArgsBySignature(
   signature: string,
   data: string,
 ): Record<string, unknown> | null {
+  // viem pads odd-length hex at the front, which would shift every argument.
+  if (!WHOLE_BYTES_RE.test(data)) return null;
   try {
     const item = parseAbiItem(`function ${signature}`) as AbiFunction;
     if (toFunctionSelector(item) !== data.slice(0, 10).toLowerCase()) {

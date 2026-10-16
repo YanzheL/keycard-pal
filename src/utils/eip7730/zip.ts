@@ -93,6 +93,8 @@ export const EIP7730_INDEX_VERSION = 9;
 const SCHEMA_MAJOR = 2;
 const SELECTOR_RE = /^0x[0-9a-f]{8}$/i;
 const ADDRESS_RE = /^0x[0-9a-f]{40}$/i;
+/** Only an encodeType can match a message, so any other key is skipped. */
+const ENCODE_TYPE_RE = /^[^\s(),]+\(.*\)$/s;
 // The registry unpacks to about 4 MB of JSON; a zip claiming far more is refused.
 const MAX_JSON_BYTES = 64 * 1024 * 1024;
 const MAX_FILE_BYTES = 8 * 1024 * 1024;
@@ -118,6 +120,11 @@ export function isDecimals(value: unknown): value is number {
     (value as number) >= 0 &&
     (value as number) <= 255
   );
+}
+
+/** A key copied from a descriptor into an object; these three would reach a prototype. */
+function isSafeKey(key: string): boolean {
+  return key !== '__proto__' && key !== 'constructor' && key !== 'prototype';
 }
 
 function own(object: Json, key: string): unknown {
@@ -150,7 +157,7 @@ function withConstants(params: unknown, constants: Json): Json | undefined {
   if (!isPlainObject(params)) return undefined;
   const out: Json = {};
   for (const [key, value] of Object.entries(params)) {
-    out[key] = substituteConstant(value, constants);
+    if (isSafeKey(key)) out[key] = substituteConstant(value, constants);
   }
   return out;
 }
@@ -387,10 +394,10 @@ function extractMetadata(
   if (isPlainObject(rawMeta.enums)) {
     const enums: Record<string, Record<string, string>> = {};
     for (const [k, v] of Object.entries(rawMeta.enums)) {
-      if (!isPlainObject(v)) continue;
+      if (!isPlainObject(v) || !isSafeKey(k)) continue;
       const mapped: Record<string, string> = {};
       for (const [k2, v2] of Object.entries(v)) {
-        if (typeof v2 === 'string') mapped[String(k2)] = v2;
+        if (typeof v2 === 'string' && isSafeKey(k2)) mapped[k2] = v2;
       }
       enums[k] = mapped;
     }
@@ -413,6 +420,16 @@ function extractMetadata(
   return Object.keys(result).length > 0 ? result : undefined;
 }
 
+/** The spec allows a flat object of strings, shown as its labels and values. */
+function intentText(raw: unknown): string | undefined {
+  if (typeof raw === 'string') return raw;
+  if (!isPlainObject(raw)) return undefined;
+  const entries = Object.entries(raw);
+  if (entries.length === 0 || !entries.every(([, v]) => typeof v === 'string'))
+    return undefined;
+  return entries.map(([label, value]) => `${label}: ${value}`).join(', ');
+}
+
 function extractDisplayFormat(
   rawFormat: unknown,
   metadata: Eip7730DisplayFormat['metadata'] | undefined,
@@ -426,9 +443,10 @@ function extractDisplayFormat(
     undefined,
     alwaysVisible,
   );
-  if (fields.length === 0 && typeof rawFormat.intent !== 'string') return null;
+  const intent = intentText(rawFormat.intent);
+  if (fields.length === 0 && intent === undefined) return null;
   const out: Eip7730DisplayFormat = { fields };
-  if (typeof rawFormat.intent === 'string') out.intent = rawFormat.intent;
+  if (intent !== undefined) out.intent = intent;
   const template = rawFormat.interpolatedIntent;
   if (
     typeof template === 'string' &&
@@ -462,7 +480,8 @@ function extractDomain(raw: unknown): Record<string, string> | undefined {
   if (!isPlainObject(raw)) return undefined;
   const out: Record<string, string> = {};
   for (const [k, v] of Object.entries(raw)) {
-    if (typeof v === 'string' || typeof v === 'number') out[k] = String(v);
+    if ((typeof v === 'string' || typeof v === 'number') && isSafeKey(k))
+      out[k] = String(v);
   }
   return Object.keys(out).length > 0 ? out : undefined;
 }
@@ -473,6 +492,7 @@ function insertEntry(
   key: string,
   value: Eip7730DisplayFormat,
 ): void {
+  if (!isSafeKey(key)) return;
   const byKey = (bucket[deployment.address] ??= {});
   (byKey[key] ??= {})[deployment.chainId] = value;
 }
@@ -534,6 +554,7 @@ function processDescriptor(
     if (deployments.length === 0) return;
     const domain = extractDomain(eip712Ctx.domain);
     for (const [encodedType, rawFormat] of Object.entries(formats)) {
+      if (!ENCODE_TYPE_RE.test(encodedType)) continue;
       const format = extractDisplayFormat(rawFormat, metadata, sources);
       if (!format) continue;
       if (domain) format.domain = domain;

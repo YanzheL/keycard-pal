@@ -1,6 +1,8 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-import { DEFAULT_EIP7730_REGISTRY_URL } from '@/constants/eip7730';
+// Online only: the offline bundle must carry no download endpoint.
+export const DEFAULT_EIP7730_REGISTRY_URL: string =
+  'https://github.com/ethereum/clear-signing-erc7730-registry/archive/refs/heads/master.zip';
 
 export type Eip7730DescriptorSource = 'auto' | 'manual';
 

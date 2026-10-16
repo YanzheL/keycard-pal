@@ -1,5 +1,8 @@
-import bundledMeta from '@/data/eip7730.meta.json';
-import { clearSavedIndex, loadManifest } from '@/storage/eip7730Index';
+import {
+  BUNDLED_REGISTRY,
+  clearSavedIndex,
+  loadManifest,
+} from '@/storage/eip7730Index';
 
 import { getSavedIndex, setSavedIndex } from './lookup';
 
@@ -11,10 +14,8 @@ export function restorePersistedIndex(): Promise<void> {
     restoring = loadManifest().then(async manifest => {
       // An import or a download may have finished first.
       if (!manifest || getSavedIndex()) return;
-      // An app update can ship a bundled index built after this one was saved.
-      if (
-        Date.parse(bundledMeta.generatedAt) > Date.parse(manifest.generatedAt)
-      ) {
+      // An app update brought another registry. Not by date: an offline phone's clock can be anything.
+      if (manifest.bundled !== BUNDLED_REGISTRY) {
         await clearSavedIndex();
         return;
       }

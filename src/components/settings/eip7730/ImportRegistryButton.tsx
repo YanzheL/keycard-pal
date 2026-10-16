@@ -11,14 +11,18 @@ import { importRegistryZipFromPicker } from '@/utils/eip7730/import';
 
 export default function ImportRegistryButton({
   disabled,
+  onBusyChange,
 }: {
   disabled?: boolean;
+  /** The section locks its other actions while an import is writing the index. */
+  onBusyChange?: (busy: boolean) => void;
 }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const handlePress = useCallback(async () => {
     setBusy(true);
+    onBusyChange?.(true);
     setError(null);
     try {
       const result = await importRegistryZipFromPicker();
@@ -33,8 +37,9 @@ export default function ImportRegistryButton({
       }
     } finally {
       setBusy(false);
+      onBusyChange?.(false);
     }
-  }, []);
+  }, [onBusyChange]);
 
   return (
     <View style={styles.wrapper}>

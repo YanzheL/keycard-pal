@@ -1,4 +1,5 @@
 import {
+  BUNDLED_REGISTRY,
   clearSavedIndex,
   loadManifest,
   loadSlice,
@@ -55,11 +56,16 @@ beforeEach(() => {
 describe('loadManifest', () => {
   it('returns a manifest of the current version', async () => {
     mockReadFile.mockResolvedValue(
-      JSON.stringify({ version: EIP7730_INDEX_VERSION, generatedAt: 'x' }),
+      JSON.stringify({
+        version: EIP7730_INDEX_VERSION,
+        generatedAt: 'x',
+        bundled: BUNDLED_REGISTRY,
+      }),
     );
     expect(await loadManifest()).toEqual({
       version: EIP7730_INDEX_VERSION,
       generatedAt: 'x',
+      bundled: BUNDLED_REGISTRY,
     });
     expect(mockReadFile).toHaveBeenCalledWith(
       `${FOLDER}/manifest.json`,
@@ -74,11 +80,16 @@ describe('loadManifest', () => {
         version: EIP7730_INDEX_VERSION,
         generatedAt: 'x',
         source: 'import',
+        bundled: BUNDLED_REGISTRY,
       }),
     );
     expect(await loadManifest()).toMatchObject({ source: 'import' });
     mockReadFile.mockResolvedValueOnce(
-      JSON.stringify({ version: EIP7730_INDEX_VERSION, generatedAt: 'x' }),
+      JSON.stringify({
+        version: EIP7730_INDEX_VERSION,
+        generatedAt: 'x',
+        bundled: BUNDLED_REGISTRY,
+      }),
     );
     expect((await loadManifest())?.source).toBeUndefined();
   });
@@ -89,7 +100,15 @@ describe('loadManifest', () => {
         version: EIP7730_INDEX_VERSION,
         generatedAt: 'x',
         source: 'mail',
+        bundled: BUNDLED_REGISTRY,
       }),
+    );
+    expect(await loadManifest()).toBeNull();
+  });
+
+  it('drops a manifest that does not name the registry it was saved beside', async () => {
+    mockReadFile.mockResolvedValue(
+      JSON.stringify({ version: EIP7730_INDEX_VERSION, generatedAt: 'x' }),
     );
     expect(await loadManifest()).toBeNull();
   });
@@ -144,6 +163,39 @@ describe('loadSlice', () => {
 });
 
 describe('saveIndex', () => {
+  it('lets one write finish before the next touches the staging folder', async () => {
+    const order: string[] = [];
+    mockExists.mockResolvedValue(false);
+    mockMkdir.mockImplementation(async (dir: string) => {
+      order.push(`mkdir ${dir}`);
+    });
+    let release: (() => void) | null = null;
+    mockMoveFile.mockImplementationOnce(
+      () =>
+        new Promise<void>(resolve => {
+          release = () => {
+            order.push('first moved in');
+            resolve();
+          };
+        }),
+    );
+    const first = saveIndex(INDEX, 'import');
+    const second = saveIndex(INDEX, 'download');
+    try {
+      for (let i = 0; i < 200 && !release; i += 1) await Promise.resolve();
+      expect(release).not.toBeNull();
+      expect(order).toEqual([`mkdir ${STAGING}`]);
+    } finally {
+      (release as (() => void) | null)?.();
+      await Promise.allSettled([first, second]);
+    }
+    expect(order).toEqual([
+      `mkdir ${STAGING}`,
+      'first moved in',
+      `mkdir ${STAGING}`,
+    ]);
+  });
+
   it('writes one file per slice, the manifest last, then swaps the folder in', async () => {
     mockExists.mockResolvedValue(false);
     const manifest = await saveIndex(INDEX, 'download');
@@ -152,6 +204,7 @@ describe('saveIndex', () => {
       version: EIP7730_INDEX_VERSION,
       generatedAt: '2026-10-12T00:00:00.000Z',
       source: 'download',
+      bundled: BUNDLED_REGISTRY,
     });
     expect(JSON.parse(mockWriteFile.mock.calls[2][1])).toEqual(manifest);
     expect(mockMkdir).toHaveBeenCalledWith(STAGING);

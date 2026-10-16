@@ -68,6 +68,14 @@ async function registryZip() {
 async function main() {
   const zip = await registryZip();
   const work = fs.mkdtempSync(path.join(os.tmpdir(), 'eip7730-vectors-'));
+  try {
+    check(zip, work);
+  } finally {
+    fs.rmSync(work, { recursive: true, force: true });
+  }
+}
+
+function check(zip, work) {
   const zipPath = path.join(work, 'registry.zip');
   fs.writeFileSync(zipPath, zip);
 
@@ -77,7 +85,12 @@ async function main() {
   });
   for (const [name, bytes] of Object.entries(files)) {
     // GitHub archives put everything under one top-level folder.
-    const target = path.join(vectorsDir, name.split('/').slice(1).join('/'));
+    const target = path.resolve(vectorsDir, name.split('/').slice(1).join('/'));
+    if (!target.startsWith(vectorsDir + path.sep)) {
+      throw new Error(
+        `The archive entry ${name} points outside the work folder.`,
+      );
+    }
     fs.mkdirSync(path.dirname(target), { recursive: true });
     fs.writeFileSync(target, bytes);
   }
@@ -148,7 +161,7 @@ async function main() {
         console.error(`    expected ${label}: ${value}`);
       }
     }
-    process.exit(1);
+    process.exitCode = 1;
   }
 }
 
