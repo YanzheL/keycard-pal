@@ -9,6 +9,7 @@ import { dashboardActions } from '@/navigation/dashboardActions';
 import { DashboardScreenProps } from '@/navigation/types';
 import theme from '@/theme';
 
+import Eip7730DownloadProgress from '@/components/Eip7730DownloadProgress.online';
 import EntryList from '@/components/EntryList';
 import PrimaryButton from '@/components/PrimaryButton';
 import UnselectedKeycardReminder from '@/components/UnselectedKeycardReminder';
@@ -58,7 +59,15 @@ export default function DashboardScreen({
       {/* Above the grid, not in its footer: it follows a tap the user just
           made, and below the tiles it would sit off screen on a small phone. */}
       <UnselectedKeycardReminder />
-      <EntryList entries={entries} footer={<WalletConnectDashboardCard />} />
+      <EntryList
+        entries={entries}
+        footer={
+          <>
+            <Eip7730DownloadProgress />
+            <WalletConnectDashboardCard />
+          </>
+        }
+      />
 
       <View style={styles.actions}>
         <PrimaryButton label="Scan" onPress={handleSign} icon={Icons.scan} />

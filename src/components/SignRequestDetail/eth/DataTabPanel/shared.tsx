@@ -1,5 +1,6 @@
+import type { ReactNode } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
-import { Text } from 'react-native-paper';
+import { Icon, Text } from 'react-native-paper';
 
 import { Icons } from '@/assets/icons';
 import {
@@ -11,6 +12,7 @@ import theme from '@/theme';
 
 import InfoRow from '@/components/InfoRow';
 
+import { useDescriptorSource } from '@/hooks/useDescriptorSource';
 import { useExternalLink } from '@/hooks/useExternalLink';
 
 export function SectionHeader({ title }: { title: string }) {
@@ -20,6 +22,45 @@ export function SectionHeader({ title }: { title: string }) {
         {title}
       </Text>
     </View>
+  );
+}
+
+export function WarningRow({ text }: { text: string }) {
+  return (
+    <View style={styles.warningRow}>
+      <Icon source="alert" size={16} color={theme.colors.negative} />
+      <Text variant="labelSmall" style={styles.warningText}>
+        {text}
+      </Text>
+    </View>
+  );
+}
+
+export function ElementBlock({
+  title,
+  children,
+}: {
+  title?: string;
+  children: ReactNode;
+}) {
+  return (
+    <View style={styles.element}>
+      {title && (
+        <Text variant="labelSmall" style={styles.elementTitle}>
+          {title}
+        </Text>
+      )}
+      {children}
+    </View>
+  );
+}
+
+export function DescriptorSourceLine() {
+  const text = useDescriptorSource();
+  return (
+    <Text variant="labelSmall" style={styles.source} testID="descriptor-source">
+      {text}
+    </Text>
   );
 }
 
@@ -61,6 +102,31 @@ export function DigestExplainer({ text }: { text: string }) {
 const styles = StyleSheet.create({
   row: {
     paddingVertical: 8,
+  },
+  source: {
+    color: theme.colors.onSurfaceVariant,
+    paddingBottom: 4,
+  },
+  warningRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingVertical: 6,
+    paddingHorizontal: 4,
+  },
+  warningText: {
+    color: theme.colors.negative,
+    flexShrink: 1,
+  },
+  element: {
+    borderLeftWidth: 2,
+    borderLeftColor: theme.colors.surfaceVariant,
+    paddingLeft: 12,
+    marginVertical: 4,
+  },
+  elementTitle: {
+    color: theme.colors.onSurfaceVariant,
+    paddingTop: 4,
   },
   sectionHeader: {
     paddingTop: 8,

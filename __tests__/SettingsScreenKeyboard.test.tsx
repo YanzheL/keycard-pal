@@ -33,6 +33,10 @@ jest.mock(
 );
 jest.mock('../src/components/settings/PinPadSettingsSection', () => () => null);
 jest.mock(
+  '../src/components/settings/eip7730/Eip7730SettingsSection.online',
+  () => () => null,
+);
+jest.mock(
   '../src/components/settings/ens/EnsSettingsSection.online',
   () => () => null,
 );

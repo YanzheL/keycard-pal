@@ -77,6 +77,30 @@ describe('connectivity.online', () => {
     });
   });
 
+  describe('isOnWifi', () => {
+    beforeEach(() => {
+      mockNetInfo.fetch.mockReset();
+    });
+
+    it('is true only when the OS reports Wi-Fi', async () => {
+      for (const [type, expected] of [
+        ['wifi', true],
+        ['cellular', false],
+        ['vpn', false],
+        ['none', false],
+        ['unknown', false],
+      ] as const) {
+        mockNetInfo.fetch.mockResolvedValueOnce({ type } as any);
+        await expect(online.isOnWifi()).resolves.toBe(expected);
+      }
+    });
+
+    it('treats a NetInfo failure as not on Wi-Fi', async () => {
+      mockNetInfo.fetch.mockRejectedValue(new Error('no native module'));
+      await expect(online.isOnWifi()).resolves.toBe(false);
+    });
+  });
+
   describe('subscribeNetworkConnected', () => {
     let listener: Listener | undefined;
     const unsubscribe = jest.fn();
@@ -116,6 +140,7 @@ describe('connectivity.offline', () => {
   it('always reports disconnected', async () => {
     expect(offline.getNetworkConnected()).toBe(false);
     await expect(offline.isNetworkConnected()).resolves.toBe(false);
+    await expect(offline.isOnWifi()).resolves.toBe(false);
   });
 
   it('returns a no-op unsubscribe', () => {

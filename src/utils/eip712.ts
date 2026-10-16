@@ -166,6 +166,15 @@ function toChainId(value: unknown): number | undefined {
   return Number.isSafeInteger(numeric) ? numeric : undefined;
 }
 
+export function eip712DomainChainId(
+  domain: Record<string, unknown>,
+): number | undefined {
+  const value = domain.chainId;
+  return typeof value === 'string' && /^0x[0-9a-fA-F]+$/.test(value)
+    ? toChainId(BigInt(value))
+    : toChainId(value);
+}
+
 function parsePermit(parsed: JsonObject): Eip712SpecialReview | null {
   if (parsed.primaryType !== 'Permit') return null;
   const domain = isJsonObject(parsed.domain) ? parsed.domain : {};
@@ -277,6 +286,68 @@ export function parseEip712RawTypedData(
   } catch {
     return null;
   }
+}
+
+type Eip712Member = { name: string; type: string };
+
+function structMembers(
+  types: Record<string, unknown>,
+  name: string,
+): Eip712Member[] | null {
+  const members = types[name];
+  if (!Array.isArray(members)) return null;
+  return members.filter(
+    (m): m is Eip712Member =>
+      isJsonObject(m) &&
+      typeof m.name === 'string' &&
+      typeof m.type === 'string',
+  );
+}
+
+/** The declared type a field path reaches; null past a slice or a member the types do not list. */
+export function eip712FieldType(
+  types: Record<string, unknown>,
+  primaryType: string,
+  path: string,
+): string | null {
+  let type = primaryType;
+  for (const part of path.replace(/^#\./, '').split('.')) {
+    if (!part) continue;
+    if (part.startsWith('[')) {
+      if (part.includes(':') || !/\[\d*\]$/.test(type)) return null;
+      type = type.replace(/\[\d*\]$/, '');
+      continue;
+    }
+    const member = structMembers(types, type)?.find(m => m.name === part);
+    if (!member) return null;
+    type = member.type;
+  }
+  return type;
+}
+
+export function encodeEip712Type(
+  primaryType: string,
+  types: Record<string, unknown>,
+): string | null {
+  const referenced = new Set<string>();
+  const visit = (name: string) => {
+    if (referenced.has(name)) return;
+    const members = structMembers(types, name);
+    if (!members) return;
+    referenced.add(name);
+    members.forEach(m => visit(m.type.replace(/\[\d*\]/g, '')));
+  };
+  visit(primaryType);
+  if (!referenced.has(primaryType)) return null;
+  referenced.delete(primaryType);
+  return [primaryType, ...[...referenced].sort()]
+    .map(
+      name =>
+        `${name}(${structMembers(types, name)!
+          .map(m => `${m.type} ${m.name}`)
+          .join(',')})`,
+    )
+    .join('');
 }
 
 export function parseEip712Summary(signDataHex: string): Eip712Summary | null {

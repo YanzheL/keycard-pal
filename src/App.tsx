@@ -4,7 +4,7 @@
  * @format
  */
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { StatusBar, StyleSheet } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { PaperProvider } from 'react-native-paper';
@@ -20,9 +20,15 @@ import { PreferencesProvider } from './providers/preferences/Provider';
 
 import { usePreferences } from './hooks/usePreferences';
 
+import { restorePersistedIndex } from './utils/eip7730/restore';
+
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
 export default function App() {
+  useEffect(() => {
+    restorePersistedIndex();
+  }, []);
+
   return (
     <SafeAreaProvider style={styles.root}>
       <PaperProvider theme={theme}>

@@ -1,13 +1,18 @@
+import type { ReactNode } from 'react';
+
 import InfoRow from '../InfoRow';
 
 export default function AddressInfoRow({
   label,
   value,
+  name,
 }: {
   label: string;
   value: string;
+  ens?: boolean;
+  name?: ReactNode;
 }) {
-  return <InfoRow label={label} value={value} />;
+  return <InfoRow label={label} value={value} name={name} />;
 }
 
 import type { SatisfiesOnline } from '@/utils/onlineParity';

@@ -1,0 +1,534 @@
+import React from 'react';
+import { act, render, screen } from '@testing-library/react-native';
+
+import Eip712JsonPanel from '../src/components/SignRequestDetail/eth/DataTabPanel/Eip712JsonPanel';
+import { DESCRIPTOR_CHECK_FAILED_WARNING } from '../src/constants/eip7730';
+
+import type { Eip712Summary } from '../src/utils/eip712';
+import { checksumEthAddress } from '../src/utils/ethereumAddress';
+import type { EthSignRequest } from '../src/types';
+
+jest.mock('react-native-paper', () => {
+  const { Text, TouchableOpacity, View } = require('react-native');
+  return {
+    Text: ({ children, ...props }: any) => <Text {...props}>{children}</Text>,
+    Icon: () => <View />,
+    SegmentedButtons: ({
+      buttons,
+      onValueChange,
+    }: {
+      value: string;
+      onValueChange: (v: string) => void;
+      buttons: { value: string; label: string }[];
+    }) => (
+      <View>
+        {buttons.map((b: any) => (
+          <TouchableOpacity
+            key={b.value}
+            onPress={() => onValueChange(b.value)}
+          >
+            <Text>{b.label}</Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+    ),
+  };
+});
+
+jest.mock('../src/theme', () => ({
+  __esModule: true,
+  default: {
+    colors: {
+      onSurfaceVariant: '#aaa',
+      negative: '#f00',
+      primary: '#1e88e5',
+    },
+  },
+}));
+
+jest.mock('../src/components/InfoRow', () => {
+  const { Text } = require('react-native');
+  return ({ label, value }: { label: string; value: string }) => (
+    <Text>{`${label}: ${value}`}</Text>
+  );
+});
+
+jest.mock('../src/components/ens/AddressInfoRow.online', () => {
+  const { Text } = require('react-native');
+  return ({ label, value }: { label: string; value: string }) => (
+    <Text>{`ADDR ${label}: ${value}`}</Text>
+  );
+});
+
+jest.mock(
+  '../src/components/SignRequestDetail/eth/DataTabPanel/SpecialEip712Section',
+  () => {
+    const { Text } = require('react-native');
+    return () => <Text>SpecialEip712Section</Text>;
+  },
+);
+
+const mockLookupEip712 = jest.fn();
+jest.mock('../src/utils/eip7730/lookup', () => ({
+  lookupEip712: (...args: any[]) => mockLookupEip712(...args),
+  getSavedIndex: () => null,
+  subscribeSavedIndex: () => () => {},
+}));
+
+beforeEach(() => jest.clearAllMocks());
+
+const VERIFYING = '0x000000000022d473030f116ddee9f6b43ac78ba3';
+
+function buildPayload(message: Record<string, unknown>) {
+  return {
+    types: {
+      EIP712Domain: [
+        { name: 'name', type: 'string' },
+        { name: 'verifyingContract', type: 'address' },
+        { name: 'chainId', type: 'uint256' },
+      ],
+      PermitSingle: [
+        { name: 'spender', type: 'address' },
+        { name: 'sigDeadline', type: 'uint256' },
+      ],
+    },
+    primaryType: 'PermitSingle',
+    domain: {
+      name: 'Permit2',
+      verifyingContract: VERIFYING,
+      chainId: 1,
+    },
+    message,
+  };
+}
+
+function buildRequest(payload: object): EthSignRequest {
+  return {
+    signData: Buffer.from(JSON.stringify(payload), 'utf8').toString('hex'),
+    dataType: 2,
+    derivationPath: "m/44'/60'/0'/0",
+  };
+}
+
+function buildSummary(message: Record<string, string>): Eip712Summary {
+  return {
+    rawJson: JSON.stringify(buildPayload(message), null, 2),
+    primaryType: 'PermitSingle',
+    domain: {
+      name: 'Permit2',
+      verifyingContract: VERIFYING,
+      chainId: '1',
+    },
+    message,
+  };
+}
+
+describe('Eip712JsonPanel EIP-7730 integration', () => {
+  it('renders descriptor intent and fields when the app has no reviewer of its own', () => {
+    mockLookupEip712.mockReturnValue({
+      intent: 'Approve spender',
+      fields: [
+        { path: 'spender', label: 'Spender', format: 'addressName' },
+        { path: 'sigDeadline', label: 'Expires', format: 'date' },
+      ],
+    });
+    const payload = buildPayload({
+      spender: '0xabc0000000000000000000000000000000000001',
+      sigDeadline: '1700000000',
+    });
+    const eip712 = buildSummary({
+      spender: '0xabc0000000000000000000000000000000000001',
+      sigDeadline: '1700000000',
+    });
+
+    render(
+      <Eip712JsonPanel
+        request={buildRequest(payload)}
+        eip712={eip712}
+        chainId={1}
+      />,
+    );
+
+    expect(screen.getByText('Approve spender')).toBeTruthy();
+    expect(screen.getByTestId('descriptor-source')).toBeTruthy();
+    expect(
+      screen.getByText(
+        'ADDR Spender: 0xABC0000000000000000000000000000000000001',
+      ),
+    ).toBeTruthy();
+    expect(screen.queryByText('SpecialEip712Section')).toBeNull();
+  });
+
+  it("lets a matching descriptor replace the app's own Permit reviewer", () => {
+    mockLookupEip712.mockReturnValue({ intent: 'Approve spender', fields: [] });
+    const eip712 = {
+      ...buildSummary({ spender: '0xabc', sigDeadline: '1' }),
+      special: { kind: 'permit' } as any,
+    };
+    render(
+      <Eip712JsonPanel
+        request={buildRequest(
+          buildPayload({ spender: '0xabc', sigDeadline: '1' }),
+        )}
+        eip712={eip712}
+        chainId={1}
+      />,
+    );
+    expect(screen.getByText('Approve spender')).toBeTruthy();
+    expect(screen.queryByText('SpecialEip712Section')).toBeNull();
+  });
+
+  it('looks the descriptor up by encoded type and passes the message domain', () => {
+    mockLookupEip712.mockReturnValue(null);
+    const payload = buildPayload({ spender: '0xabc', sigDeadline: '1' });
+    render(
+      <Eip712JsonPanel
+        request={buildRequest(payload)}
+        eip712={buildSummary({ spender: '0xabc', sigDeadline: '1' })}
+        chainId={1}
+      />,
+    );
+    expect(mockLookupEip712).toHaveBeenCalledWith(
+      1,
+      VERIFYING,
+      'PermitSingle(address spender,uint256 sigDeadline)',
+      payload.domain,
+    );
+  });
+
+  it('reads WalletConnect typed data from reviewData', () => {
+    mockLookupEip712.mockReturnValue(null);
+    const payload = buildPayload({ spender: '0xabc', sigDeadline: '1' });
+    const request: EthSignRequest = {
+      signData: `0x${'11'.repeat(32)}`,
+      dataType: 0,
+      derivationPath: "m/44'/60'/0'/0",
+      reviewData: buildRequest(payload).signData,
+    };
+    render(
+      <Eip712JsonPanel
+        request={request}
+        eip712={buildSummary({ spender: '0xabc', sigDeadline: '1' })}
+        chainId={undefined}
+      />,
+    );
+    expect(mockLookupEip712).toHaveBeenCalledWith(
+      1,
+      VERIFYING,
+      'PermitSingle(address spender,uint256 sigDeadline)',
+      payload.domain,
+    );
+  });
+
+  it('reads @. fields from the message container', () => {
+    mockLookupEip712.mockReturnValue({
+      intent: 'Sign',
+      fields: [
+        { path: '@.to', label: 'Contract', format: 'raw' },
+        { path: '@.from', label: 'Signer', format: 'raw' },
+      ],
+    });
+    const payload = buildPayload({ spender: '0xabc', sigDeadline: '1' });
+    render(
+      <Eip712JsonPanel
+        request={{
+          ...buildRequest(payload),
+          address: '0x00000000000000000000000000000000000000aa',
+        }}
+        eip712={buildSummary({ spender: '0xabc', sigDeadline: '1' })}
+        chainId={1}
+      />,
+    );
+    expect(
+      screen.getByText(`Contract: ${checksumEthAddress(VERIFYING)}`),
+    ).toBeTruthy();
+    expect(
+      screen.getByText(
+        `Signer: ${checksumEthAddress(
+          '0x00000000000000000000000000000000000000aa',
+        )}`,
+      ),
+    ).toBeTruthy();
+  });
+
+  it('writes an address field in ERC-55 and leaves a string that looks like one alone', () => {
+    const mixed = '0xa0b86991c6218b36C1d19d4a2e9eb0ce3606eb48';
+    mockLookupEip712.mockReturnValue({
+      intent: 'Permit',
+      fields: [
+        { path: 'spender', label: 'Spender', format: 'raw' },
+        { path: 'note', label: 'Note', format: 'raw' },
+      ],
+    });
+    const payload = {
+      ...buildPayload({ spender: mixed, sigDeadline: '1' }),
+      types: {
+        ...buildPayload({}).types,
+        PermitSingle: [
+          { name: 'spender', type: 'address' },
+          { name: 'note', type: 'string' },
+        ],
+      },
+      message: { spender: mixed, note: mixed },
+    };
+    render(
+      <Eip712JsonPanel
+        request={buildRequest(payload)}
+        eip712={buildSummary({ spender: mixed, note: mixed })}
+        chainId={1}
+      />,
+    );
+    expect(
+      screen.getByText(`Spender: ${checksumEthAddress(mixed)}`),
+    ).toBeTruthy();
+    expect(screen.getByText(`Note: ${mixed}`)).toBeTruthy();
+  });
+
+  it('falls back to SpecialEip712Section when descriptor not found', () => {
+    mockLookupEip712.mockReturnValue(null);
+    const eip712 = {
+      ...buildSummary({ spender: '0xabc' }),
+      special: { kind: 'permit' } as any,
+    };
+    render(
+      <Eip712JsonPanel
+        request={buildRequest(buildPayload({ spender: '0xabc' }))}
+        eip712={eip712}
+        chainId={1}
+      />,
+    );
+    expect(screen.getByText('SpecialEip712Section')).toBeTruthy();
+  });
+
+  it("shows the entry's sentence in place of its intent", () => {
+    mockLookupEip712.mockReturnValue({
+      intent: 'Approve spender',
+      interpolatedIntent: 'Allow {spender} to spend',
+      fields: [{ path: 'spender', label: 'Spender', format: 'addressName' }],
+    });
+    const message = {
+      spender: '0xabc0000000000000000000000000000000000001',
+      sigDeadline: '1',
+    };
+    render(
+      <Eip712JsonPanel
+        request={buildRequest(buildPayload(message))}
+        eip712={buildSummary(message)}
+        chainId={1}
+      />,
+    );
+    expect(
+      screen.getByText(
+        'Allow 0xABC0000000000000000000000000000000000001 to spend',
+      ),
+    ).toBeTruthy();
+    expect(screen.queryByText('Approve spender')).toBeNull();
+  });
+
+  it('shows neither reviewer while a saved slice is read', async () => {
+    let finish: (format: unknown) => void = () => {};
+    mockLookupEip712.mockReturnValue(
+      new Promise(resolve => {
+        finish = resolve;
+      }),
+    );
+    const eip712 = {
+      ...buildSummary({ spender: '0xabc' }),
+      special: { kind: 'permit' } as any,
+    };
+    render(
+      <Eip712JsonPanel
+        request={buildRequest(buildPayload({ spender: '0xabc' }))}
+        eip712={eip712}
+        chainId={1}
+      />,
+    );
+    expect(screen.queryByText('SpecialEip712Section')).toBeNull();
+
+    await act(async () => finish({ intent: 'Approve spender', fields: [] }));
+    expect(screen.getByText('Approve spender')).toBeTruthy();
+    expect(screen.queryByText('SpecialEip712Section')).toBeNull();
+  });
+
+  it('does not call lookup when verifyingContract is missing', () => {
+    const payload = {
+      types: { EIP712Domain: [], Mail: [] },
+      primaryType: 'Mail',
+      domain: { name: 'NoContract' },
+      message: {},
+    };
+    const eip712: Eip712Summary = {
+      rawJson: JSON.stringify(payload),
+      primaryType: 'Mail',
+      domain: { name: 'NoContract' },
+      message: {},
+    };
+    render(
+      <Eip712JsonPanel
+        request={buildRequest(payload)}
+        eip712={eip712}
+        chainId={1}
+      />,
+    );
+    expect(mockLookupEip712).not.toHaveBeenCalled();
+  });
+
+  it("looks up the domain's chain, not the request's", () => {
+    mockLookupEip712.mockReturnValue(null);
+    const payload = {
+      ...buildPayload({}),
+      domain: {
+        name: 'Permit2',
+        verifyingContract: VERIFYING,
+        chainId: '0x89',
+      },
+    };
+    render(
+      <Eip712JsonPanel
+        request={buildRequest(payload)}
+        eip712={buildSummary({})}
+        chainId={1}
+      />,
+    );
+    expect(mockLookupEip712).toHaveBeenCalledWith(
+      137,
+      VERIFYING,
+      expect.any(String),
+      payload.domain,
+    );
+  });
+
+  it('does not call lookup when the domain names no chain', () => {
+    const payload = {
+      ...buildPayload({}),
+      domain: { name: 'Permit2', verifyingContract: VERIFYING },
+    };
+    render(
+      <Eip712JsonPanel
+        request={buildRequest(payload)}
+        eip712={buildSummary({})}
+        chainId={1}
+      />,
+    );
+    expect(mockLookupEip712).not.toHaveBeenCalled();
+  });
+  it('does not repeat the verifying contract as an unknown token contract', () => {
+    mockLookupEip712.mockReturnValue({
+      intent: 'Permit',
+      fields: [
+        {
+          path: 'sigDeadline',
+          label: 'Amount',
+          format: 'tokenAmount',
+          params: { tokenPath: '@.to' },
+        },
+      ],
+    });
+    const message = { spender: '0xabc', sigDeadline: '5' };
+    render(
+      <Eip712JsonPanel
+        request={buildRequest(buildPayload(message))}
+        eip712={buildSummary(message)}
+        chainId={1}
+      />,
+    );
+    expect(screen.getByText('Unknown token')).toBeTruthy();
+    expect(
+      screen.getByText(`ADDR verifyingContract: ${VERIFYING}`),
+    ).toBeTruthy();
+    expect(screen.queryByText(/Token contract/)).toBeNull();
+  });
+
+  it('drops an entry whose bundled lists differ in length, and says so', () => {
+    const group = { id: 0, iteration: 'bundled' };
+    mockLookupEip712.mockReturnValue({
+      intent: 'Batch',
+      fields: [
+        { path: 'tokens.[]', label: 'Token', format: 'raw', group },
+        { path: 'amounts.[]', label: 'Amount', format: 'raw', group },
+      ],
+    });
+    const message = { tokens: ['0x01', '0x02'], amounts: ['1'] } as any;
+    render(
+      <Eip712JsonPanel
+        request={buildRequest(buildPayload(message))}
+        eip712={buildSummary(message)}
+        chainId={1}
+      />,
+    );
+    expect(screen.getByText(DESCRIPTOR_CHECK_FAILED_WARNING)).toBeTruthy();
+    expect(screen.queryByText('Batch')).toBeNull();
+  });
+
+  describe('visibility rules', () => {
+    const SPENDER = '0xabc0000000000000000000000000000000000001';
+
+    function renderWith(fields: object[], sigDeadline: string) {
+      mockLookupEip712.mockReturnValue({ intent: 'Approve spender', fields });
+      const message = { spender: SPENDER, sigDeadline };
+      render(
+        <Eip712JsonPanel
+          request={buildRequest(buildPayload(message))}
+          eip712={buildSummary(message)}
+          chainId={1}
+        />,
+      );
+    }
+
+    const expires = {
+      path: 'sigDeadline',
+      label: 'Expires',
+      format: 'date',
+      visible: { ifNotIn: ['0'] },
+    };
+
+    it('hides a field whose value its ifNotIn list names', () => {
+      renderWith([expires], '0');
+      expect(screen.getByText('Approve spender')).toBeTruthy();
+      expect(screen.queryByText(/Expires/)).toBeNull();
+      expect(screen.queryByText('Message')).toBeNull();
+    });
+
+    it('shows it for any other value', () => {
+      renderWith([expires], '1700000000');
+      expect(screen.getByText(/Expires/)).toBeTruthy();
+    });
+
+    it('uses an entry whose mustMatch value is listed, the field hidden', () => {
+      renderWith(
+        [
+          {
+            path: 'spender',
+            label: 'Spender',
+            visible: { mustMatch: [SPENDER] },
+          },
+          { path: 'sigDeadline', label: 'Deadline', format: 'raw' },
+        ],
+        '5',
+      );
+      expect(screen.getByText('Approve spender')).toBeTruthy();
+      expect(screen.getByText('Deadline: 5')).toBeTruthy();
+      expect(screen.queryByText(/Spender/)).toBeNull();
+      expect(screen.queryByText(DESCRIPTOR_CHECK_FAILED_WARNING)).toBeNull();
+    });
+
+    it('drops an entry whose mustMatch value is not listed, and says so', () => {
+      renderWith(
+        [
+          {
+            path: 'spender',
+            label: 'Spender',
+            visible: { mustMatch: ['0x1'] },
+          },
+          { path: 'sigDeadline', label: 'Deadline', format: 'raw' },
+        ],
+        '5',
+      );
+      expect(screen.getByText(DESCRIPTOR_CHECK_FAILED_WARNING)).toBeTruthy();
+      expect(screen.queryByText('Approve spender')).toBeNull();
+      expect(screen.queryByText('Deadline: 5')).toBeNull();
+      expect(screen.getByText('Message Fields')).toBeTruthy();
+      expect(screen.getByText(`ADDR spender: ${SPENDER}`)).toBeTruthy();
+    });
+  });
+});

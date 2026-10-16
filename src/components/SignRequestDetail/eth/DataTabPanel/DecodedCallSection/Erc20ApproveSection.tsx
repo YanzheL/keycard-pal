@@ -1,6 +1,7 @@
 import { StyleSheet, View } from 'react-native';
 import { Icon, Text } from 'react-native-paper';
 
+import { UNLIMITED_APPROVAL_WARNING } from '@/constants/approval';
 import theme from '@/theme';
 
 import AddressInfoRow from '@/components/ens/AddressInfoRow.online';
@@ -9,7 +10,7 @@ import InfoRow from '@/components/InfoRow';
 import type { DecodedCall } from '@/utils/txParser';
 import { formatTokenAmount, lookupToken } from '@/utils/tokenMetadata';
 
-import TokenSymbolRow from './TokenSymbolRow';
+import TokenContractRows from './TokenContractRows';
 
 const UINT256_MAX = 2n ** 256n - 1n;
 
@@ -43,12 +44,7 @@ export default function Erc20ApproveSection({
           ERC-20 Approve
         </Text>
       </View>
-      {token && <TokenSymbolRow token={token} />}
-      {tokenContract && (
-        <View style={styles.row}>
-          <AddressInfoRow label="Token contract" value={tokenContract} />
-        </View>
-      )}
+      <TokenContractRows token={token} tokenContract={tokenContract} />
       <View style={styles.row}>
         <AddressInfoRow label="Spender" value={call.spender} />
       </View>
@@ -66,7 +62,7 @@ export default function Erc20ApproveSection({
         <View style={styles.warningRow}>
           <Icon source="alert" size={16} color={theme.colors.negative} />
           <Text variant="labelSmall" style={styles.warningText}>
-            Unlimited approval — spender can transfer all tokens of this type
+            {UNLIMITED_APPROVAL_WARNING}
           </Text>
         </View>
       )}

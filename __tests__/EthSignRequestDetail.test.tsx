@@ -1,9 +1,15 @@
 import React from 'react';
 import { fireEvent, render, screen } from '@testing-library/react-native';
 import { RLP } from '@ethereumjs/rlp';
-import { encodeFunctionData, parseAbi } from 'viem';
+import {
+  encodeFunctionData,
+  parseAbi,
+  parseAbiItem,
+  type AbiFunction,
+} from 'viem';
 
 import SimulationAddressProvider from '../src/components/SignRequestDetail/SimulationAddressProvider';
+import { UNLIMITED_APPROVAL_WARNING } from '../src/constants/approval';
 import EthSignRequestDetail from '../src/components/SignRequestDetail/eth/SignRequestDetail';
 import type { EthSignRequest } from '../src/types';
 
@@ -398,8 +404,8 @@ describe('EthSignRequestDetail — amount row visibility', () => {
       derivationPath: "m/44'/60'/0'/0",
       chainId: 1,
     });
-    // DecodedCallSection renders, native amount row does not
-    expect(screen.getByText('ERC-20 Transfer')).toBeTruthy();
+    // Decoded section renders (EIP-7730 descriptor wins over Erc20TransferSection when present)
+    expect(screen.getByText(/Send|ERC-20 Transfer/)).toBeTruthy();
     // No formatted native value (e.g. "1 ETH") — zero-value native row is suppressed
     expect(screen.queryByText(/\d.*ETH/)).toBeNull();
   });
@@ -454,8 +460,9 @@ describe('EthSignRequestDetail — EIP-712 special renderers', () => {
     expect(screen.getByText('true')).toBeTruthy();
   });
 
-  it('shows Permit allowance, spender, and deadline with token formatting', () => {
-    renderDetail({
+  // Descriptors bind USDC's Permit to "USD Coin" version 2 and Permit2 to "Permit2".
+  function usdcPermit(version: string): EthSignRequest {
+    return {
       signData: typedDataHex({
         types: {
           EIP712Domain: [
@@ -475,7 +482,7 @@ describe('EthSignRequestDetail — EIP-712 special renderers', () => {
         primaryType: 'Permit',
         domain: {
           name: 'USD Coin',
-          version: '2',
+          version,
           chainId: 1,
           verifyingContract: '0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48',
         },
@@ -490,22 +497,14 @@ describe('EthSignRequestDetail — EIP-712 special renderers', () => {
       dataType: 2,
       derivationPath: "m/44'/60'/0'/0",
       chainId: 1,
-    });
+    };
+  }
 
-    expect(screen.getByText('EIP-712 Permit')).toBeTruthy();
-    expect(
-      screen.getByText('0x1111111111111111111111111111111111111111'),
-    ).toBeTruthy();
-    expect(
-      screen.getByText('0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48'),
-    ).toBeTruthy();
-    expect(screen.getByText('1 USDC')).toBeTruthy();
-    expect(screen.getByText('1712345678')).toBeTruthy();
-    expect(screen.queryByText('Message Fields')).toBeNull();
-  });
-
-  it('flags unlimited PermitSingle approvals', () => {
-    renderDetail({
+  function unlimitedPermitSingle(
+    domainName: string,
+    token = '0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48',
+  ): EthSignRequest {
+    return {
       signData: typedDataHex({
         types: {
           EIP712Domain: [
@@ -527,13 +526,13 @@ describe('EthSignRequestDetail — EIP-712 special renderers', () => {
         },
         primaryType: 'PermitSingle',
         domain: {
-          name: 'Permit2',
+          name: domainName,
           chainId: 1,
           verifyingContract: '0x000000000022d473030f116ddee9f6b43ac78ba3',
         },
         message: {
           details: {
-            token: '0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48',
+            token,
             amount: (2n ** 160n - 1n).toString(),
             expiration: '1712345000',
             nonce: '1',
@@ -545,10 +544,78 @@ describe('EthSignRequestDetail — EIP-712 special renderers', () => {
       dataType: 2,
       derivationPath: "m/44'/60'/0'/0",
       chainId: 1,
+    };
+  }
+
+  it("shows the app's Permit reviewer when no descriptor matches", () => {
+    renderDetail(usdcPermit('1'));
+
+    expect(screen.getByText('EIP-712 Permit')).toBeTruthy();
+    expect(
+      screen.getByText('0x1111111111111111111111111111111111111111'),
+    ).toBeTruthy();
+    expect(
+      screen.getByText('0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48'),
+    ).toBeTruthy();
+    expect(screen.getByText('1 USDC')).toBeTruthy();
+    expect(screen.getByText('1712345678')).toBeTruthy();
+    expect(screen.queryByText('Message Fields')).toBeNull();
+  });
+
+  it('shows the registry descriptor for a Permit it binds', () => {
+    renderDetail(usdcPermit('2'));
+
+    expect(screen.getByText('Authorize spending of tokens')).toBeTruthy();
+    expect(screen.getByText('Max spending amount')).toBeTruthy();
+    expect(screen.getByText('1 USDC')).toBeTruthy();
+    expect(screen.queryByText('EIP-712 Permit')).toBeNull();
+  });
+
+  it('shows the registry descriptor for a WalletConnect Permit, which carries no chainId', () => {
+    const { signData, ...rest } = usdcPermit('2');
+    renderDetail({
+      ...rest,
+      chainId: undefined,
+      dataType: 0,
+      signData: `0x${'11'.repeat(32)}`,
+      reviewData: signData,
+      origin: 'WalletConnect',
     });
+
+    expect(screen.getByText('Authorize spending of tokens')).toBeTruthy();
+    expect(screen.getByText('1 USDC')).toBeTruthy();
+  });
+
+  it("flags an unlimited PermitSingle in the app's reviewer", () => {
+    renderDetail(unlimitedPermitSingle('Not Permit2'));
 
     expect(screen.getByText('Unlimited USDC')).toBeTruthy();
     expect(screen.getByText(/Unlimited permit/)).toBeTruthy();
+  });
+
+  it('flags an unlimited PermitSingle in the registry descriptor', () => {
+    renderDetail(unlimitedPermitSingle('Permit2'));
+
+    expect(screen.getByText('Authorize spending of token')).toBeTruthy();
+    expect(screen.getByText('Unlimited USDC')).toBeTruthy();
+    expect(screen.getByText(UNLIMITED_APPROVAL_WARNING)).toBeTruthy();
+    expect(screen.queryByText(/Unlimited permit/)).toBeNull();
+  });
+
+  it('names the token of a registry Permit2 approval the app does not know', () => {
+    renderDetail(
+      unlimitedPermitSingle(
+        'Permit2',
+        '0x000000000000000000000000000000000000dead',
+      ),
+    );
+
+    expect(screen.getByText('Unlimited')).toBeTruthy();
+    expect(screen.getByText('Unknown token')).toBeTruthy();
+    expect(screen.getByText('Token contract')).toBeTruthy();
+    expect(
+      screen.getByText('0x000000000000000000000000000000000000dEaD'),
+    ).toBeTruthy();
   });
 
   it('decodes SafeTx inner calldata through the selector database', () => {
@@ -605,6 +672,130 @@ describe('EthSignRequestDetail — EIP-712 special renderers', () => {
 // ---------------------------------------------------------------------------
 // request.address, requestId, origin fields
 // ---------------------------------------------------------------------------
+
+describe('EthSignRequestDetail — registry entries for calls the app cannot decode', () => {
+  const ONEINCH_V4 = '0x1111111254fb6c44bac0bed2854e76f90643097d';
+  const RECIPIENT = '0xD3CDa913deb6F4967B2eF3Aa68F5a843da74c4Ef';
+
+  function swapTxHex(): string {
+    const data = encodeFunctionData({
+      abi: [
+        parseAbiItem(
+          'function clipperSwapTo(address recipient, address srcToken, address dstToken, uint256 amount, uint256 minReturn)',
+        ) as AbiFunction,
+      ],
+      args: [
+        RECIPIENT,
+        '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48',
+        '0xdAC17F958D2ee523a2206206994597C13D831ec7',
+        1_500_000n,
+        1_400_000n,
+      ],
+    });
+    return Buffer.from(
+      RLP.encode([
+        bn(1n),
+        bn(20_000_000_000n),
+        bn(200_000n),
+        addr(ONEINCH_V4),
+        bn(0n),
+        Buffer.from(data.slice(2), 'hex'),
+      ]),
+    ).toString('hex');
+  }
+
+  it("shows the entry's sentence in place of its intent", () => {
+    const UNIBTC = '0x004e9c3ef86bc1ca1f0bb5c7662861ee93350568';
+    const data = encodeFunctionData({
+      abi: [
+        parseAbiItem(
+          'function transfer(address to, uint256 amount)',
+        ) as AbiFunction,
+      ],
+      args: [RECIPIENT, 150_000_000n],
+    });
+    renderDetail({
+      signData: Buffer.from(
+        RLP.encode([
+          bn(1n),
+          bn(20_000_000_000n),
+          bn(100_000n),
+          addr(UNIBTC),
+          bn(0n),
+          Buffer.from(data.slice(2), 'hex'),
+        ]),
+      ).toString('hex'),
+      dataType: 1,
+      derivationPath: "m/44'/60'/0'/0",
+      chainId: 1,
+    });
+
+    expect(screen.getByText(`Send 1.5 uniBTC to ${RECIPIENT}`)).toBeTruthy();
+    expect(screen.queryByText('Send')).toBeNull();
+    expect(screen.getByText('Amount to Send')).toBeTruthy();
+  });
+
+  it('shows every call a multicall holds, each through its own entry', () => {
+    const AAVE_V3_POOL = '0x87870bca3f3fd6335c3f4ce8392d69350b4fa4e2';
+    const inner = (signature: string, args: unknown[]) =>
+      encodeFunctionData({
+        abi: [parseAbiItem(`function ${signature}`) as AbiFunction],
+        args,
+      });
+    const data = encodeFunctionData({
+      abi: [parseAbiItem('function multicall(bytes[] data)') as AbiFunction],
+      args: [
+        [
+          inner('withdraw(address asset, uint256 amount, address to)', [
+            '0xdAC17F958D2ee523a2206206994597C13D831ec7',
+            1_500_000n,
+            RECIPIENT,
+          ]),
+          inner(
+            'setUserUseReserveAsCollateral(address asset, bool useAsCollateral)',
+            ['0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48', false],
+          ),
+        ],
+      ],
+    });
+    renderDetail({
+      signData: Buffer.from(
+        RLP.encode([
+          bn(1n),
+          bn(20_000_000_000n),
+          bn(300_000n),
+          addr(AAVE_V3_POOL),
+          bn(0n),
+          Buffer.from(data.slice(2), 'hex'),
+        ]),
+      ).toString('hex'),
+      dataType: 1,
+      derivationPath: "m/44'/60'/0'/0",
+      chainId: 1,
+    });
+
+    expect(screen.getByText('Call 1 of 2')).toBeTruthy();
+    expect(screen.getByText('Call 2 of 2')).toBeTruthy();
+    expect(screen.getByText('Withdraw')).toBeTruthy();
+    expect(screen.getByText('1.5 USDT')).toBeTruthy();
+    expect(screen.getByText('Manage collateral')).toBeTruthy();
+  });
+
+  it("decodes the call by the entry's own signature and shows its fields", () => {
+    renderDetail({
+      signData: swapTxHex(),
+      dataType: 1,
+      derivationPath: "m/44'/60'/0'/0",
+      chainId: 1,
+    });
+
+    expect(screen.getByText('Decoded')).toBeTruthy();
+    expect(screen.getByText('Swap')).toBeTruthy();
+    expect(screen.getByText('1.5 USDC')).toBeTruthy();
+    expect(screen.getByText('1.4 USDT')).toBeTruthy();
+    expect(screen.getByText(RECIPIENT)).toBeTruthy();
+  });
+});
 
 describe('EthSignRequestDetail — optional fields', () => {
   it('shows derivation path row when request.address is set', () => {

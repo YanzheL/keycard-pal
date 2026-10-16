@@ -9,7 +9,7 @@ import InfoRow from '@/components/InfoRow';
 import type { DecodedCall } from '@/utils/txParser';
 import { formatTokenAmount, lookupToken } from '@/utils/tokenMetadata';
 
-import TokenSymbolRow from './TokenSymbolRow';
+import TokenContractRows from './TokenContractRows';
 
 function formatAmount(
   amount: bigint,
@@ -36,12 +36,7 @@ export default function Erc20TransferSection({
           ERC-20 Transfer
         </Text>
       </View>
-      {token && <TokenSymbolRow token={token} />}
-      {tokenContract && (
-        <View style={styles.row}>
-          <AddressInfoRow label="Token contract" value={tokenContract} />
-        </View>
-      )}
+      <TokenContractRows token={token} tokenContract={tokenContract} />
       <View style={styles.row}>
         <AddressInfoRow label="Recipient" value={call.to} />
       </View>

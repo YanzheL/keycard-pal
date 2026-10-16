@@ -1,17 +1,40 @@
-import React, { useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
-import { SegmentedButtons } from 'react-native-paper';
+import { SegmentedButtons, Text } from 'react-native-paper';
 
+import { DESCRIPTOR_CHECK_FAILED_WARNING } from '@/constants/eip7730';
 import { EIP712_DIGEST_EXPLAINER } from '@/constants/erc8213';
 import type { EthSignRequest } from '@/types';
+import theme from '@/theme';
 
 import AddressInfoRow from '@/components/ens/AddressInfoRow.online';
 import InfoRow from '@/components/InfoRow';
 
-import { type Eip712Summary } from '@/utils/eip712';
+import { useEip7730Format } from '@/hooks/useEip7730Format';
+
+import {
+  eip712DomainChainId,
+  encodeEip712Type,
+  parseEip712RawTypedData,
+  type Eip712Summary,
+} from '@/utils/eip712';
+import {
+  interpolateIntent,
+  type Eip7730FieldContext,
+} from '@/utils/eip7730/format';
+import { lookupEip712 } from '@/utils/eip7730/lookup';
+import { buildEip712Resolvers } from '@/utils/eip7730/paths';
+import { fitsRequest, shownFields } from '@/utils/eip7730/visibility';
 import { classifyEthPayload } from '@/utils/ethPayload';
 
-import { DigestExplainer, DigestRow, SectionHeader } from './shared';
+import Eip7730FieldList from './Eip7730FieldList';
+import {
+  DescriptorSourceLine,
+  DigestExplainer,
+  DigestRow,
+  SectionHeader,
+  WarningRow,
+} from './shared';
 import SpecialEip712Section from './SpecialEip712Section';
 
 type Tab = 'details' | 'digests' | 'raw';
@@ -28,9 +51,69 @@ export default function Eip712JsonPanel({
   const [tab, setTab] = useState<Tab>('details');
   const specialEip712 = eip712.special;
 
+  // WalletConnect typed data is in reviewData; the app hashed it into signData itself.
+  const rawTypedData = useMemo(
+    () => parseEip712RawTypedData(request.reviewData ?? request.signData),
+    [request.reviewData, request.signData],
+  );
+  const verifyingContract = eip712.domain?.verifyingContract;
+  // ERC-7730 binds a message to its domain's chain; WalletConnect requests carry no other.
+  const domainChainId = rawTypedData
+    ? eip712DomainChainId(rawTypedData.domain)
+    : undefined;
+
+  const lookup = useCallback(() => {
+    if (domainChainId === undefined || !verifyingContract || !rawTypedData) {
+      return null;
+    }
+    const encodedType = encodeEip712Type(
+      rawTypedData.primaryType,
+      rawTypedData.types,
+    );
+    if (!encodedType) return null;
+    return lookupEip712(
+      domainChainId,
+      verifyingContract,
+      encodedType,
+      rawTypedData.domain,
+    );
+  }, [domainChainId, verifyingContract, rawTypedData]);
+  const { format: matchedFormat, loading } = useEip7730Format(lookup);
+
+  const fieldContext = useMemo<Eip7730FieldContext>(() => {
+    const container = {
+      from: request.address,
+      to: verifyingContract,
+      value: '0',
+      chainId: domainChainId,
+    };
+    return {
+      chainId: domainChainId,
+      contractAddress: verifyingContract,
+      ...buildEip712Resolvers(
+        rawTypedData ?? { types: {}, primaryType: '', message: {} },
+        container,
+      ),
+      depth: 0,
+      // The Domain section above names it.
+      shownContract: verifyingContract,
+    };
+  }, [domainChainId, verifyingContract, rawTypedData, request.address]);
+
+  const rejected =
+    matchedFormat !== null && !fitsRequest(matchedFormat, fieldContext);
+  const eip7730Descriptor = rejected ? null : matchedFormat;
+  const eip7730Fields = eip7730Descriptor
+    ? shownFields(eip7730Descriptor, fieldContext)
+    : [];
+
+  const eip7730Title = eip7730Descriptor
+    ? interpolateIntent(eip7730Descriptor, fieldContext) ??
+      eip7730Descriptor.intent
+    : undefined;
+
   const eip712Digest = useMemo(() => {
-    // Same classification that produces the bytes sent to the card
-    // (signingDigest) — the digest shown here is the digest signed.
+    // Same classification as the bytes sent to the card, so the digest shown is the one signed.
     const payload = classifyEthPayload(request.signData, request.dataType);
     return payload.kind === 'eip712-json' || payload.kind === 'raw-digest'
       ? payload.digest
@@ -39,6 +122,7 @@ export default function Eip712JsonPanel({
 
   return (
     <View style={styles.panel}>
+      {rejected && <WarningRow text={DESCRIPTOR_CHECK_FAILED_WARNING} />}
       <SegmentedButtons
         value={tab}
         onValueChange={v => setTab(v as Tab)}
@@ -66,20 +150,41 @@ export default function Eip712JsonPanel({
                 ))}
               </>
             )}
-            {specialEip712 && (
-              <SpecialEip712Section
-                special={specialEip712}
-                fallbackChainId={chainId}
-              />
-            )}
-            {!specialEip712 && Object.keys(eip712.message).length > 0 && (
+            {loading ? null : eip7730Descriptor ? (
               <>
-                <SectionHeader title="Message Fields" />
-                {Object.entries(eip712.message).map(([key, value]) => (
-                  <View key={`message-${key}`} style={styles.row}>
-                    <AddressInfoRow label={key} value={value} />
+                {eip7730Title && (
+                  <View style={styles.row}>
+                    <Text variant="titleSmall" style={styles.intent}>
+                      {eip7730Title}
+                    </Text>
                   </View>
-                ))}
+                )}
+                <DescriptorSourceLine />
+                {eip7730Fields.length > 0 && <SectionHeader title="Message" />}
+                <Eip7730FieldList
+                  fields={eip7730Descriptor.fields}
+                  format={eip7730Descriptor}
+                  ctx={fieldContext}
+                />
+              </>
+            ) : (
+              <>
+                {specialEip712 && (
+                  <SpecialEip712Section
+                    special={specialEip712}
+                    fallbackChainId={chainId}
+                  />
+                )}
+                {!specialEip712 && Object.keys(eip712.message).length > 0 && (
+                  <>
+                    <SectionHeader title="Message Fields" />
+                    {Object.entries(eip712.message).map(([key, value]) => (
+                      <View key={`message-${key}`} style={styles.row}>
+                        <AddressInfoRow label={key} value={value} />
+                      </View>
+                    ))}
+                  </>
+                )}
               </>
             )}
           </>
@@ -109,5 +214,9 @@ const styles = StyleSheet.create({
   },
   row: {
     paddingVertical: 8,
+  },
+  intent: {
+    color: theme.colors.primary,
+    fontWeight: '600',
   },
 });

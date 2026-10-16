@@ -1,15 +1,19 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { SegmentedButtons } from 'react-native-paper';
 
+import { DESCRIPTOR_CHECK_FAILED_WARNING } from '@/constants/eip7730';
 import { CALLDATA_DIGEST_EXPLAINER } from '@/constants/erc8213';
 import type { EthSignRequest } from '@/types';
 
 import InfoRow from '@/components/InfoRow';
+
+import { useCalldataDescriptor } from '@/hooks/useCalldataDescriptor';
+
 import { computeCalldataDigest } from '@/utils/erc8213';
 import type { ParsedTx } from '@/utils/txParser';
 
-import { DigestExplainer, DigestRow } from './shared';
+import { DigestExplainer, DigestRow, WarningRow } from './shared';
 import DecodedCallSection from './DecodedCallSection';
 import SimulationPanel from './SimulationPanel';
 import { useSimulation } from './useSimulation';
@@ -26,11 +30,21 @@ export default function TxDataPanel({
   chainId: number | undefined;
 }) {
   const calldata = tx.data ?? '';
-  const hasDecodedCall =
-    tx.decodedCall && tx.decodedCall.kind !== 'unknown-call';
+  const container = useMemo(
+    () => ({ from: request.address, to: tx.to, value: tx.valueWei, chainId }),
+    [request.address, tx.to, tx.valueWei, chainId],
+  );
+  const { descriptor, rejected, loading } = useCalldataDescriptor({
+    chainId,
+    contract: tx.to,
+    data: calldata,
+    container,
+  });
 
-  const initialTab: Tab = hasDecodedCall ? 'decoded' : 'digests';
-  const [tab, setTab] = useState<Tab>(initialTab);
+  const hasDecodedCall =
+    descriptor !== null ||
+    (tx.decodedCall !== undefined && tx.decodedCall.kind !== 'unknown-call');
+  const [chosenTab, setTab] = useState<Tab | null>(null);
 
   const { showSimulationTab, simulationState, handleSimulate } = useSimulation(
     request,
@@ -43,14 +57,16 @@ export default function TxDataPanel({
     [calldata],
   );
 
-  useEffect(() => {
-    if (!hasDecodedCall && tab === 'decoded') {
-      setTab('digests');
-    }
-    if (!showSimulationTab && tab === 'simulation') {
-      setTab(hasDecodedCall ? 'decoded' : 'digests');
-    }
-  }, [hasDecodedCall, showSimulationTab, tab]);
+  const defaultTab: Tab = hasDecodedCall ? 'decoded' : 'digests';
+  const tab: Tab =
+    chosenTab === null ||
+    (chosenTab === 'decoded' && !hasDecodedCall) ||
+    (chosenTab === 'simulation' && !showSimulationTab)
+      ? defaultTab
+      : chosenTab;
+
+  // The tabs depend on the entry, and a saved slice takes only milliseconds to read.
+  if (loading) return null;
 
   const buttons = [
     ...(hasDecodedCall ? [{ value: 'decoded', label: 'Decoded' }] : []),
@@ -63,6 +79,7 @@ export default function TxDataPanel({
 
   return (
     <View style={styles.panel}>
+      {rejected && <WarningRow text={DESCRIPTOR_CHECK_FAILED_WARNING} />}
       <SegmentedButtons
         value={tab}
         onValueChange={v => setTab(v as Tab)}
@@ -74,6 +91,7 @@ export default function TxDataPanel({
             call={tx.decodedCall}
             tokenContract={tx.to}
             chainId={chainId}
+            descriptor={descriptor}
           />
         )}
         {tab === 'digests' && calldataDigest && (

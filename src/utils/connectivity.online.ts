@@ -47,3 +47,12 @@ export async function isNetworkConnected(): Promise<boolean> {
     return false;
   }
 }
+
+/** Whether the OS reports Wi-Fi right now. False when unknown or NetInfo fails, so a Wi-Fi-only rule holds. */
+export async function isOnWifi(): Promise<boolean> {
+  try {
+    return (await NetInfo.fetch()).type === 'wifi';
+  } catch {
+    return false;
+  }
+}

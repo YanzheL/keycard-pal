@@ -37,6 +37,16 @@ describe('license list', () => {
     },
   );
 
+  it.each(['@react-native-documents/picker', 'fflate', 'react-native-fs'])(
+    'lists %s, which the descriptor import needs in both builds, under its installed license',
+    name => {
+      expect(licenses).toContainEqual({
+        package: name,
+        licenseType: installedLicense(name),
+      });
+    },
+  );
+
   it('claims no online-only package in the offline build', () => {
     expect(offlineStub).toEqual([]);
   });

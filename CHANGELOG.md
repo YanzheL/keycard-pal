@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- Ethereum sign requests show what a contract call or EIP-712 message does when the ERC-7730 clear-signing registry describes it, in place of the decoded fields and the app's own Permit and SafeTx reviews; Settings can import a newer registry zip, and the online build can download one
+
 ### Fixed
 
 - The transaction review shows the destination address for a call the app cannot decode and for a Uniswap Universal Router call

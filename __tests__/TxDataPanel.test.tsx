@@ -5,11 +5,15 @@ import {
   screen,
 } from '@testing-library/react-native';
 import React from 'react';
+import { encodeFunctionData, parseAbiItem, type AbiFunction } from 'viem';
 
 import { useTenderlyConfig } from '../src/hooks/useTenderlyConfig.online';
 
 import SimulationAddressProvider from '../src/components/SignRequestDetail/SimulationAddressProvider';
 import TxDataPanel from '../src/components/SignRequestDetail/eth/DataTabPanel/TxDataPanel';
+import { DESCRIPTOR_CHECK_FAILED_WARNING } from '../src/constants/eip7730';
+import * as eip7730Lookup from '../src/utils/eip7730/lookup';
+import { setSavedIndex } from '../src/utils/eip7730/lookup';
 import type { ParsedTx } from '../src/utils/txParser';
 import type { EthSignRequest } from '../src/types';
 import type { SimulationResult } from '../src/utils/tenderly/client.online';
@@ -69,6 +73,7 @@ jest.mock('react-native-paper', () => {
   const { Text, TouchableOpacity, View } = require('react-native');
   return {
     Text: ({ children, ...props }: any) => <Text {...props}>{children}</Text>,
+    Icon: () => <View />,
     ActivityIndicator: () => <Text>loading</Text>,
     SegmentedButtons: ({
       buttons,
@@ -119,8 +124,17 @@ jest.mock('../src/components/InfoRow', () => {
 jest.mock(
   '../src/components/SignRequestDetail/eth/DataTabPanel/DecodedCallSection',
   () => {
-    const { Text } = require('react-native');
-    return () => <Text>DecodedCallSection</Text>;
+    const { Text, View } = require('react-native');
+    return ({ descriptor }: { descriptor?: any }) => (
+      <View>
+        <Text>DecodedCallSection</Text>
+        {descriptor && (
+          <Text>{`descriptor: ${
+            descriptor.format.intent
+          }, recipient ${descriptor.resolvePath('recipient')}`}</Text>
+        )}
+      </View>
+    );
   },
 );
 
@@ -170,6 +184,29 @@ const txNoData: ParsedTx = {
 
 // Contract creation — no to address
 const txNoTo: ParsedTx = {
+  fees: { kind: 'unknown' },
+};
+
+// In the bundled index; selectors.json does not know the selector.
+const ONEINCH_V4 = '0x1111111254fb6c44bac0bed2854e76f90643097d';
+const CLIPPER_SWAP_TO =
+  'clipperSwapTo(address recipient, address srcToken, address dstToken, uint256 amount, uint256 minReturn)';
+const RECIPIENT = '0xD3CDa913deb6F4967B2eF3Aa68F5a843da74c4Ef';
+const swapData = encodeFunctionData({
+  abi: [parseAbiItem(`function ${CLIPPER_SWAP_TO}`) as AbiFunction],
+  args: [
+    RECIPIENT,
+    '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48',
+    '0xdAC17F958D2ee523a2206206994597C13D831ec7',
+    1500000n,
+    1400000n,
+  ],
+});
+const txUnknownWithDescriptor: ParsedTx = {
+  to: ONEINCH_V4,
+  data: swapData,
+  valueWei: '0',
+  decodedCall: { kind: 'unknown-call', selector: '0x9994dd15' },
   fees: { kind: 'unknown' },
 };
 
@@ -228,6 +265,107 @@ describe('TxDataPanel', () => {
       );
       fireEvent.press(screen.getByText('Raw'));
       expect(screen.getByText(new RegExp(CALLDATA))).toBeTruthy();
+    });
+  });
+
+  describe('with a registry entry', () => {
+    it("shows an unknown call through the entry's own signature", () => {
+      render(
+        <TxDataPanel
+          tx={txUnknownWithDescriptor}
+          request={{ ...request, signData: swapData }}
+          chainId={1}
+        />,
+      );
+      expect(screen.getByText('Decoded')).toBeTruthy();
+      expect(
+        screen.getByText(`descriptor: Swap, recipient ${RECIPIENT}`),
+      ).toBeTruthy();
+    });
+
+    it('drops an entry whose signature does not fit the bytes', () => {
+      const cut = swapData.slice(0, 74);
+      render(
+        <TxDataPanel
+          tx={{ ...txUnknownWithDescriptor, data: cut }}
+          request={{ ...request, signData: cut }}
+          chainId={1}
+        />,
+      );
+      expect(screen.queryByText('Decoded')).toBeNull();
+      expect(screen.queryByText(/descriptor:/)).toBeNull();
+    });
+
+    it('falls back to the app view of a known call when the entry does not fit', () => {
+      const usdt = '0xdac17f958d2ee523a2206206994597c13d831ec7';
+      render(
+        <TxDataPanel
+          tx={{ ...txWithDecoded, to: usdt, data: '0xa9059cbb1234' }}
+          request={request}
+          chainId={1}
+        />,
+      );
+      expect(screen.getByText('DecodedCallSection')).toBeTruthy();
+      expect(screen.queryByText(/descriptor:/)).toBeNull();
+    });
+
+    describe('with a mustMatch check', () => {
+      const transferEntry = (allowed: string[]) => ({
+        intent: 'Send',
+        signature: 'transfer(address recipient, uint256 amount)',
+        fields: [
+          {
+            path: 'recipient',
+            label: 'To',
+            format: 'raw' as const,
+            visible: { mustMatch: allowed },
+          },
+        ],
+      });
+
+      afterEach(() => jest.restoreAllMocks());
+
+      it('uses the entry when the value is listed', () => {
+        jest
+          .spyOn(eip7730Lookup, 'lookupCalldata')
+          .mockReturnValue(transferEntry([`0x${'aa'.repeat(20)}`]));
+        render(
+          <TxDataPanel tx={txWithDecoded} request={request} chainId={1} />,
+        );
+        expect(screen.getByText(/^descriptor: Send/)).toBeTruthy();
+        expect(screen.queryByText(DESCRIPTOR_CHECK_FAILED_WARNING)).toBeNull();
+      });
+
+      it("drops the entry when it is not, above every tab, for the app's own view", () => {
+        jest
+          .spyOn(eip7730Lookup, 'lookupCalldata')
+          .mockReturnValue(transferEntry([`0x${'bb'.repeat(20)}`]));
+        render(
+          <TxDataPanel tx={txWithDecoded} request={request} chainId={1} />,
+        );
+        expect(screen.getByText(DESCRIPTOR_CHECK_FAILED_WARNING)).toBeTruthy();
+        expect(screen.getByText('DecodedCallSection')).toBeTruthy();
+        expect(screen.queryByText(/descriptor:/)).toBeNull();
+        fireEvent.press(screen.getByText('Raw'));
+        expect(screen.getByText(DESCRIPTOR_CHECK_FAILED_WARNING)).toBeTruthy();
+      });
+    });
+
+    it('shows nothing while a saved slice is read, then decides its tabs', async () => {
+      setSavedIndex({ generatedAt: '2026-10-12T00:00:00.000Z' });
+      try {
+        render(
+          <TxDataPanel tx={txWithDecoded} request={request} chainId={1} />,
+        );
+        expect(screen.queryByText('Digests')).toBeNull();
+
+        // No slice file here, so no entry: the app's own view follows.
+        await act(async () => {});
+        expect(screen.getByText('DecodedCallSection')).toBeTruthy();
+        expect(screen.queryByText(/descriptor:/)).toBeNull();
+      } finally {
+        act(() => setSavedIndex(null));
+      }
     });
   });
 

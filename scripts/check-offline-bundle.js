@@ -24,6 +24,15 @@ const FORBIDDEN_MARKERS = [
   'tenderly_api_key',
   // NetInfo's native module name
   'RNCNetInfo',
+  // EIP-7730 auto-download (manual import ships in both builds)
+  'eip7730_etag',
+  'eip7730_last_modified',
+  'eip7730_source',
+  'eip7730_url',
+  'eip7730_wifi_only',
+  'archive/refs/heads/master.zip',
+  'Auto-download',
+  'Download on Wi-Fi only',
 ];
 
 function findMarkers(bundle) {

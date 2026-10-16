@@ -13,6 +13,10 @@ export async function isNetworkConnected(): Promise<boolean> {
   return false;
 }
 
+export async function isOnWifi(): Promise<boolean> {
+  return false;
+}
+
 import type { SatisfiesOnline } from '@/utils/onlineParity';
 
 // tsc drift guard: this stub must stay interface-compatible with its online twin.
