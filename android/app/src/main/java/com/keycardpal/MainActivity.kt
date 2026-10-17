@@ -33,7 +33,9 @@ class MainActivity : ReactActivity() {
         // Before super: the library replaces the window's theme with
         // `postSplashScreenTheme` and has to do it before the content view exists.
         val splashScreen = installSplashScreen()
-        super.onCreate(savedInstanceState)
+        // Saved state would bring back react-native-screens fragments, which cannot be restored and
+        // crash a recreated activity. Not RNScreensFragmentFactory: R8 renames the classes it matches.
+        super.onCreate(null)
         holdSplashUntilFirstJsFrame(splashScreen)
     }
 
