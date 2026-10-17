@@ -54,6 +54,7 @@ describe('parseEip712Summary', () => {
         from: '0xCD2a3d9F938E13CD947Ec05AbC7FE734Df8DD826',
         tags: '["test","mail"]',
       },
+      miscasedAddresses: [],
     });
   });
 
@@ -104,6 +105,7 @@ describe('parseEip712Summary', () => {
       primaryType: undefined,
       domain: {},
       message: {},
+      miscasedAddresses: [],
     });
   });
 

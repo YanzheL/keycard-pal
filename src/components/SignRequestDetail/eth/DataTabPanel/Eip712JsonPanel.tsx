@@ -2,6 +2,7 @@ import React, { useCallback, useMemo, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { SegmentedButtons, Text } from 'react-native-paper';
 
+import { MISCASED_ADDRESS_WARNING } from '@/constants/eip712';
 import { DESCRIPTOR_CHECK_FAILED_WARNING } from '@/constants/eip7730';
 import { EIP712_DIGEST_EXPLAINER } from '@/constants/erc8213';
 import type { EthSignRequest } from '@/types';
@@ -152,6 +153,9 @@ export default function Eip712JsonPanel({
                 {Object.entries(eip712.domain).map(([key, value]) => (
                   <View key={`domain-${key}`} style={styles.row}>
                     <AddressInfoRow label={key} value={value} />
+                    {eip712.miscasedAddresses.includes(`domain.${key}`) && (
+                      <WarningRow text={MISCASED_ADDRESS_WARNING} />
+                    )}
                   </View>
                 ))}
               </>
@@ -189,6 +193,9 @@ export default function Eip712JsonPanel({
                     {Object.entries(eip712.message).map(([key, value]) => (
                       <View key={`message-${key}`} style={styles.row}>
                         <AddressInfoRow label={key} value={value} />
+                        {eip712.miscasedAddresses.includes(
+                          `message.${key}`,
+                        ) && <WarningRow text={MISCASED_ADDRESS_WARNING} />}
                       </View>
                     ))}
                   </>

@@ -72,6 +72,7 @@ const RAW_JSON = JSON.stringify(PAYLOAD, null, 2);
 
 const eip712: Eip712Summary = {
   rawJson: RAW_JSON,
+  miscasedAddresses: [],
   primaryType: 'Mail',
   domain: { name: 'Ether Mail' },
   message: { from: '0xCD2a3d9F938E13CD947Ec05AbC7FE734Df8DD826' },

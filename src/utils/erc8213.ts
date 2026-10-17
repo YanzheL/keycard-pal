@@ -3,6 +3,8 @@ import type { TypedData, TypedDataDomain } from 'viem';
 
 import { hashTypedData } from 'viem';
 
+import { checksumEip712Addresses } from './eip712';
+
 export type Eip712Digests = {
   eip712Digest: string;
   domainHash?: string;
@@ -42,9 +44,15 @@ export function computeEip712DigestFromJson(
   types: Record<string, unknown>,
 ): string | null {
   try {
-    return hashTypedData({
-      domain: domain as TypedDataDomain,
+    const { typedData } = checksumEip712Addresses({
+      domain,
       message,
+      primaryType,
+      types,
+    });
+    return hashTypedData({
+      domain: typedData.domain as TypedDataDomain,
+      message: typedData.message,
       primaryType,
       types: types as TypedData,
     });

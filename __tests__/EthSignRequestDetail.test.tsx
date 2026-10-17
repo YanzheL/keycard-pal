@@ -10,6 +10,7 @@ import {
 
 import SimulationAddressProvider from '../src/components/SignRequestDetail/SimulationAddressProvider';
 import EthSignRequestDetail from '../src/components/SignRequestDetail/eth/SignRequestDetail';
+import { MISCASED_ADDRESS_WARNING } from '../src/constants/eip712';
 import type { EthSignRequest } from '../src/types';
 
 jest.mock('../src/components/NFCBottomSheet', () => () => null);
@@ -329,6 +330,62 @@ describe('EthSignRequestDetail — EIP-55 address display', () => {
   });
 });
 
+describe('EthSignRequestDetail: EIP-712 addresses', () => {
+  // EIP-55 test vectors, and one of them in mixed case that is not its EIP-55 form.
+  const VERIFIER = '0xD1220A0cf47c7B9Be7A2E6BA89F429762e7b9aDb';
+  const BOB = '0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed';
+  const BOB_MISCASED = '0x5aaeb6053F3E94C9b9A09f33669435E7Ef1BeAed';
+  const CAROL = '0xfB6916095ca1df60bB79Ce92cE3Ea74c37c5d359';
+  const NOTE = '0xfb6916095CA1df60bB79Ce92cE3Ea74c37c5d359';
+
+  function mailRequest(to: string, verifyingContract: string): EthSignRequest {
+    return {
+      signData: typedDataHex({
+        types: {
+          EIP712Domain: [
+            { name: 'name', type: 'string' },
+            { name: 'verifyingContract', type: 'address' },
+          ],
+          Mail: [
+            { name: 'to', type: 'address' },
+            { name: 'from', type: 'address' },
+            { name: 'note', type: 'string' },
+          ],
+        },
+        primaryType: 'Mail',
+        domain: { name: 'Mail', verifyingContract },
+        message: { to, from: CAROL.toLowerCase(), note: NOTE },
+      }),
+      dataType: 2,
+      derivationPath: "m/44'/60'/0'/0",
+      chainId: 1,
+    };
+  }
+
+  it('signs a mis-cased address, shows it in EIP-55 and warns on its row', () => {
+    renderDetail(mailRequest(BOB_MISCASED, VERIFIER.toLowerCase()));
+    expect(screen.queryByText(/This request cannot be signed/)).toBeNull();
+    expect(screen.getByText(BOB)).toBeTruthy();
+    expect(screen.getAllByText(MISCASED_ADDRESS_WARNING)).toHaveLength(1);
+  });
+
+  it('warns on a mis-cased domain address too', () => {
+    const verifier = VERIFIER.replace('D1220A', 'D1220a');
+    renderDetail(mailRequest(BOB, verifier));
+    expect(screen.getByText(VERIFIER)).toBeTruthy();
+    expect(screen.getAllByText(MISCASED_ADDRESS_WARNING)).toHaveLength(1);
+  });
+
+  it('shows lowercase addresses in EIP-55 with no warning, and a string as written', () => {
+    renderDetail(mailRequest(BOB.toLowerCase(), VERIFIER.toLowerCase()));
+    expect(screen.getByText(VERIFIER)).toBeTruthy();
+    expect(screen.getByText(BOB)).toBeTruthy();
+    expect(screen.getByText(CAROL)).toBeTruthy();
+    expect(screen.getByText(NOTE)).toBeTruthy();
+    expect(screen.queryByText(MISCASED_ADDRESS_WARNING)).toBeNull();
+  });
+});
+
 // ---------------------------------------------------------------------------
 // ENS address rows
 // ---------------------------------------------------------------------------
@@ -550,9 +607,10 @@ describe('EthSignRequestDetail — EIP-712 special renderers', () => {
     expect(
       screen.getByText('0x1111111111111111111111111111111111111111'),
     ).toBeTruthy();
+    // The domain's lowercase verifyingContract and the Permit's token, both in EIP-55.
     expect(
-      screen.getByText('0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48'),
-    ).toBeTruthy();
+      screen.getAllByText('0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48'),
+    ).toHaveLength(2);
     expect(screen.getByText('1 USDC')).toBeTruthy();
     expect(screen.getByText('1712345678')).toBeTruthy();
     expect(screen.queryByText('Message Fields')).toBeNull();
