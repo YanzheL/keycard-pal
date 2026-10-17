@@ -13,6 +13,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Fixed
 
 - The transaction review shows the destination address for a call the app cannot decode and for a Uniswap Universal Router call
+- The Android scanner reads codes again after going back to it from a review, and the camera is released as soon as the scanner is left
 
 ## [1.14.0] - 2026-10-07
 
