@@ -1,10 +1,10 @@
 import React, { useCallback, useState } from 'react';
 import { ScrollView, StyleSheet, View } from 'react-native';
-import { BlurView } from '@react-native-community/blur';
 import { Text } from 'react-native-paper';
 
 import theme from '@/theme';
 
+import BlurredSecret from '@/components/BlurredSecret';
 import PrimaryButton from '@/components/PrimaryButton';
 
 type Props = {
@@ -25,6 +25,8 @@ export const PUK_UNCERTAIN_EXPLAINER =
   'case it was: it unblocks the card after three wrong PIN entries, and ' +
   'without it a blocked card can only be factory reset, which erases its key. ' +
   'If the card was not set up, initialize it again and write down the new PUK.';
+
+export const PUK_HIDDEN_LABEL = 'PUK hidden. Reveal PUK shows it.';
 
 /** In fours, the way it goes onto paper. */
 export function formatPUK(puk: string): string {
@@ -52,18 +54,15 @@ export default function PukReview({ puk, onDone, uncertain }: Props) {
         <Text style={styles.description}>
           {uncertain ? PUK_UNCERTAIN_EXPLAINER : PUK_EXPLAINER}
         </Text>
-        <View style={styles.pukWrapper}>
+        <BlurredSecret
+          revealed={revealed}
+          hiddenLabel={PUK_HIDDEN_LABEL}
+          style={styles.pukWrapper}
+        >
           <Text style={styles.puk} testID="puk-digits">
             {formatPUK(puk)}
           </Text>
-          {!revealed && (
-            <BlurView
-              style={StyleSheet.absoluteFill}
-              blurType="dark"
-              blurAmount={10}
-            />
-          )}
-        </View>
+        </BlurredSecret>
       </ScrollView>
 
       <View style={styles.buttonArea}>

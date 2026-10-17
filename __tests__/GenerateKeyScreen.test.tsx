@@ -1,7 +1,9 @@
 import React from 'react';
 import { act, fireEvent, render, screen } from '@testing-library/react-native';
 
-import GenerateKeyScreen from '../src/screens/keypair/GenerateKeyScreen';
+import GenerateKeyScreen, {
+  RECOVERY_PHRASE_HIDDEN_LABEL,
+} from '../src/screens/keypair/GenerateKeyScreen';
 import NFCBottomSheet from '../src/components/NFCBottomSheet';
 
 // ---------------------------------------------------------------------------
@@ -136,8 +138,20 @@ describe('GenerateKeyScreen', () => {
 
     it('renders words when phase is done and result is set', () => {
       renderScreen('done', WORDS);
+      const hidden = { includeHiddenElements: true };
+      expect(screen.getByText('apple', hidden)).toBeTruthy();
+      expect(screen.getByText('lemon', hidden)).toBeTruthy();
+    });
+
+    it('keeps the words from a screen reader until revealed', async () => {
+      renderScreen('done', WORDS);
+      expect(screen.queryByText('apple')).toBeNull();
+      expect(screen.getByLabelText(RECOVERY_PHRASE_HIDDEN_LABEL)).toBeTruthy();
+      await act(async () => {
+        fireEvent.press(screen.getByText('Reveal recovery phrase'));
+      });
       expect(screen.getByText('apple')).toBeTruthy();
-      expect(screen.getByText('lemon')).toBeTruthy();
+      expect(screen.queryByLabelText(RECOVERY_PHRASE_HIDDEN_LABEL)).toBeNull();
     });
 
     it('renders a BlurView over the words before revealing', () => {
