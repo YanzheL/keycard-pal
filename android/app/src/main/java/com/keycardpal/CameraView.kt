@@ -36,7 +36,6 @@ class CameraView
             PreviewView(context).apply {
                 implementationMode = PreviewView.ImplementationMode.PERFORMANCE
             }
-        private val reader = MultiFormatReader()
         private var executor: ExecutorService? = null
         private var cameraProvider: ProcessCameraProvider? = null
         private var useCases: Array<UseCase> = emptyArray()
@@ -44,12 +43,6 @@ class CameraView
 
         init {
             addView(previewView, LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT)
-            reader.setHints(
-                mapOf(
-                    DecodeHintType.POSSIBLE_FORMATS to listOf(com.google.zxing.BarcodeFormat.QR_CODE),
-                    DecodeHintType.TRY_HARDER to true,
-                ),
-            )
         }
 
         // React Native sets dimensions on this ViewGroup via its own layout pass but doesn't
@@ -75,6 +68,8 @@ class CameraView
             val lifecycleOwner = reactContext.currentActivity as? LifecycleOwner ?: return
             val started = ++session
             val analysisExecutor = Executors.newSingleThreadExecutor().also { executor = it }
+            // MultiFormatReader is not thread-safe, and the last session's executor may still be decoding.
+            val reader = newReader()
 
             val cameraProviderFuture = ProcessCameraProvider.getInstance(context)
             cameraProviderFuture.addListener(
@@ -92,7 +87,7 @@ class CameraView
                         ImageAnalysis.Builder()
                             .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
                             .build()
-                            .also { it.setAnalyzer(analysisExecutor, ::analyzeImage) }
+                            .also { it.setAnalyzer(analysisExecutor) { image -> analyzeImage(reader, image) } }
 
                     try {
                         provider.unbindAll()
@@ -111,7 +106,20 @@ class CameraView
             )
         }
 
-        private fun analyzeImage(imageProxy: ImageProxy) {
+        private fun newReader() =
+            MultiFormatReader().apply {
+                setHints(
+                    mapOf(
+                        DecodeHintType.POSSIBLE_FORMATS to listOf(com.google.zxing.BarcodeFormat.QR_CODE),
+                        DecodeHintType.TRY_HARDER to true,
+                    ),
+                )
+            }
+
+        private fun analyzeImage(
+            reader: MultiFormatReader,
+            imageProxy: ImageProxy,
+        ) {
             try {
                 val data = extractLuminanceData(imageProxy)
 

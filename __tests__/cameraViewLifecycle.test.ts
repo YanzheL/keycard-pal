@@ -7,9 +7,11 @@ const CAMERA_VIEW = readFileSync(
 );
 
 describe('Android CameraView', () => {
-  it('takes a new analysis executor on every attach', () => {
+  it('takes a new analysis executor and reader on every attach', () => {
     expect(CAMERA_VIEW).not.toMatch(/val executor\b/);
+    expect(CAMERA_VIEW).not.toMatch(/val reader = MultiFormatReader/);
     expect(CAMERA_VIEW).toContain('Executors.newSingleThreadExecutor()');
+    expect(CAMERA_VIEW).toContain('val reader = newReader()');
   });
 
   it('releases the camera when the view leaves the window', () => {
