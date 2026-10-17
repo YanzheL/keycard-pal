@@ -8,6 +8,7 @@ import androidx.camera.core.CameraSelector
 import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.ImageProxy
 import androidx.camera.core.Preview
+import androidx.camera.core.UseCase
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
 import androidx.core.content.ContextCompat
@@ -35,17 +36,13 @@ class CameraView
             PreviewView(context).apply {
                 implementationMode = PreviewView.ImplementationMode.PERFORMANCE
             }
-        private val executor: ExecutorService = Executors.newSingleThreadExecutor()
-        private val reader = MultiFormatReader()
+        private var executor: ExecutorService? = null
+        private var cameraProvider: ProcessCameraProvider? = null
+        private var useCases: Array<UseCase> = emptyArray()
+        private var session = 0
 
         init {
             addView(previewView, LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT)
-            reader.setHints(
-                mapOf(
-                    DecodeHintType.POSSIBLE_FORMATS to listOf(com.google.zxing.BarcodeFormat.QR_CODE),
-                    DecodeHintType.TRY_HARDER to true,
-                ),
-            )
         }
 
         // React Native sets dimensions on this ViewGroup via its own layout pass but doesn't
@@ -69,11 +66,17 @@ class CameraView
         private fun startCamera() {
             val reactContext = context as? ReactContext ?: return
             val lifecycleOwner = reactContext.currentActivity as? LifecycleOwner ?: return
+            val started = ++session
+            val analysisExecutor = Executors.newSingleThreadExecutor().also { executor = it }
+            // MultiFormatReader is not thread-safe, and the last session's executor may still be decoding.
+            val reader = newReader()
 
             val cameraProviderFuture = ProcessCameraProvider.getInstance(context)
             cameraProviderFuture.addListener(
                 {
-                    val cameraProvider = cameraProviderFuture.get()
+                    // The view may have left the window while the provider was loading.
+                    if (started != session) return@addListener
+                    val provider = cameraProviderFuture.get()
 
                     val preview =
                         Preview.Builder().build().also {
@@ -84,16 +87,18 @@ class CameraView
                         ImageAnalysis.Builder()
                             .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
                             .build()
-                            .also { it.setAnalyzer(executor, ::analyzeImage) }
+                            .also { it.setAnalyzer(analysisExecutor) { image -> analyzeImage(reader, image) } }
 
                     try {
-                        cameraProvider.unbindAll()
-                        cameraProvider.bindToLifecycle(
+                        provider.unbindAll()
+                        provider.bindToLifecycle(
                             lifecycleOwner,
                             CameraSelector.DEFAULT_BACK_CAMERA,
                             preview,
                             imageAnalysis,
                         )
+                        cameraProvider = provider
+                        useCases = arrayOf(preview, imageAnalysis)
                     } catch (_: Exception) {
                     }
                 },
@@ -101,7 +106,20 @@ class CameraView
             )
         }
 
-        private fun analyzeImage(imageProxy: ImageProxy) {
+        private fun newReader() =
+            MultiFormatReader().apply {
+                setHints(
+                    mapOf(
+                        DecodeHintType.POSSIBLE_FORMATS to listOf(com.google.zxing.BarcodeFormat.QR_CODE),
+                        DecodeHintType.TRY_HARDER to true,
+                    ),
+                )
+            }
+
+        private fun analyzeImage(
+            reader: MultiFormatReader,
+            imageProxy: ImageProxy,
+        ) {
             try {
                 val data = extractLuminanceData(imageProxy)
 
@@ -120,7 +138,7 @@ class CameraView
                 val result = reader.decodeWithState(BinaryBitmap(HybridBinarizer(source)))
                 dispatchCodeEvent(result.text, byteSegmentsBase64(result))
             } catch (_: NotFoundException) {
-                // no QR in frame — expected
+                // no QR in this frame
             } finally {
                 reader.reset()
                 imageProxy.close()
@@ -177,8 +195,19 @@ class CameraView
             dispatcher?.dispatchEvent(ReadCodeEvent(surfaceId, id, value, bytesBase64))
         }
 
+        // Bound to the activity's lifecycle, the camera would stay open after the view is gone
+        // and reopen whenever the activity resumes.
+        private fun stopCamera() {
+            session++
+            cameraProvider?.unbind(*useCases)
+            cameraProvider = null
+            useCases = emptyArray()
+            executor?.shutdown()
+            executor = null
+        }
+
         override fun onDetachedFromWindow() {
             super.onDetachedFromWindow()
-            executor.shutdown()
+            stopCamera()
         }
     }
