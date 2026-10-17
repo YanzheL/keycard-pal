@@ -3,6 +3,7 @@ import { hashTypedData } from 'viem';
 import {
   checksumEip712Addresses,
   parseEip712Summary,
+  type Eip712RawTypedData,
 } from '../src/utils/eip712';
 import { classifyEthPayload } from '../src/utils/ethPayload';
 import { wcRequestToScanResult } from '../src/utils/walletConnect/requestAdapter';
@@ -92,6 +93,33 @@ describe('checksumEip712Addresses', () => {
     expect(miscased).toContain('domain.verifyingContract');
   });
 
+  it('leaves a value that does not fit its declared type as written', () => {
+    const { typedData, miscased } = checksumEip712Addresses({
+      types: {
+        Bag: [
+          { name: 'list', type: 'address[]' },
+          { name: 'who', type: 'address' },
+        ],
+      },
+      primaryType: 'Bag',
+      domain: {},
+      message: { list: BOB_MISCASED, who: 42 },
+    });
+    expect(typedData.message).toEqual({ list: BOB_MISCASED, who: 42 });
+    expect(miscased).toEqual([]);
+  });
+
+  it('passes a domain or a message that is not an object through', () => {
+    const { typedData } = checksumEip712Addresses({
+      types: TYPES,
+      primaryType: 'Mail',
+      domain: 'Mail',
+      message: null,
+    } as unknown as Eip712RawTypedData);
+    expect(typedData.domain).toBe('Mail');
+    expect(typedData.message).toBeNull();
+  });
+
   it('never sets a prototype from a member named __proto__', () => {
     const { typedData } = checksumEip712Addresses({
       types: { Evil: [{ name: '__proto__', type: 'address' }] },
@@ -148,5 +176,34 @@ describe('a message with a wrong checksum', () => {
       return result.request.signData;
     };
     expect(sign(mail(BOB_MISCASED))).toBe(sign(mail(BOB.toLowerCase())));
+  });
+
+  it('hashes the same over WalletConnect without a primaryType', () => {
+    const addr = '0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045';
+    const sign = (payload: unknown) => {
+      const result = wcRequestToScanResult(
+        {
+          id: 1,
+          topic: 'topic',
+          method: 'eth_signTypedData_v4',
+          params: [addr, JSON.stringify(payload)],
+        },
+        new Map([[addr.toLowerCase(), "m/44'/60'/0'/0/0"]]),
+      );
+      if (result.kind !== 'eth-sign-request') throw new Error(result.kind);
+      return result.request.signData;
+    };
+    const note = (to: string, primaryType?: string) => ({
+      types: {
+        EIP712Domain: [{ name: 'name', type: 'string' }],
+        Note: [{ name: 'to', type: 'address' }],
+      },
+      ...(primaryType ? { primaryType } : {}),
+      domain: { name: 'Note' },
+      message: { to },
+    });
+    expect(sign(note(BOB_MISCASED))).toBe(
+      sign(note(BOB.toLowerCase(), 'Note')),
+    );
   });
 });

@@ -499,6 +499,17 @@ describe('parseEip712RawTypedData', () => {
     const result = parseEip712RawTypedData(hex);
     expect(result!.primaryType).toEqual('EIP712Domain');
   });
+
+  it('returns null for JSON that is not an object', () => {
+    const hex = Buffer.from('[1, 2]', 'utf8').toString('hex');
+    expect(parseEip712RawTypedData(hex)).toBeNull();
+  });
+
+  it('uses empty types when they are not an object', () => {
+    const payload = { types: 'Mail', domain: {}, message: {} };
+    const hex = Buffer.from(JSON.stringify(payload), 'utf8').toString('hex');
+    expect(parseEip712RawTypedData(hex)!.types).toEqual({});
+  });
 });
 
 describe('encodeEip712Type', () => {
