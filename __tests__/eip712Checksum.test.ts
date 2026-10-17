@@ -207,3 +207,115 @@ describe('a message with a wrong checksum', () => {
     );
   });
 });
+
+describe("the app's Permit and SafeTx reviews", () => {
+  const ZERO = '0x0000000000000000000000000000000000000000';
+  const summaryOf = (payload: unknown) => parseEip712Summary(toHex(payload));
+
+  it('Permit: names a mis-cased spender', () => {
+    const summary = summaryOf({
+      types: {
+        Permit: [
+          { name: 'owner', type: 'address' },
+          { name: 'spender', type: 'address' },
+          { name: 'value', type: 'uint256' },
+          { name: 'nonce', type: 'uint256' },
+          { name: 'deadline', type: 'uint256' },
+        ],
+      },
+      primaryType: 'Permit',
+      domain: { name: 'Token', chainId: 1, verifyingContract: VERIFIER },
+      message: {
+        owner: CAROL,
+        spender: BOB_MISCASED,
+        value: '1',
+        nonce: '0',
+        deadline: '1',
+      },
+    });
+    expect(summary!.special).toMatchObject({
+      kind: 'permit',
+      spender: BOB,
+      miscased: ['spender'],
+    });
+  });
+
+  it('PermitSingle: names a mis-cased token inside details', () => {
+    const summary = summaryOf({
+      types: {
+        PermitDetails: [
+          { name: 'token', type: 'address' },
+          { name: 'amount', type: 'uint160' },
+          { name: 'expiration', type: 'uint48' },
+          { name: 'nonce', type: 'uint48' },
+        ],
+        PermitSingle: [
+          { name: 'details', type: 'PermitDetails' },
+          { name: 'spender', type: 'address' },
+          { name: 'sigDeadline', type: 'uint256' },
+        ],
+      },
+      primaryType: 'PermitSingle',
+      domain: { name: 'Permit2', chainId: 1, verifyingContract: VERIFIER },
+      message: {
+        details: {
+          token: BOB_MISCASED,
+          amount: '1',
+          expiration: '1',
+          nonce: '0',
+        },
+        spender: CAROL.toLowerCase(),
+        sigDeadline: '1',
+      },
+    });
+    expect(summary!.special).toMatchObject({
+      kind: 'permit-single',
+      tokenContract: BOB,
+      spender: CAROL,
+      miscased: ['tokenContract'],
+    });
+  });
+
+  it('SafeTx: names a mis-cased Safe and refund receiver, not the zero address', () => {
+    const summary = summaryOf({
+      types: {
+        EIP712Domain: [
+          { name: 'chainId', type: 'uint256' },
+          { name: 'verifyingContract', type: 'address' },
+        ],
+        SafeTx: [
+          { name: 'to', type: 'address' },
+          { name: 'value', type: 'uint256' },
+          { name: 'data', type: 'bytes' },
+          { name: 'operation', type: 'uint8' },
+          { name: 'safeTxGas', type: 'uint256' },
+          { name: 'baseGas', type: 'uint256' },
+          { name: 'gasPrice', type: 'uint256' },
+          { name: 'gasToken', type: 'address' },
+          { name: 'refundReceiver', type: 'address' },
+          { name: 'nonce', type: 'uint256' },
+        ],
+      },
+      primaryType: 'SafeTx',
+      domain: { chainId: 1, verifyingContract: BOB_MISCASED },
+      message: {
+        to: CAROL,
+        value: '0',
+        data: '0x',
+        operation: 0,
+        safeTxGas: '0',
+        baseGas: '0',
+        gasPrice: '0',
+        gasToken: ZERO,
+        refundReceiver: BOB_MISCASED,
+        nonce: '0',
+      },
+    });
+    expect(summary!.special).toMatchObject({
+      kind: 'safe-tx',
+      safeAddress: BOB,
+      refundReceiver: BOB,
+      miscased: ['safeAddress', 'refundReceiver'],
+    });
+  });
+});

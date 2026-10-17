@@ -369,6 +369,38 @@ describe('EthSignRequestDetail: EIP-712 addresses', () => {
     expect(screen.getAllByText(MISCASED_ADDRESS_WARNING)).toHaveLength(1);
   });
 
+  it("warns on a mis-cased spender in the app's Permit review", () => {
+    renderDetail({
+      signData: typedDataHex({
+        types: {
+          Permit: [
+            { name: 'owner', type: 'address' },
+            { name: 'spender', type: 'address' },
+            { name: 'value', type: 'uint256' },
+            { name: 'nonce', type: 'uint256' },
+            { name: 'deadline', type: 'uint256' },
+          ],
+        },
+        primaryType: 'Permit',
+        domain: { name: 'Token', chainId: 1, verifyingContract: VERIFIER },
+        message: {
+          owner: CAROL,
+          spender: BOB_MISCASED,
+          value: '1',
+          nonce: '0',
+          deadline: '1',
+        },
+      }),
+      dataType: 2,
+      derivationPath: "m/44'/60'/0'/0",
+      chainId: 1,
+    });
+    expect(screen.getByText('EIP-712 Permit')).toBeTruthy();
+    expect(screen.queryByText(/This request cannot be signed/)).toBeNull();
+    expect(screen.getByText(BOB)).toBeTruthy();
+    expect(screen.getAllByText(MISCASED_ADDRESS_WARNING)).toHaveLength(1);
+  });
+
   it('warns on a mis-cased domain address too', () => {
     const verifier = VERIFIER.replace('D1220A', 'D1220a');
     renderDetail(mailRequest(BOB, verifier));

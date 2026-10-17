@@ -38,6 +38,7 @@ export type Eip712SpecialReview =
       amount: bigint;
       deadline?: string;
       unlimited: boolean;
+      miscased: PermitAddressField[];
     }
   | {
       kind: 'permit-single';
@@ -48,6 +49,7 @@ export type Eip712SpecialReview =
       deadline?: string;
       expiration?: string;
       unlimited: boolean;
+      miscased: PermitAddressField[];
     }
   | {
       kind: 'safe-tx';
@@ -64,7 +66,11 @@ export type Eip712SpecialReview =
       gasToken: string;
       refundReceiver: string;
       nonce: string;
+      miscased: SafeTxAddressField[];
     };
+
+type PermitAddressField = 'tokenContract' | 'spender';
+type SafeTxAddressField = 'safeAddress' | 'to' | 'gasToken' | 'refundReceiver';
 
 // \x19\x01 prefix + 32-byte domain separator + 32-byte message hash = 66 bytes
 const PREHASHED_PREFIX = '1901';
@@ -137,6 +143,16 @@ function toAddress(value: unknown): string | undefined {
   return ADDRESS_RE.test(value) ? checksumEthAddress(value) : undefined;
 }
 
+/** The fields whose address the request wrote with a wrong checksum. */
+function miscasedFields<K extends string>(values: Record<K, unknown>): K[] {
+  return (Object.keys(values) as K[]).filter(key => {
+    const value = values[key];
+    return typeof value === 'string' && ADDRESS_RE.test(value)
+      ? isMiscased(value)
+      : false;
+  });
+}
+
 function toHexBytes(value: unknown): string | undefined {
   if (typeof value !== 'string') return undefined;
   return /^0x[0-9a-fA-F]*$/.test(value) ? value : undefined;
@@ -200,6 +216,10 @@ function parsePermit(parsed: JsonObject): Eip712SpecialReview | null {
     amount,
     deadline: toDisplayValue(message.deadline),
     unlimited: amount === UINT256_MAX,
+    miscased: miscasedFields({
+      tokenContract: domain.verifyingContract,
+      spender: message.spender,
+    }),
   };
 }
 
@@ -222,6 +242,10 @@ function parsePermitSingle(parsed: JsonObject): Eip712SpecialReview | null {
     deadline: toDisplayValue(message.sigDeadline),
     expiration: toDisplayValue(details.expiration),
     unlimited: amount === UINT160_MAX || amount === UINT256_MAX,
+    miscased: miscasedFields({
+      tokenContract: details.token,
+      spender: message.spender,
+    }),
   };
 }
 
@@ -254,6 +278,12 @@ function parseSafeTx(parsed: JsonObject): Eip712SpecialReview | null {
     refundReceiver:
       toAddress(message.refundReceiver) ?? String(message.refundReceiver ?? ''),
     nonce: toDisplayValue(message.nonce) ?? '0',
+    miscased: miscasedFields({
+      safeAddress: domain.verifyingContract,
+      to: message.to,
+      gasToken: message.gasToken,
+      refundReceiver: message.refundReceiver,
+    }),
   };
 }
 

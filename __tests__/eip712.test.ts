@@ -177,6 +177,7 @@ describe('parseEip712Summary', () => {
       amount: 1000000n,
       deadline: '1712345678',
       unlimited: false,
+      miscased: [],
     });
   });
 
@@ -231,6 +232,7 @@ describe('parseEip712Summary', () => {
       deadline: '1712345678',
       expiration: '1712345000',
       unlimited: true,
+      miscased: [],
     });
   });
 
