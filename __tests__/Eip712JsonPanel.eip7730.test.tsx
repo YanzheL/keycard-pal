@@ -116,6 +116,7 @@ function buildRequest(payload: object): EthSignRequest {
 function buildSummary(message: Record<string, string>): Eip712Summary {
   return {
     rawJson: JSON.stringify(buildPayload(message), null, 2),
+    miscasedAddresses: [],
     primaryType: 'PermitSingle',
     domain: {
       name: 'Permit2',
@@ -391,6 +392,7 @@ describe('Eip712JsonPanel EIP-7730 integration', () => {
     };
     const eip712: Eip712Summary = {
       rawJson: JSON.stringify(payload),
+      miscasedAddresses: [],
       primaryType: 'Mail',
       domain: { name: 'NoContract' },
       message: {},

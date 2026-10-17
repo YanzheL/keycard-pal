@@ -1,6 +1,7 @@
 import { StyleSheet, View } from 'react-native';
 import { Icon, Text } from 'react-native-paper';
 
+import { MISCASED_ADDRESS_WARNING } from '@/constants/eip712';
 import theme from '@/theme';
 
 import AddressInfoRow from '@/components/ens/AddressInfoRow.online';
@@ -9,7 +10,7 @@ import InfoRow from '@/components/InfoRow';
 import { type Eip712SpecialReview } from '@/utils/eip712';
 import { formatTokenAmount, lookupToken } from '@/utils/tokenMetadata';
 
-import { SectionHeader } from '../shared';
+import { SectionHeader, WarningRow } from '../shared';
 
 function formatPermitAmount(
   special:
@@ -44,10 +45,16 @@ export default function PermitReviewSection({
             label="Token contract"
             value={special.tokenContract}
           />
+          {special.miscased.includes('tokenContract') && (
+            <WarningRow text={MISCASED_ADDRESS_WARNING} />
+          )}
         </View>
       )}
       <View style={styles.row}>
         <AddressInfoRow label="Spender" value={special.spender} />
+        {special.miscased.includes('spender') && (
+          <WarningRow text={MISCASED_ADDRESS_WARNING} />
+        )}
       </View>
       <View style={styles.row}>
         <InfoRow

@@ -19,6 +19,8 @@ export type Eip712Summary = {
   primaryType?: string;
   domain: Record<string, string>;
   message: Record<string, string>;
+  /** `domain.<key>` and `message.<key>` of the rows that hold an address with a wrong checksum. */
+  miscasedAddresses: string[];
   special?: Eip712SpecialReview;
 };
 
@@ -36,6 +38,7 @@ export type Eip712SpecialReview =
       amount: bigint;
       deadline?: string;
       unlimited: boolean;
+      miscased: PermitAddressField[];
     }
   | {
       kind: 'permit-single';
@@ -46,6 +49,7 @@ export type Eip712SpecialReview =
       deadline?: string;
       expiration?: string;
       unlimited: boolean;
+      miscased: PermitAddressField[];
     }
   | {
       kind: 'safe-tx';
@@ -62,13 +66,26 @@ export type Eip712SpecialReview =
       gasToken: string;
       refundReceiver: string;
       nonce: string;
+      miscased: SafeTxAddressField[];
     };
+
+type PermitAddressField = 'tokenContract' | 'spender';
+type SafeTxAddressField = 'safeAddress' | 'to' | 'gasToken' | 'refundReceiver';
 
 // \x19\x01 prefix + 32-byte domain separator + 32-byte message hash = 66 bytes
 const PREHASHED_PREFIX = '1901';
 const PREHASHED_BYTE_LENGTH = 66;
 const UINT160_MAX = 2n ** 160n - 1n;
 const UINT256_MAX = 2n ** 256n - 1n;
+const ADDRESS_RE = /^0x[0-9a-fA-F]{40}$/;
+// The types viem infers for a domain when the message leaves EIP712Domain out.
+const DOMAIN_FIELD_TYPES: Record<string, string> = {
+  name: 'string',
+  version: 'string',
+  chainId: 'uint256',
+  verifyingContract: 'address',
+  salt: 'bytes32',
+};
 
 export function parseEip712Prehashed(
   signDataHex: string,
@@ -123,9 +140,17 @@ function toDisplayMap(value: unknown): Record<string, string> {
 
 function toAddress(value: unknown): string | undefined {
   if (typeof value !== 'string') return undefined;
-  return /^0x[0-9a-fA-F]{40}$/.test(value)
-    ? checksumEthAddress(value)
-    : undefined;
+  return ADDRESS_RE.test(value) ? checksumEthAddress(value) : undefined;
+}
+
+/** The fields whose address the request wrote with a wrong checksum. */
+function miscasedFields<K extends string>(values: Record<K, unknown>): K[] {
+  return (Object.keys(values) as K[]).filter(key => {
+    const value = values[key];
+    return typeof value === 'string' && ADDRESS_RE.test(value)
+      ? isMiscased(value)
+      : false;
+  });
 }
 
 function toHexBytes(value: unknown): string | undefined {
@@ -191,6 +216,10 @@ function parsePermit(parsed: JsonObject): Eip712SpecialReview | null {
     amount,
     deadline: toDisplayValue(message.deadline),
     unlimited: amount === UINT256_MAX,
+    miscased: miscasedFields({
+      tokenContract: domain.verifyingContract,
+      spender: message.spender,
+    }),
   };
 }
 
@@ -213,6 +242,10 @@ function parsePermitSingle(parsed: JsonObject): Eip712SpecialReview | null {
     deadline: toDisplayValue(message.sigDeadline),
     expiration: toDisplayValue(details.expiration),
     unlimited: amount === UINT160_MAX || amount === UINT256_MAX,
+    miscased: miscasedFields({
+      tokenContract: details.token,
+      spender: message.spender,
+    }),
   };
 }
 
@@ -245,6 +278,12 @@ function parseSafeTx(parsed: JsonObject): Eip712SpecialReview | null {
     refundReceiver:
       toAddress(message.refundReceiver) ?? String(message.refundReceiver ?? ''),
     nonce: toDisplayValue(message.nonce) ?? '0',
+    miscased: miscasedFields({
+      safeAddress: domain.verifyingContract,
+      to: message.to,
+      gasToken: message.gasToken,
+      refundReceiver: message.refundReceiver,
+    }),
   };
 }
 
@@ -266,6 +305,18 @@ export type Eip712RawTypedData = {
   types: Record<string, unknown>;
 };
 
+function toRawTypedData(parsed: JsonObject): Eip712RawTypedData {
+  return {
+    domain: isJsonObject(parsed.domain) ? parsed.domain : {},
+    message: isJsonObject(parsed.message) ? parsed.message : {},
+    primaryType:
+      typeof parsed.primaryType === 'string'
+        ? parsed.primaryType
+        : 'EIP712Domain',
+    types: isJsonObject(parsed.types) ? parsed.types : {},
+  };
+}
+
 export function parseEip712RawTypedData(
   signDataHex: string,
 ): Eip712RawTypedData | null {
@@ -273,16 +324,7 @@ export function parseEip712RawTypedData(
   if (!json) return null;
   try {
     const parsed = JSON.parse(json) as unknown;
-    if (!isJsonObject(parsed)) return null;
-    return {
-      domain: isJsonObject(parsed.domain) ? parsed.domain : {},
-      message: isJsonObject(parsed.message) ? parsed.message : {},
-      primaryType:
-        typeof parsed.primaryType === 'string'
-          ? parsed.primaryType
-          : 'EIP712Domain',
-      types: isJsonObject(parsed.types) ? parsed.types : {},
-    };
+    return isJsonObject(parsed) ? toRawTypedData(parsed) : null;
   } catch {
     return null;
   }
@@ -302,6 +344,94 @@ function structMembers(
       typeof m.name === 'string' &&
       typeof m.type === 'string',
   );
+}
+
+// All lower or all upper case carries no checksum.
+function isMiscased(address: string): boolean {
+  const body = address.slice(2);
+  return (
+    /[a-f]/.test(body) &&
+    /[A-F]/.test(body) &&
+    checksumEthAddress(address) !== address
+  );
+}
+
+function checksumTyped(
+  types: Record<string, unknown>,
+  type: string,
+  value: unknown,
+  onMiscased: () => void,
+): unknown {
+  const array = /^(.*)\[\d*\]$/.exec(type);
+  if (array) {
+    return Array.isArray(value)
+      ? value.map(v => checksumTyped(types, array[1], v, onMiscased))
+      : value;
+  }
+  if (type === 'address') {
+    if (typeof value !== 'string' || !ADDRESS_RE.test(value)) return value;
+    if (isMiscased(value)) onMiscased();
+    return checksumEthAddress(value);
+  }
+  const members = structMembers(types, type);
+  return members && isJsonObject(value)
+    ? checksumStruct(types, members, value, onMiscased)
+    : value;
+}
+
+function checksumStruct(
+  types: Record<string, unknown>,
+  members: Eip712Member[],
+  value: Record<string, unknown>,
+  onMiscased: (member: string) => void,
+): Record<string, unknown> {
+  const out = { ...value };
+  for (const m of members) {
+    if (!Object.prototype.hasOwnProperty.call(value, m.name)) continue;
+    // Not an assignment: a member named __proto__ would set the prototype.
+    Object.defineProperty(out, m.name, {
+      value: checksumTyped(types, m.type, value[m.name], () =>
+        onMiscased(m.name),
+      ),
+      enumerable: true,
+      writable: true,
+      configurable: true,
+    });
+  }
+  return out;
+}
+
+/**
+ * Every value the message's types declare `address`, in EIP-55. viem refuses a wrong
+ * checksum, and the 20 bytes it encodes are the same either way.
+ */
+export function checksumEip712Addresses(data: Eip712RawTypedData): {
+  typedData: Eip712RawTypedData;
+  miscased: string[];
+} {
+  const miscased = new Set<string>();
+  const domainMembers =
+    structMembers(data.types, 'EIP712Domain') ??
+    Object.keys(data.domain)
+      .filter(k => Object.prototype.hasOwnProperty.call(DOMAIN_FIELD_TYPES, k))
+      .map(name => ({ name, type: DOMAIN_FIELD_TYPES[name] }));
+  const messageMembers = structMembers(data.types, data.primaryType) ?? [];
+  return {
+    typedData: {
+      ...data,
+      domain: isJsonObject(data.domain)
+        ? checksumStruct(data.types, domainMembers, data.domain, k =>
+            miscased.add(`domain.${k}`),
+          )
+        : data.domain,
+      message: isJsonObject(data.message)
+        ? checksumStruct(data.types, messageMembers, data.message, k =>
+            miscased.add(`message.${k}`),
+          )
+        : data.message,
+    },
+    miscased: [...miscased],
+  };
 }
 
 /** The declared type a field path reaches; null past a slice or a member the types do not list. */
@@ -362,22 +492,18 @@ export function parseEip712Summary(signDataHex: string): Eip712Summary | null {
       return null;
     }
 
-    validateTypedData({
-      domain: isJsonObject(parsed.domain) ? parsed.domain : {},
-      message: isJsonObject(parsed.message) ? parsed.message : {},
-      primaryType:
-        typeof parsed.primaryType === 'string'
-          ? parsed.primaryType
-          : 'EIP712Domain',
-      types: isJsonObject(parsed.types) ? parsed.types : {},
-    });
+    const { typedData, miscased } = checksumEip712Addresses(
+      toRawTypedData(parsed),
+    );
+    validateTypedData(typedData as Parameters<typeof validateTypedData>[0]);
 
     return {
       rawJson: JSON.stringify(parsed, null, 2),
       primaryType:
         typeof parsed.primaryType === 'string' ? parsed.primaryType : undefined,
-      domain: toDisplayMap(parsed.domain),
-      message: toDisplayMap(parsed.message),
+      domain: toDisplayMap(typedData.domain),
+      message: toDisplayMap(typedData.message),
+      miscasedAddresses: miscased,
       special: parseSpecialReview(parsed),
     };
   } catch {
