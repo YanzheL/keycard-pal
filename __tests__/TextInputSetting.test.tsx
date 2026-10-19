@@ -22,7 +22,7 @@ function renderField(onFieldFocus: jest.Mock) {
 describe('TextInputSetting', () => {
   // The screen owns the ScrollView, so it is the only one that can scroll a
   // focused field clear of the keyboard: the field has to hand itself over.
-  it('hands its input to the field-focus context on focus', () => {
+  it('hands its field block to the field-focus context on focus', () => {
     const onFieldFocus = jest.fn();
     renderField(onFieldFocus);
 
@@ -33,6 +33,34 @@ describe('TextInputSetting', () => {
 
     expect(onFieldFocus).toHaveBeenCalledTimes(1);
     expect(onFieldFocus.mock.calls[0][0]).toBeTruthy();
+  });
+
+  // Revert and Save appear under the field after it was scrolled into view.
+  it('hands itself over again when its layout changes while focused', () => {
+    const onFieldFocus = jest.fn();
+    renderField(onFieldFocus);
+    const input = screen.getByPlaceholderText('Enter WalletConnect Project ID');
+
+    fireEvent(input, 'focus');
+    fireEvent(screen.root, 'layout', { nativeEvent: { layout: {} } });
+
+    expect(onFieldFocus).toHaveBeenCalledTimes(2);
+    expect(onFieldFocus.mock.calls[1][0]).toBe(onFieldFocus.mock.calls[0][0]);
+  });
+
+  it('stays put on a layout change once it has lost focus', () => {
+    const onFieldFocus = jest.fn();
+    renderField(onFieldFocus);
+    const input = screen.getByPlaceholderText('Enter WalletConnect Project ID');
+
+    fireEvent(screen.root, 'layout', { nativeEvent: { layout: {} } });
+    fireEvent(input, 'focus');
+    fireEvent(input, 'blur');
+    fireEvent(screen.root, 'layout', { nativeEvent: { layout: {} } });
+
+    // The focus, then the blur handing the screen no field.
+    expect(onFieldFocus).toHaveBeenCalledTimes(2);
+    expect(onFieldFocus.mock.calls[1][0]).toBeNull();
   });
 
   it('renders without a provider', () => {

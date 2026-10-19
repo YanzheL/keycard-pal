@@ -17,6 +17,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - The app no longer crashes when the system font size, display size or language changes while it is open, or when it returns after Android stopped it in the background
 - A screen reader no longer reads the PUK or a generated recovery phrase while it is still blurred
 - An EIP-712 message that writes an address with a wrong checksum can be signed and shows a warning on that row, and the EIP-712 review shows every address in its checksummed form
+- In Settings, a text field's Revert and Save are scrolled above the keyboard as soon as they appear
 
 ## [1.14.0] - 2026-10-07
 

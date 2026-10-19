@@ -245,9 +245,39 @@ describe('SettingsScreen, keeping a focused field above the keyboard', () => {
     expect(scrollTo).toHaveBeenCalledWith({ y: 536, animated: true });
   });
 
+  // UIKit scrolls the focused field flush with the keyboard during its animation.
+  it('scrolls again on iOS once the keyboard has settled', () => {
+    const { scrollTo } = renderScreen();
+    act(() => onFieldFocus!(fakeField(900)));
+    act(() =>
+      listeners.keyboardWillShow({ endCoordinates: { screenY: 1000 } }),
+    );
+    expect(scrollTo).not.toHaveBeenCalled();
+
+    act(() => listeners.keyboardDidShow({ endCoordinates: { screenY: 1000 } }));
+
+    expect(scrollTo).toHaveBeenCalledWith({ y: 36, animated: true });
+  });
+
+  it("scrolls against the keyboard's settled frame, not the one announced", () => {
+    const { scrollTo } = renderScreen();
+    act(() => onFieldFocus!(fakeField(900)));
+    act(() =>
+      listeners.keyboardWillShow({ endCoordinates: { screenY: 1000 } }),
+    );
+
+    act(() => listeners.keyboardDidShow({ endCoordinates: { screenY: 950 } }));
+
+    expect(scrollTo).toHaveBeenCalledWith({ y: 86, animated: true });
+  });
+
   it('drops every keyboard listener it added when the screen goes', () => {
     const { unmount } = renderScreen();
-    expect(Object.keys(listeners)).toHaveLength(2);
+    expect(Object.keys(listeners).sort()).toEqual([
+      'keyboardDidShow',
+      'keyboardWillHide',
+      'keyboardWillShow',
+    ]);
 
     unmount();
 
