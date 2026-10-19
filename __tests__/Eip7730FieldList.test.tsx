@@ -4,6 +4,7 @@ import { encodeFunctionData, parseAbiItem, type AbiFunction } from 'viem';
 
 import Eip7730FieldList from '../src/components/SignRequestDetail/eth/DataTabPanel/Eip7730FieldList';
 import { UNLIMITED_APPROVAL_WARNING } from '../src/constants/approval';
+import { MISCASED_ADDRESS_WARNING } from '../src/constants/eip712';
 import {
   ENCRYPTED_VALUE_LABEL,
   SIGNER_CAPTION,
@@ -17,6 +18,7 @@ import {
 import {
   buildArgsEachResolver,
   buildArgsPathResolver,
+  buildEip712Resolvers,
 } from '../src/utils/eip7730/paths';
 import type {
   Eip7730DisplayFormat,
@@ -532,5 +534,46 @@ describe('Eip7730FieldList', () => {
       expect(screen.getAllByText('Send')).toHaveLength(2);
       expect(screen.queryByText(/Call 1 of/)).toBeNull();
     });
+  });
+});
+
+describe('Eip7730FieldList: mis-cased addresses', () => {
+  // Mixed case, not the EIP-55 form of RECIPIENT.
+  const MISCASED = '0xd3CDa913deb6F4967B2eF3Aa68F5a843da74c4Ef';
+
+  it('warns under a field holding an address the request wrote with a wrong checksum', () => {
+    const fields: Eip7730Field[] = [
+      { path: 'maker', label: 'Maker', format: 'addressName' },
+      { path: 'takers.[]', label: 'Taker', format: 'raw' },
+      { path: 'note', label: 'Note', format: 'raw' },
+      { path: 'maker', value: MISCASED, label: 'Fixed', format: 'raw' },
+    ];
+    render(
+      <Eip7730FieldList
+        fields={fields}
+        format={{ fields }}
+        ctx={{
+          chainId: 1,
+          depth: 0,
+          ...buildEip712Resolvers({
+            primaryType: 'Order',
+            types: {
+              Order: [
+                { name: 'maker', type: 'address' },
+                { name: 'takers', type: 'address[]' },
+                { name: 'note', type: 'string' },
+              ],
+            },
+            message: {
+              maker: MISCASED,
+              takers: [RECIPIENT, MISCASED],
+              note: MISCASED,
+            },
+          }),
+        }}
+      />,
+    );
+    // The maker, and the second taker; never the string or the descriptor's constant.
+    expect(screen.getAllByText(MISCASED_ADDRESS_WARNING)).toHaveLength(2);
   });
 });

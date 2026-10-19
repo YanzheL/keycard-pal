@@ -401,6 +401,69 @@ describe('EthSignRequestDetail: EIP-712 addresses', () => {
     expect(screen.getAllByText(MISCASED_ADDRESS_WARNING)).toHaveLength(1);
   });
 
+  it('warns on mis-cased addresses in a registry descriptor view', () => {
+    // The DeGate Withdrawal vector from the clear-signing registry (CC0).
+    const degate = (cased: (address: string) => string) => ({
+      signData: typedDataHex({
+        types: {
+          EIP712Domain: [
+            { name: 'name', type: 'string' },
+            { name: 'version', type: 'string' },
+            { name: 'chainId', type: 'uint256' },
+            { name: 'verifyingContract', type: 'address' },
+          ],
+          Withdrawal: [
+            { name: 'owner', type: 'address' },
+            { name: 'accountID', type: 'uint32' },
+            { name: 'tokenID', type: 'uint32' },
+            { name: 'amount', type: 'uint248' },
+            { name: 'feeTokenID', type: 'uint32' },
+            { name: 'maxFee', type: 'uint96' },
+            { name: 'to', type: 'address' },
+            { name: 'minGas', type: 'uint248' },
+            { name: 'validUntil', type: 'uint32' },
+            { name: 'storageID', type: 'uint32' },
+          ],
+        },
+        primaryType: 'Withdrawal',
+        domain: {
+          name: 'DeGate Protocol',
+          version: '0.1.0',
+          chainId: 1,
+          verifyingContract: cased(
+            '0xe63602a9B3DFe983187525AC985Fec4F57B24eD5',
+          ),
+        },
+        message: {
+          owner: cased('0x36B2E1B2e6F6F2b82BaA2E4837F6b0dE58Ae9815'),
+          accountID: 10425,
+          tokenID: 0,
+          amount: '1500000000000000000',
+          feeTokenID: 2,
+          maxFee: '3000000000000000',
+          to: cased('0x36B2E1B2e6F6F2b82BaA2E4837F6b0dE58Ae9815'),
+          minGas: '100000',
+          validUntil: 1774000000,
+          storageID: 58,
+        },
+      }),
+      dataType: 2,
+      derivationPath: "m/44'/60'/0'/0",
+      chainId: 1,
+    });
+
+    const { unmount } = renderDetail(degate(address => address));
+    expect(screen.getByText('DeGate Withdrawal')).toBeTruthy();
+    expect(screen.queryByText('Message Fields')).toBeNull();
+    // The domain's verifyingContract, Owner and To.
+    expect(screen.getAllByText(MISCASED_ADDRESS_WARNING)).toHaveLength(3);
+    unmount();
+
+    renderDetail(degate(address => address.toLowerCase()));
+    expect(screen.getByText('DeGate Withdrawal')).toBeTruthy();
+    expect(screen.queryByText(MISCASED_ADDRESS_WARNING)).toBeNull();
+  });
+
   it('warns on a mis-cased domain address too', () => {
     const verifier = VERIFIER.replace('D1220A', 'D1220a');
     renderDetail(mailRequest(BOB, verifier));
