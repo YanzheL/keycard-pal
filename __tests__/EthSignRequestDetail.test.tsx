@@ -846,6 +846,60 @@ describe('EthSignRequestDetail — EIP-712 special renderers', () => {
     expect(screen.getByText('1 USDC')).toBeTruthy();
     expect(screen.queryByText(/a9059cbb/)).toBeNull();
   });
+
+  it('refuses SafeTx data with an odd number of hex digits and shows it as written', () => {
+    const data =
+      '0xa9059cbb000000000000000000000000d8da6bf26964af9d7eed9e03e53415d37aa9604500000000000000000000000000000000000000000000000000000000000f424';
+    renderDetail({
+      signData: typedDataHex({
+        types: {
+          EIP712Domain: [
+            { name: 'chainId', type: 'uint256' },
+            { name: 'verifyingContract', type: 'address' },
+          ],
+          SafeTx: [
+            { name: 'to', type: 'address' },
+            { name: 'value', type: 'uint256' },
+            { name: 'data', type: 'bytes' },
+            { name: 'operation', type: 'uint8' },
+            { name: 'safeTxGas', type: 'uint256' },
+            { name: 'baseGas', type: 'uint256' },
+            { name: 'gasPrice', type: 'uint256' },
+            { name: 'gasToken', type: 'address' },
+            { name: 'refundReceiver', type: 'address' },
+            { name: 'nonce', type: 'uint256' },
+          ],
+        },
+        primaryType: 'SafeTx',
+        domain: {
+          chainId: 1,
+          verifyingContract: '0x3333333333333333333333333333333333333333',
+        },
+        message: {
+          to: '0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48',
+          value: '0',
+          data,
+          operation: 0,
+          safeTxGas: '100000',
+          baseGas: '21000',
+          gasPrice: '0',
+          gasToken: '0x0000000000000000000000000000000000000000',
+          refundReceiver: '0x0000000000000000000000000000000000000000',
+          nonce: '12',
+        },
+      }),
+      dataType: 2,
+      derivationPath: "m/44'/60'/0'/0",
+      chainId: 1,
+    });
+
+    expect(
+      screen.getByText(/This request cannot be signed. .*message\.data/),
+    ).toBeTruthy();
+    expect(screen.getByText('Safe Transaction')).toBeTruthy();
+    expect(screen.queryByText('ERC-20 Transfer')).toBeNull();
+    expect(screen.getByText(data)).toBeTruthy();
+  });
 });
 
 // ---------------------------------------------------------------------------

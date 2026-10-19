@@ -404,16 +404,21 @@ function checksumStruct(
  * Every value the message's types declare `address`, in EIP-55. viem refuses a wrong
  * checksum, and the 20 bytes it encodes are the same either way.
  */
+function domainMembersOf(data: Eip712RawTypedData): Eip712Member[] {
+  return (
+    structMembers(data.types, 'EIP712Domain') ??
+    Object.keys(data.domain)
+      .filter(k => Object.prototype.hasOwnProperty.call(DOMAIN_FIELD_TYPES, k))
+      .map(name => ({ name, type: DOMAIN_FIELD_TYPES[name] }))
+  );
+}
+
 export function checksumEip712Addresses(data: Eip712RawTypedData): {
   typedData: Eip712RawTypedData;
   miscased: string[];
 } {
   const miscased = new Set<string>();
-  const domainMembers =
-    structMembers(data.types, 'EIP712Domain') ??
-    Object.keys(data.domain)
-      .filter(k => Object.prototype.hasOwnProperty.call(DOMAIN_FIELD_TYPES, k))
-      .map(name => ({ name, type: DOMAIN_FIELD_TYPES[name] }));
+  const domainMembers = domainMembersOf(data);
   const messageMembers = structMembers(data.types, data.primaryType) ?? [];
   return {
     typedData: {
@@ -431,6 +436,74 @@ export function checksumEip712Addresses(data: Eip712RawTypedData): {
     },
     miscased: [...miscased],
   };
+}
+
+function oddBytesIn(
+  types: Record<string, unknown>,
+  type: string,
+  value: unknown,
+  path: string,
+): string | null {
+  const array = /^(.*)\[\d*\]$/.exec(type);
+  if (array) {
+    if (!Array.isArray(value)) return null;
+    for (let i = 0; i < value.length; i += 1) {
+      const found = oddBytesIn(types, array[1], value[i], `${path}.[${i}]`);
+      if (found) return found;
+    }
+    return null;
+  }
+  if (/^bytes\d*$/.test(type)) {
+    return typeof value === 'string' &&
+      /^0x[0-9a-fA-F]*$/.test(value) &&
+      value.length % 2 === 1
+      ? path
+      : null;
+  }
+  const members = structMembers(types, type);
+  return members && isJsonObject(value)
+    ? oddBytesInMembers(types, members, value, path)
+    : null;
+}
+
+function oddBytesInMembers(
+  types: Record<string, unknown>,
+  members: Eip712Member[],
+  value: Record<string, unknown>,
+  path: string,
+): string | null {
+  for (const m of members) {
+    if (!Object.prototype.hasOwnProperty.call(value, m.name)) continue;
+    const found = oddBytesIn(types, m.type, value[m.name], `${path}.${m.name}`);
+    if (found) return found;
+  }
+  return null;
+}
+
+/**
+ * The first `bytes` or `bytesN` value written with an odd number of hex digits. viem pads
+ * it before hashing, a `bytes` value at the front and a `bytesN` value at the back, so the
+ * signed bytes would not be the ones the request wrote.
+ */
+export function oddLengthBytesPath(data: Eip712RawTypedData): string | null {
+  return (
+    (isJsonObject(data.domain)
+      ? oddBytesInMembers(
+          data.types,
+          domainMembersOf(data),
+          data.domain,
+          'domain',
+        )
+      : null) ??
+    (isJsonObject(data.message)
+      ? oddBytesInMembers(
+          data.types,
+          structMembers(data.types, data.primaryType) ?? [],
+          data.message,
+          'message',
+        )
+      : null)
+  );
 }
 
 /** The declared type a field path reaches; null past a slice or a member the types do not list. */
