@@ -725,3 +725,12 @@ describe('decodeCalldata', () => {
     });
   });
 });
+
+describe('decodeCalldata on data that is not whole bytes', () => {
+  it('decodes nothing rather than shifting every argument', () => {
+    const transfer =
+      '0xa9059cbb000000000000000000000000d8da6bf26964af9d7eed9e03e53415d37aa9604500000000000000000000000000000000000000000000000000000000000f4240';
+    expect(decodeCalldata(transfer)).not.toBeNull();
+    expect(decodeCalldata(transfer.slice(0, -1))).toBeNull();
+  });
+});

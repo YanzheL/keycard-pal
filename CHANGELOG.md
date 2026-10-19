@@ -18,6 +18,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - A screen reader no longer reads the PUK or a generated recovery phrase while it is still blurred
 - An EIP-712 message that writes an address with a wrong checksum can be signed and shows a warning on that row, and the EIP-712 review shows every address in its checksummed form
 - In Settings, a text field's Revert and Save are scrolled above the keyboard as soon as they appear
+- An EIP-712 message with a bytes value of odd hex length is refused instead of signed padded, and the SafeTx review shows such data as written instead of decoding it shifted
 
 ## [1.14.0] - 2026-10-07
 
