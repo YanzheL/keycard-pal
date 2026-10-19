@@ -90,23 +90,29 @@ export default function SettingsScreen({ navigation }: SettingsScreenProps) {
   }, []);
 
   useEffect(() => {
-    const shown = Keyboard.addListener(
-      Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow',
-      event => {
-        keyboardTop.current = event.endCoordinates.screenY;
-      },
-    );
-    const hidden = Keyboard.addListener(
-      Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide',
-      () => {
-        keyboardTop.current = Number.POSITIVE_INFINITY;
-      },
-    );
-    return () => {
-      shown.remove();
-      hidden.remove();
-    };
-  }, []);
+    const subscriptions = [
+      Keyboard.addListener(
+        Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow',
+        event => {
+          keyboardTop.current = event.endCoordinates.screenY;
+        },
+      ),
+      Keyboard.addListener(
+        Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide',
+        () => {
+          keyboardTop.current = Number.POSITIVE_INFINITY;
+        },
+      ),
+    ];
+    // UIKit scrolls a focused field flush with the keyboard during the keyboard animation,
+    // which can land after ours; scrolling again once it settles restores FIELD_GAP.
+    if (Platform.OS === 'ios') {
+      subscriptions.push(
+        Keyboard.addListener('keyboardDidShow', () => scrollFieldIntoView()),
+      );
+    }
+    return () => subscriptions.forEach(subscription => subscription.remove());
+  }, [scrollFieldIntoView]);
 
   const handleFieldFocus = useCallback(
     (field: SettingsField | null) => {

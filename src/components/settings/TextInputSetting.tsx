@@ -37,21 +37,29 @@ export default function TextInputSetting({
   onRevert?: () => void;
   onSave: () => void;
 }) {
-  const inputRef = useRef<SettingsField>(null);
+  const blockRef = useRef<SettingsField>(null);
+  const focused = useRef(false);
   const onFieldFocus = useFieldFocus();
-  const handleFocus = useCallback(
-    () => onFieldFocus(inputRef.current),
-    [onFieldFocus],
-  );
+  const handleFocus = useCallback(() => {
+    focused.current = true;
+    onFieldFocus(blockRef.current);
+  }, [onFieldFocus]);
+  const handleBlur = useCallback(() => {
+    focused.current = false;
+  }, []);
+  // Revert and Save appear after the field was scrolled into view.
+  const handleLayout = useCallback(() => {
+    if (focused.current) onFieldFocus(blockRef.current);
+  }, [onFieldFocus]);
 
   return (
-    <>
+    <View ref={blockRef} onLayout={handleLayout} style={styles.block}>
       <Text variant="bodySmall" style={styles.label}>
         {label}
       </Text>
       <TextInput
-        ref={inputRef}
         onFocus={handleFocus}
+        onBlur={handleBlur}
         style={styles.input}
         value={value}
         onChangeText={onChangeText}
@@ -85,11 +93,15 @@ export default function TextInputSetting({
           </Text>
         </View>
       )}
-    </>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
+  // The sections space their rows by 8, which this block keeps inside itself.
+  block: {
+    gap: 8,
+  },
   label: {
     color: theme.colors.onSurfaceVariant,
   },
