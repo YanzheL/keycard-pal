@@ -1,6 +1,9 @@
 import { hashTypedData } from 'viem';
 
-import { oddLengthBytesPath } from '../src/utils/eip712';
+import {
+  oddLengthBytesPath,
+  type Eip712RawTypedData,
+} from '../src/utils/eip712';
 import { classifyEthPayload } from '../src/utils/ethPayload';
 import { wcRequestToScanResult } from '../src/utils/walletConnect/requestAdapter';
 
@@ -96,6 +99,22 @@ describe('oddLengthBytesPath', () => {
         typed({ M: [] }, {}, { name: 'X', salt: '0x' + '1'.repeat(63) }),
       ),
     ).toBe('domain.salt');
+  });
+
+  it('passes what does not fit its declared type', () => {
+    expect(
+      oddLengthBytesPath(
+        typed({ M: [{ name: 'list', type: 'bytes[]' }] }, { list: '0xabc' }),
+      ),
+    ).toBeNull();
+    expect(
+      oddLengthBytesPath({
+        types: { M: [] },
+        primaryType: 'M',
+        domain: 'X',
+        message: null,
+      } as unknown as Eip712RawTypedData),
+    ).toBeNull();
   });
 
   it('passes whole bytes, empty bytes, and what is not hex at all', () => {
