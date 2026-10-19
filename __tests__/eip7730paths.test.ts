@@ -335,6 +335,48 @@ describe('buildEip712Resolvers', () => {
   });
 });
 
+describe('buildEip712Resolvers: miscasedAt', () => {
+  // Mixed case, not the EIP-55 form of TOKEN.
+  const MISCASED = '0xa0B86991c6218b36c1d19D4a2e9Eb0cE3606eB48';
+  const { miscasedAt } = buildEip712Resolvers(
+    {
+      primaryType: 'Order',
+      types: {
+        Order: [
+          { name: 'maker', type: 'address' },
+          { name: 'takers', type: 'address[]' },
+          { name: 'note', type: 'string' },
+          { name: 'inner', type: 'Inner' },
+          { name: 'lower', type: 'address' },
+        ],
+        Inner: [{ name: 'who', type: 'address' }],
+      },
+      message: {
+        maker: MISCASED,
+        takers: [TOKEN, MISCASED],
+        note: MISCASED,
+        inner: { who: MISCASED },
+        lower: TOKEN.toLowerCase(),
+      },
+    },
+    { to: MISCASED },
+  );
+
+  it('names a declared address the request wrote with a wrong checksum', () => {
+    expect(miscasedAt('maker')).toBe(true);
+    expect(miscasedAt('inner.who')).toBe(true);
+    expect(miscasedAt('takers.[1]')).toBe(true);
+    expect(miscasedAt('takers.[]')).toBe(true);
+  });
+
+  it('leaves out a good checksum, lower case, a string and the container', () => {
+    expect(miscasedAt('takers.[0]')).toBe(false);
+    expect(miscasedAt('lower')).toBe(false);
+    expect(miscasedAt('note')).toBe(false);
+    expect(miscasedAt('@.to')).toBe(false);
+  });
+});
+
 describe('numbers in an EIP-712 message', () => {
   it('reads a large integer as its digits, not exponent notation', () => {
     expect(resolveEip712FieldValues('n', { n: 1e21 })).toEqual([

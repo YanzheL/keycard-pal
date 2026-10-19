@@ -147,9 +147,7 @@ function toAddress(value: unknown): string | undefined {
 function miscasedFields<K extends string>(values: Record<K, unknown>): K[] {
   return (Object.keys(values) as K[]).filter(key => {
     const value = values[key];
-    return typeof value === 'string' && ADDRESS_RE.test(value)
-      ? isMiscased(value)
-      : false;
+    return typeof value === 'string' && isMiscasedAddress(value);
   });
 }
 
@@ -347,12 +345,13 @@ function structMembers(
 }
 
 // All lower or all upper case carries no checksum.
-function isMiscased(address: string): boolean {
-  const body = address.slice(2);
+export function isMiscasedAddress(value: string): boolean {
+  if (!ADDRESS_RE.test(value)) return false;
+  const body = value.slice(2);
   return (
     /[a-f]/.test(body) &&
     /[A-F]/.test(body) &&
-    checksumEthAddress(address) !== address
+    checksumEthAddress(value) !== value
   );
 }
 
@@ -370,7 +369,7 @@ function checksumTyped(
   }
   if (type === 'address') {
     if (typeof value !== 'string' || !ADDRESS_RE.test(value)) return value;
-    if (isMiscased(value)) onMiscased();
+    if (isMiscasedAddress(value)) onMiscased();
     return checksumEthAddress(value);
   }
   const members = structMembers(types, type);

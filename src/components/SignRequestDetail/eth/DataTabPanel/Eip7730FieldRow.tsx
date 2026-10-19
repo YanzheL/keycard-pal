@@ -1,6 +1,7 @@
 import { StyleSheet, View } from 'react-native';
 import { Text } from 'react-native-paper';
 
+import { MISCASED_ADDRESS_WARNING } from '@/constants/eip712';
 import theme from '@/theme';
 
 import AddressInfoRow from '@/components/ens/AddressInfoRow.online';
@@ -76,6 +77,11 @@ export default function Eip7730FieldRow({
     return <Eip7730InnerCalls field={field} ctx={ctx} />;
   }
   const raw = field.value ?? ctx.resolvePath(field.path);
+  // A constant comes from the descriptor, not the request.
+  const miscased =
+    field.value === undefined && ctx.miscasedAt?.(field.path) === true
+      ? [MISCASED_ADDRESS_WARNING]
+      : [];
   // An encrypted value is a ciphertext handle, never an address.
   const shown =
     raw === null || field.encryption
@@ -87,7 +93,14 @@ export default function Eip7730FieldRow({
       : field.format === 'interoperableAddressName'
       ? describeInteroperable(field, raw, format, ctx)
       : null;
-  if (shown) return <AddressNameRows label={field.label} shown={shown} />;
+  if (shown) {
+    return (
+      <AddressNameRows
+        label={field.label}
+        shown={{ ...shown, warnings: [...shown.warnings, ...miscased] }}
+      />
+    );
+  }
   const {
     text,
     warnings = [],
@@ -108,7 +121,7 @@ export default function Eip7730FieldRow({
           <InfoRow label={ENCRYPTED_VALUE_LABEL} value={encryptedValue} />
         </View>
       )}
-      {warnings.map(warning => (
+      {[...warnings, ...miscased].map(warning => (
         <WarningRow key={warning} text={warning} />
       ))}
       {unknownTokenAddress && (
