@@ -46,7 +46,8 @@ export default function TextInputSetting({
   }, [onFieldFocus]);
   const handleBlur = useCallback(() => {
     focused.current = false;
-  }, []);
+    onFieldFocus(null);
+  }, [onFieldFocus]);
   // Revert and Save appear after the field was scrolled into view.
   const handleLayout = useCallback(() => {
     if (focused.current) onFieldFocus(blockRef.current);

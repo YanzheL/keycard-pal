@@ -58,7 +58,9 @@ describe('TextInputSetting', () => {
     fireEvent(input, 'blur');
     fireEvent(screen.root, 'layout', { nativeEvent: { layout: {} } });
 
-    expect(onFieldFocus).toHaveBeenCalledTimes(1);
+    // The focus, then the blur handing the screen no field.
+    expect(onFieldFocus).toHaveBeenCalledTimes(2);
+    expect(onFieldFocus.mock.calls[1][0]).toBeNull();
   });
 
   it('renders without a provider', () => {

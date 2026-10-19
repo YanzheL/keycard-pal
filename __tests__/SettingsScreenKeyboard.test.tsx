@@ -259,6 +259,18 @@ describe('SettingsScreen, keeping a focused field above the keyboard', () => {
     expect(scrollTo).toHaveBeenCalledWith({ y: 36, animated: true });
   });
 
+  it("scrolls against the keyboard's settled frame, not the one announced", () => {
+    const { scrollTo } = renderScreen();
+    act(() => onFieldFocus!(fakeField(900)));
+    act(() =>
+      listeners.keyboardWillShow({ endCoordinates: { screenY: 1000 } }),
+    );
+
+    act(() => listeners.keyboardDidShow({ endCoordinates: { screenY: 950 } }));
+
+    expect(scrollTo).toHaveBeenCalledWith({ y: 86, animated: true });
+  });
+
   it('drops every keyboard listener it added when the screen goes', () => {
     const { unmount } = renderScreen();
     expect(Object.keys(listeners).sort()).toEqual([

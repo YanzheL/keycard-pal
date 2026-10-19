@@ -108,7 +108,10 @@ export default function SettingsScreen({ navigation }: SettingsScreenProps) {
     // which can land after ours; scrolling again once it settles restores FIELD_GAP.
     if (Platform.OS === 'ios') {
       subscriptions.push(
-        Keyboard.addListener('keyboardDidShow', () => scrollFieldIntoView()),
+        Keyboard.addListener('keyboardDidShow', event => {
+          keyboardTop.current = event.endCoordinates.screenY;
+          scrollFieldIntoView();
+        }),
       );
     }
     return () => subscriptions.forEach(subscription => subscription.remove());
