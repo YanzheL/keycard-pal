@@ -2,6 +2,7 @@ import { render, screen } from '@testing-library/react-native';
 import React from 'react';
 
 import SpecialEip712Section from '../src/components/SignRequestDetail/eth/DataTabPanel/SpecialEip712Section';
+import { MISCASED_ADDRESS_WARNING } from '../src/constants/eip712';
 import type { Eip712SpecialReview } from '../src/utils/eip712';
 
 jest.mock('react-native-paper', () => {
@@ -60,6 +61,7 @@ describe('SpecialEip712Section — permit', () => {
       amount: 1000n,
       deadline: '2024-12-31',
       unlimited: false,
+      miscased: [],
     };
     render(<SpecialEip712Section special={special} fallbackChainId={1} />);
     expect(screen.getByText('EIP-712 Permit')).toBeTruthy();
@@ -76,6 +78,7 @@ describe('SpecialEip712Section — permit', () => {
       spender: SPENDER,
       amount: 500n,
       unlimited: false,
+      miscased: [],
     };
     render(<SpecialEip712Section special={special} fallbackChainId={1} />);
     expect(screen.getByText(`Token contract: ${TOKEN}`)).toBeTruthy();
@@ -87,6 +90,7 @@ describe('SpecialEip712Section — permit', () => {
       spender: SPENDER,
       amount: 2n ** 256n - 1n,
       unlimited: true,
+      miscased: [],
     };
     render(<SpecialEip712Section special={special} fallbackChainId={1} />);
     expect(screen.getByText('Allowance: Unlimited')).toBeTruthy();
@@ -103,6 +107,7 @@ describe('SpecialEip712Section — permit-single', () => {
       amount: 1000n,
       expiration: '2025-06-01',
       unlimited: false,
+      miscased: [],
     };
     render(<SpecialEip712Section special={special} fallbackChainId={1} />);
     expect(screen.getByText('Expiration: 2025-06-01')).toBeTruthy();
@@ -115,6 +120,7 @@ describe('SpecialEip712Section — permit-single', () => {
       spender: SPENDER,
       amount: 1000n,
       unlimited: false,
+      miscased: [],
     };
     render(<SpecialEip712Section special={special} fallbackChainId={1} />);
     expect(screen.queryByText(/Expiration/)).toBeNull();
@@ -133,6 +139,7 @@ describe('SpecialEip712Section — safe-tx', () => {
     gasToken: GAS_TOKEN,
     refundReceiver: REFUND,
     nonce: '1',
+    miscased: [],
   };
 
   it('shows safe transaction fields', () => {
@@ -191,5 +198,81 @@ describe('SpecialEip712Section — safe-tx', () => {
     };
     render(<SpecialEip712Section special={special} fallbackChainId={1} />);
     expect(screen.getByText('DecodedCallSection chainId=137')).toBeTruthy();
+  });
+});
+
+describe('SpecialEip712Section: mis-cased addresses', () => {
+  const texts = () =>
+    screen
+      .getAllByText(/./)
+      .map(node => node.props.children)
+      .filter((child): child is string => typeof child === 'string');
+
+  it('warns under each Permit row the review names', () => {
+    render(
+      <SpecialEip712Section
+        special={{
+          kind: 'permit-single',
+          tokenContract: TOKEN,
+          spender: SPENDER,
+          amount: 1n,
+          unlimited: false,
+          miscased: ['spender'],
+        }}
+        fallbackChainId={1}
+      />,
+    );
+    const shown = texts();
+    expect(shown.filter(t => t === MISCASED_ADDRESS_WARNING)).toHaveLength(1);
+    expect(shown[shown.indexOf(`Spender: ${SPENDER}`) + 1]).toBe(
+      MISCASED_ADDRESS_WARNING,
+    );
+  });
+
+  it('warns under each SafeTx row the review names', () => {
+    render(
+      <SpecialEip712Section
+        special={{
+          kind: 'safe-tx',
+          safeAddress: SAFE,
+          to: SPENDER,
+          value: '0',
+          operation: 'Call',
+          safeTxGas: '0',
+          baseGas: '0',
+          gasPrice: '0',
+          gasToken: GAS_TOKEN,
+          refundReceiver: REFUND,
+          nonce: '1',
+          miscased: ['safeAddress', 'to', 'gasToken', 'refundReceiver'],
+        }}
+        fallbackChainId={1}
+      />,
+    );
+    const shown = texts();
+    for (const row of [
+      `Safe: ${SAFE}`,
+      `To: ${SPENDER}`,
+      `Gas token: ${GAS_TOKEN}`,
+      `Refund receiver: ${REFUND}`,
+    ]) {
+      expect(shown[shown.indexOf(row) + 1]).toBe(MISCASED_ADDRESS_WARNING);
+    }
+  });
+
+  it('shows no warning when the review names none', () => {
+    render(
+      <SpecialEip712Section
+        special={{
+          kind: 'permit',
+          spender: SPENDER,
+          amount: 1n,
+          unlimited: false,
+          miscased: [],
+        }}
+        fallbackChainId={1}
+      />,
+    );
+    expect(screen.queryByText(MISCASED_ADDRESS_WARNING)).toBeNull();
   });
 });

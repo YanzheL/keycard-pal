@@ -304,7 +304,9 @@ describe('InitCardScreen', () => {
       expect(navigation.setOptions).toHaveBeenCalledWith({
         title: 'Write down your PUK',
       });
-      expect(screen.getByText('1234 5678 9012')).toBeTruthy();
+      expect(
+        screen.getByText('1234 5678 9012', { includeHiddenElements: true }),
+      ).toBeTruthy();
       expect(screen.UNSAFE_queryAllByType('BlurView' as any)).toHaveLength(1);
       expect(screen.getByText('Reveal PUK')).toBeTruthy();
       expect(navigation.reset).not.toHaveBeenCalled();
@@ -357,7 +359,9 @@ describe('InitCardScreen', () => {
     it('shows the PUK with the uncertain wording behind the error', async () => {
       await renderScreen('error', true);
       expect(screen.getByText(PUK_UNCERTAIN_EXPLAINER)).toBeTruthy();
-      expect(screen.getByText('1234 5678 9012')).toBeTruthy();
+      expect(
+        screen.getByText('1234 5678 9012', { includeHiddenElements: true }),
+      ).toBeTruthy();
       expect(screen.getByText('Reveal PUK')).toBeTruthy();
       expect(navigation.setOptions).toHaveBeenCalledWith({
         title: 'Write down your PUK',

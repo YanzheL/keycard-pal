@@ -6,7 +6,10 @@ import { UNLIMITED_APPROVAL_WARNING } from '../src/constants/approval';
 
 import { setSavedIndex } from '../src/utils/eip7730/lookup';
 import { buildArgsPathResolver } from '../src/utils/eip7730/paths';
-import { BUNDLED_SOURCE_TEXT } from '../src/utils/eip7730/source';
+import {
+  BUNDLED_SOURCE_TEXT,
+  NOT_REVIEWED_TEXT,
+} from '../src/utils/eip7730/source';
 import type { Eip7730DisplayFormat } from '../src/utils/eip7730/zip';
 
 jest.mock('../src/utils/tokenMetadata', () => ({
@@ -238,7 +241,7 @@ describe('Eip7730CallSection', () => {
     }
   });
 
-  it('leaves the source to the top-level call', () => {
+  it('leaves the source to the top-level call, but says whether an inner call was reviewed', () => {
     const format: Eip7730DisplayFormat = { intent: 'Send', fields: [] };
     render(
       <Eip7730CallSection
@@ -248,5 +251,17 @@ describe('Eip7730CallSection', () => {
       />,
     );
     expect(screen.queryByTestId('descriptor-source')).toBeNull();
+    expect(screen.getByText(NOT_REVIEWED_TEXT)).toBeTruthy();
+  });
+
+  it('names who reviewed the descriptor under its source', () => {
+    const format: Eip7730DisplayFormat = {
+      intent: 'Send',
+      fields: [],
+      reviewedBy: ['0x3846c3A30E62075Fa916216b35EF04B8F53931f6'],
+    };
+    render(<Eip7730CallSection format={format} resolvePath={transfer(1n)} />);
+    expect(screen.getByText(BUNDLED_SOURCE_TEXT)).toBeTruthy();
+    expect(screen.getByText('Reviewed by Cyfrin')).toBeTruthy();
   });
 });

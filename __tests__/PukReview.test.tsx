@@ -3,6 +3,7 @@ import { act, fireEvent, render, screen } from '@testing-library/react-native';
 
 import PukReview, {
   PUK_EXPLAINER,
+  PUK_HIDDEN_LABEL,
   PUK_UNCERTAIN_EXPLAINER,
   formatPUK,
 } from '../src/components/PukReview';
@@ -65,15 +66,26 @@ describe('PukReview', () => {
     expect(screen.queryByText(PUK_EXPLAINER)).toBeNull();
     expect(PUK_UNCERTAIN_EXPLAINER).toMatch(/may or may not have been set up/);
     expect(PUK_UNCERTAIN_EXPLAINER).toMatch(/initialize it again/);
-    expect(screen.getByText('1234 5678 9012')).toBeTruthy();
+    expect(
+      screen.getByText('1234 5678 9012', { includeHiddenElements: true }),
+    ).toBeTruthy();
   });
 
   it('shows the digits in fours, blurred until revealed', async () => {
     renderReview();
-    expect(screen.getByText('1234 5678 9012')).toBeTruthy();
     expect(screen.UNSAFE_queryAllByType('BlurView' as any)).toHaveLength(1);
     await reveal();
+    expect(screen.getByText('1234 5678 9012')).toBeTruthy();
     expect(screen.UNSAFE_queryAllByType('BlurView' as any)).toHaveLength(0);
+  });
+
+  it('keeps the digits from a screen reader until revealed', async () => {
+    renderReview();
+    expect(screen.queryByText('1234 5678 9012')).toBeNull();
+    expect(screen.getByLabelText(PUK_HIDDEN_LABEL)).toBeTruthy();
+    await reveal();
+    expect(screen.getByText('1234 5678 9012')).toBeTruthy();
+    expect(screen.queryByLabelText(PUK_HIDDEN_LABEL)).toBeNull();
   });
 
   it('revealing is not acknowledging', async () => {

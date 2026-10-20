@@ -2,6 +2,7 @@ import React, { useCallback, useMemo, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { SegmentedButtons, Text } from 'react-native-paper';
 
+import { MISCASED_ADDRESS_WARNING } from '@/constants/eip712';
 import { DESCRIPTOR_CHECK_FAILED_WARNING } from '@/constants/eip7730';
 import { EIP712_DIGEST_EXPLAINER } from '@/constants/erc8213';
 import type { EthSignRequest } from '@/types';
@@ -24,6 +25,7 @@ import {
 } from '@/utils/eip7730/format';
 import { lookupEip712 } from '@/utils/eip7730/lookup';
 import { buildEip712Resolvers } from '@/utils/eip7730/paths';
+import { reviewerNames } from '@/utils/eip7730/source';
 import { fitsRequest, shownFields } from '@/utils/eip7730/visibility';
 import { classifyEthPayload } from '@/utils/ethPayload';
 
@@ -102,7 +104,12 @@ export default function Eip712JsonPanel({
 
   const rejected =
     matchedFormat !== null && !fitsRequest(matchedFormat, fieldContext);
-  const eip7730Descriptor = rejected ? null : matchedFormat;
+  const fitting = rejected ? null : matchedFormat;
+  // The app's Permit and SafeTx reviews are reviewed code; an unreviewed descriptor is not.
+  const eip7730Descriptor =
+    fitting && (!specialEip712 || reviewerNames(fitting.reviewedBy).length > 0)
+      ? fitting
+      : null;
   const eip7730Fields = eip7730Descriptor
     ? shownFields(eip7730Descriptor, fieldContext)
     : [];
@@ -146,6 +153,9 @@ export default function Eip712JsonPanel({
                 {Object.entries(eip712.domain).map(([key, value]) => (
                   <View key={`domain-${key}`} style={styles.row}>
                     <AddressInfoRow label={key} value={value} />
+                    {eip712.miscasedAddresses.includes(`domain.${key}`) && (
+                      <WarningRow text={MISCASED_ADDRESS_WARNING} />
+                    )}
                   </View>
                 ))}
               </>
@@ -159,7 +169,9 @@ export default function Eip712JsonPanel({
                     </Text>
                   </View>
                 )}
-                <DescriptorSourceLine />
+                <DescriptorSourceLine
+                  reviewedBy={eip7730Descriptor.reviewedBy}
+                />
                 {eip7730Fields.length > 0 && <SectionHeader title="Message" />}
                 <Eip7730FieldList
                   fields={eip7730Descriptor.fields}
@@ -181,6 +193,9 @@ export default function Eip712JsonPanel({
                     {Object.entries(eip712.message).map(([key, value]) => (
                       <View key={`message-${key}`} style={styles.row}>
                         <AddressInfoRow label={key} value={value} />
+                        {eip712.miscasedAddresses.includes(
+                          `message.${key}`,
+                        ) && <WarningRow text={MISCASED_ADDRESS_WARNING} />}
                       </View>
                     ))}
                   </>

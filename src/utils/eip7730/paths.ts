@@ -5,7 +5,11 @@ import {
   type AbiFunction,
 } from 'viem';
 
-import { eip712FieldType, type Eip712RawTypedData } from '@/utils/eip712';
+import {
+  eip712FieldType,
+  isMiscasedAddress,
+  type Eip712RawTypedData,
+} from '@/utils/eip712';
 import { checksumEthAddress } from '@/utils/ethereumAddress';
 
 export type Eip7730Container = {
@@ -289,12 +293,13 @@ export function buildEip712Resolvers(
 ): {
   resolvePath: (path: string) => string | null;
   resolveEach: (path: string) => string[];
+  miscasedAt: (path: string) => boolean;
 } {
-  const write = (path: string, value: string) =>
+  const isAddress = (path: string) =>
     !path.startsWith('@.') &&
-    eip712FieldType(typed.types, typed.primaryType, path) === 'address'
-      ? checksumEthAddress(value)
-      : value;
+    eip712FieldType(typed.types, typed.primaryType, path) === 'address';
+  const write = (path: string, value: string) =>
+    isAddress(path) ? checksumEthAddress(value) : value;
   return {
     resolvePath: path => {
       const value = resolveEip712FieldValue(path, typed.message, container);
@@ -303,6 +308,11 @@ export function buildEip712Resolvers(
     resolveEach: path =>
       resolveEip712FieldValues(path, typed.message, container).map(value =>
         write(path, value),
+      ),
+    miscasedAt: path =>
+      isAddress(path) &&
+      resolveEip712FieldValues(path, typed.message, container).some(
+        isMiscasedAddress,
       ),
   };
 }

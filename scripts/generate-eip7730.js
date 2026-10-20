@@ -1,29 +1,40 @@
 #!/usr/bin/env node
-/**
- * Downloads the clear-signing EIP-7730 registry and writes the descriptor index
- * to src/data/eip7730.json with the app's own parser, so the bundled index and
- * an import from Settings are built the same way.
- *
- * Source: https://github.com/ethereum/clear-signing-erc7730-registry
- *
- * To update: npm run generate:eip7730, then commit the JSON diff.
- */
+// Built with the app's own parser, so the bundled index and an import from Settings agree.
 
 const fs = require('fs');
 const https = require('https');
 const path = require('path');
-
-const {
-  processRegistryZip,
-  isEmptyIndex,
-} = require('../src/utils/eip7730/zip.ts');
+const { createPublicClient, http } = require('viem');
 
 const ZIP_URL =
   process.env.EIP7730_REGISTRY_URL ||
   'https://github.com/ethereum/clear-signing-erc7730-registry/archive/refs/heads/master.zip';
+// Revocations live on mainnet only; a failed lookup fails the run rather than skipping it.
+const RPC_URL =
+  process.env.EIP7730_RPC_URL || 'https://ethereum-rpc.publicnode.com';
+const GET_REVOKE_OFFCHAIN = [
+  {
+    type: 'function',
+    name: 'getRevokeOffchain',
+    stateMutability: 'view',
+    inputs: [
+      { name: 'revoker', type: 'address' },
+      { name: 'uid', type: 'bytes32' },
+    ],
+    outputs: [{ name: '', type: 'uint64' }],
+  },
+];
 const OUT = path.join(__dirname, '..', 'src', 'data', 'eip7730.json');
 // The startup check compares a saved index with this, without building the bundled one.
 const META = path.join(__dirname, '..', 'src', 'data', 'eip7730.meta.json');
+// An import on the phone skips recovering these signatures again.
+const ATTESTATIONS = path.join(
+  __dirname,
+  '..',
+  'src',
+  'data',
+  'eip7730.attestations.json',
+);
 
 function get(url, redirects = 0) {
   return new Promise((resolve, reject) => {
@@ -69,6 +80,25 @@ function zipComment(buf) {
   return '';
 }
 
+async function revokedAttestations(accepted, { EAS_CONTRACT, revocationKey }) {
+  const client = createPublicClient({
+    transport: http(RPC_URL, { batch: { batchSize: 50 }, retryCount: 3 }),
+  });
+  const revokedAt = await Promise.all(
+    accepted.map(a =>
+      client.readContract({
+        address: EAS_CONTRACT,
+        abi: GET_REVOKE_OFFCHAIN,
+        functionName: 'getRevokeOffchain',
+        args: [a.attester, a.uid],
+      }),
+    ),
+  );
+  return new Set(
+    accepted.filter((_, i) => revokedAt[i] !== 0n).map(revocationKey),
+  );
+}
+
 function entryCount(bucket) {
   let sum = 0;
   for (const byKey of Object.values(bucket)) {
@@ -79,11 +109,23 @@ function entryCount(bucket) {
 }
 
 async function main() {
+  // Through import(), where the --import hook in package.json resolves src/'s extensionless imports.
+  const { acceptedAttestations, isEmptyIndex, processRegistryZip } =
+    await import('../src/utils/eip7730/zip.ts');
+  const attestation = await import('../src/utils/eip7730/attestation.ts');
+  const { revocationKey } = attestation;
+
   console.log(`Fetching ${ZIP_URL}...`);
   const buf = await get(ZIP_URL);
   console.log(`Downloaded ${buf.length} bytes. Building the index...`);
 
-  const index = processRegistryZip(new Uint8Array(buf));
+  const zip = new Uint8Array(buf);
+  const accepted = acceptedAttestations(zip);
+  console.log(
+    `Checking ${accepted.length} attestations for revocation at ${RPC_URL}...`,
+  );
+  const revoked = await revokedAttestations(accepted, attestation);
+  const index = processRegistryZip(zip, { revoked });
   if (isEmptyIndex(index)) {
     throw new Error(
       'The registry zip yielded no descriptors; nothing written.',
@@ -104,6 +146,12 @@ async function main() {
       2,
     ) + '\n',
   );
+  const verified = {};
+  for (const a of accepted) {
+    if (!revoked.has(revocationKey(a))) verified[a.uid] = a.attester;
+  }
+  const sorted = Object.fromEntries(Object.entries(verified).sort());
+  fs.writeFileSync(ATTESTATIONS, JSON.stringify(sorted, null, 2) + '\n');
 
   console.log(
     `Index v${index.version}: ${index.formats.length} formats for ` +
@@ -115,7 +163,11 @@ async function main() {
         Object.keys(index.eip712).length
       } verifying contracts.`,
   );
-  console.log(`Wrote ${OUT} and ${META}`);
+  console.log(
+    `${index.formats.filter(f => f.reviewedBy).length} formats reviewed; ` +
+      `${revoked.size} of ${accepted.length} attestations revoked.`,
+  );
+  console.log(`Wrote ${OUT}, ${META} and ${ATTESTATIONS}`);
 }
 
 main().catch(err => {

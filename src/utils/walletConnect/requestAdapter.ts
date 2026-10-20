@@ -4,6 +4,8 @@ import type { WCContext } from '@/constants/walletConnect';
 import type { WCRequest } from '@/providers/walletConnect/context';
 import type { ScanResult } from '@/types';
 
+import { checksumEip712Addresses, oddLengthBytesPath } from '@/utils/eip712';
+
 export type { WCContext };
 
 function splitAddrParam(params: unknown): { address: string; other: string } {
@@ -60,7 +62,7 @@ function handlePersonalSign(
     kind: 'eth-sign-request',
     request: {
       signData: hexEncodeMessage(message),
-      dataType: 3, // personal_sign — EIP-191 prefix applied in prepareSignHash
+      dataType: 3, // personal_sign; the EIP-191 prefix is added when signing
       derivationPath: resolvePath(address, addressToPath),
       address,
       origin: 'WalletConnect',
@@ -86,16 +88,45 @@ function handleTypedData(
     throw new Error('Invalid EIP-712 payload: missing domain/types/message');
   }
 
+  // viem builds EIP712Domain from the domain itself.
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const { EIP712Domain: _EIP712Domain, ...signingTypes } = types;
+  const resolvedType = primaryType ?? Object.keys(signingTypes)[0];
+
+  if (
+    oddLengthBytesPath({ domain, message, primaryType: resolvedType, types })
+  ) {
+    // A digest here would be signable; as typed data the review refuses it and says why.
+    // The resolved primary type goes with it, so the review reads the same message.
+    const json = hexEncodeMessage(
+      JSON.stringify({ ...parsed, primaryType: resolvedType }),
+    );
+    return {
+      kind: 'eth-sign-request',
+      request: {
+        signData: json,
+        dataType: 2,
+        derivationPath: resolvePath(address, addressToPath),
+        address,
+        origin: 'WalletConnect',
+        reviewData: json,
+      },
+    };
+  }
+
   let digest: `0x${string}`;
   try {
-    // Remove EIP712Domain — the hashing library adds it internally from domain
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const { EIP712Domain: _EIP712Domain, ...signingTypes } = types;
-    digest = hashTypedData({
+    const { typedData } = checksumEip712Addresses({
       domain,
-      types: signingTypes,
-      primaryType: primaryType ?? Object.keys(signingTypes)[0],
       message,
+      primaryType: resolvedType,
+      types,
+    });
+    digest = hashTypedData({
+      domain: typedData.domain,
+      types: signingTypes,
+      primaryType: typedData.primaryType,
+      message: typedData.message,
     });
   } catch {
     throw new Error('Invalid EIP-712 payload: hashing failed');
@@ -104,7 +135,7 @@ function handleTypedData(
   return {
     kind: 'eth-sign-request',
     request: {
-      signData: digest, // 32-byte hash — dataType=0 means no further hashing
+      signData: digest, // dataType 0: already the digest
       dataType: 0,
       derivationPath: resolvePath(address, addressToPath),
       address,

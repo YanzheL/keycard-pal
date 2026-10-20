@@ -273,6 +273,8 @@ export function decodeCalldata(dataHex: string): DecodedCall | null {
   if (!dataHex || dataHex === '0x' || dataHex.replace('0x', '').length < 8) {
     return null;
   }
+  // viem pads odd-length hex at the front, which would shift every argument.
+  if (!/^(0x)?([0-9a-fA-F]{2})*$/.test(dataHex)) return null;
 
   const selector = dataHex.slice(0, 10).toLowerCase();
   const entries = selectors[selector];

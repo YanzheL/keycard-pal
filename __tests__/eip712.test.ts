@@ -54,6 +54,7 @@ describe('parseEip712Summary', () => {
         from: '0xCD2a3d9F938E13CD947Ec05AbC7FE734Df8DD826',
         tags: '["test","mail"]',
       },
+      miscasedAddresses: [],
     });
   });
 
@@ -104,6 +105,7 @@ describe('parseEip712Summary', () => {
       primaryType: undefined,
       domain: {},
       message: {},
+      miscasedAddresses: [],
     });
   });
 
@@ -175,6 +177,7 @@ describe('parseEip712Summary', () => {
       amount: 1000000n,
       deadline: '1712345678',
       unlimited: false,
+      miscased: [],
     });
   });
 
@@ -229,6 +232,7 @@ describe('parseEip712Summary', () => {
       deadline: '1712345678',
       expiration: '1712345000',
       unlimited: true,
+      miscased: [],
     });
   });
 
@@ -496,6 +500,17 @@ describe('parseEip712RawTypedData', () => {
     const hex = Buffer.from(JSON.stringify(payload), 'utf8').toString('hex');
     const result = parseEip712RawTypedData(hex);
     expect(result!.primaryType).toEqual('EIP712Domain');
+  });
+
+  it('returns null for JSON that is not an object', () => {
+    const hex = Buffer.from('[1, 2]', 'utf8').toString('hex');
+    expect(parseEip712RawTypedData(hex)).toBeNull();
+  });
+
+  it('uses empty types when they are not an object', () => {
+    const payload = { types: 'Mail', domain: {}, message: {} };
+    const hex = Buffer.from(JSON.stringify(payload), 'utf8').toString('hex');
+    expect(parseEip712RawTypedData(hex)!.types).toEqual({});
   });
 });
 

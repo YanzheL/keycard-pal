@@ -9,8 +9,8 @@ import {
 } from 'viem';
 
 import SimulationAddressProvider from '../src/components/SignRequestDetail/SimulationAddressProvider';
-import { UNLIMITED_APPROVAL_WARNING } from '../src/constants/approval';
 import EthSignRequestDetail from '../src/components/SignRequestDetail/eth/SignRequestDetail';
+import { MISCASED_ADDRESS_WARNING } from '../src/constants/eip712';
 import type { EthSignRequest } from '../src/types';
 
 jest.mock('../src/components/NFCBottomSheet', () => () => null);
@@ -330,6 +330,157 @@ describe('EthSignRequestDetail — EIP-55 address display', () => {
   });
 });
 
+describe('EthSignRequestDetail: EIP-712 addresses', () => {
+  // EIP-55 test vectors, and one of them in mixed case that is not its EIP-55 form.
+  const VERIFIER = '0xD1220A0cf47c7B9Be7A2E6BA89F429762e7b9aDb';
+  const BOB = '0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed';
+  const BOB_MISCASED = '0x5aaeb6053F3E94C9b9A09f33669435E7Ef1BeAed';
+  const CAROL = '0xfB6916095ca1df60bB79Ce92cE3Ea74c37c5d359';
+  const NOTE = '0xfb6916095CA1df60bB79Ce92cE3Ea74c37c5d359';
+
+  function mailRequest(to: string, verifyingContract: string): EthSignRequest {
+    return {
+      signData: typedDataHex({
+        types: {
+          EIP712Domain: [
+            { name: 'name', type: 'string' },
+            { name: 'verifyingContract', type: 'address' },
+          ],
+          Mail: [
+            { name: 'to', type: 'address' },
+            { name: 'from', type: 'address' },
+            { name: 'note', type: 'string' },
+          ],
+        },
+        primaryType: 'Mail',
+        domain: { name: 'Mail', verifyingContract },
+        message: { to, from: CAROL.toLowerCase(), note: NOTE },
+      }),
+      dataType: 2,
+      derivationPath: "m/44'/60'/0'/0",
+      chainId: 1,
+    };
+  }
+
+  it('signs a mis-cased address, shows it in EIP-55 and warns on its row', () => {
+    renderDetail(mailRequest(BOB_MISCASED, VERIFIER.toLowerCase()));
+    expect(screen.queryByText(/This request cannot be signed/)).toBeNull();
+    expect(screen.getByText(BOB)).toBeTruthy();
+    expect(screen.getAllByText(MISCASED_ADDRESS_WARNING)).toHaveLength(1);
+  });
+
+  it("warns on a mis-cased spender in the app's Permit review", () => {
+    renderDetail({
+      signData: typedDataHex({
+        types: {
+          Permit: [
+            { name: 'owner', type: 'address' },
+            { name: 'spender', type: 'address' },
+            { name: 'value', type: 'uint256' },
+            { name: 'nonce', type: 'uint256' },
+            { name: 'deadline', type: 'uint256' },
+          ],
+        },
+        primaryType: 'Permit',
+        domain: { name: 'Token', chainId: 1, verifyingContract: VERIFIER },
+        message: {
+          owner: CAROL,
+          spender: BOB_MISCASED,
+          value: '1',
+          nonce: '0',
+          deadline: '1',
+        },
+      }),
+      dataType: 2,
+      derivationPath: "m/44'/60'/0'/0",
+      chainId: 1,
+    });
+    expect(screen.getByText('EIP-712 Permit')).toBeTruthy();
+    expect(screen.queryByText(/This request cannot be signed/)).toBeNull();
+    expect(screen.getByText(BOB)).toBeTruthy();
+    expect(screen.getAllByText(MISCASED_ADDRESS_WARNING)).toHaveLength(1);
+  });
+
+  it('warns on mis-cased addresses in a registry descriptor view', () => {
+    // The DeGate Withdrawal vector from the clear-signing registry (CC0).
+    const degate = (cased: (address: string) => string) => ({
+      signData: typedDataHex({
+        types: {
+          EIP712Domain: [
+            { name: 'name', type: 'string' },
+            { name: 'version', type: 'string' },
+            { name: 'chainId', type: 'uint256' },
+            { name: 'verifyingContract', type: 'address' },
+          ],
+          Withdrawal: [
+            { name: 'owner', type: 'address' },
+            { name: 'accountID', type: 'uint32' },
+            { name: 'tokenID', type: 'uint32' },
+            { name: 'amount', type: 'uint248' },
+            { name: 'feeTokenID', type: 'uint32' },
+            { name: 'maxFee', type: 'uint96' },
+            { name: 'to', type: 'address' },
+            { name: 'minGas', type: 'uint248' },
+            { name: 'validUntil', type: 'uint32' },
+            { name: 'storageID', type: 'uint32' },
+          ],
+        },
+        primaryType: 'Withdrawal',
+        domain: {
+          name: 'DeGate Protocol',
+          version: '0.1.0',
+          chainId: 1,
+          verifyingContract: cased(
+            '0xe63602a9B3DFe983187525AC985Fec4F57B24eD5',
+          ),
+        },
+        message: {
+          owner: cased('0x36B2E1B2e6F6F2b82BaA2E4837F6b0dE58Ae9815'),
+          accountID: 10425,
+          tokenID: 0,
+          amount: '1500000000000000000',
+          feeTokenID: 2,
+          maxFee: '3000000000000000',
+          to: cased('0x36B2E1B2e6F6F2b82BaA2E4837F6b0dE58Ae9815'),
+          minGas: '100000',
+          validUntil: 1774000000,
+          storageID: 58,
+        },
+      }),
+      dataType: 2,
+      derivationPath: "m/44'/60'/0'/0",
+      chainId: 1,
+    });
+
+    const { unmount } = renderDetail(degate(address => address));
+    expect(screen.getByText('DeGate Withdrawal')).toBeTruthy();
+    expect(screen.queryByText('Message Fields')).toBeNull();
+    // The domain's verifyingContract, Owner and To.
+    expect(screen.getAllByText(MISCASED_ADDRESS_WARNING)).toHaveLength(3);
+    unmount();
+
+    renderDetail(degate(address => address.toLowerCase()));
+    expect(screen.getByText('DeGate Withdrawal')).toBeTruthy();
+    expect(screen.queryByText(MISCASED_ADDRESS_WARNING)).toBeNull();
+  });
+
+  it('warns on a mis-cased domain address too', () => {
+    const verifier = VERIFIER.replace('D1220A', 'D1220a');
+    renderDetail(mailRequest(BOB, verifier));
+    expect(screen.getByText(VERIFIER)).toBeTruthy();
+    expect(screen.getAllByText(MISCASED_ADDRESS_WARNING)).toHaveLength(1);
+  });
+
+  it('shows lowercase addresses in EIP-55 with no warning, and a string as written', () => {
+    renderDetail(mailRequest(BOB.toLowerCase(), VERIFIER.toLowerCase()));
+    expect(screen.getByText(VERIFIER)).toBeTruthy();
+    expect(screen.getByText(BOB)).toBeTruthy();
+    expect(screen.getByText(CAROL)).toBeTruthy();
+    expect(screen.getByText(NOTE)).toBeTruthy();
+    expect(screen.queryByText(MISCASED_ADDRESS_WARNING)).toBeNull();
+  });
+});
+
 // ---------------------------------------------------------------------------
 // ENS address rows
 // ---------------------------------------------------------------------------
@@ -500,10 +651,7 @@ describe('EthSignRequestDetail — EIP-712 special renderers', () => {
     };
   }
 
-  function unlimitedPermitSingle(
-    domainName: string,
-    token = '0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48',
-  ): EthSignRequest {
+  function unlimitedPermitSingle(domainName: string): EthSignRequest {
     return {
       signData: typedDataHex({
         types: {
@@ -532,7 +680,7 @@ describe('EthSignRequestDetail — EIP-712 special renderers', () => {
         },
         message: {
           details: {
-            token,
+            token: '0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48',
             amount: (2n ** 160n - 1n).toString(),
             expiration: '1712345000',
             nonce: '1',
@@ -554,25 +702,74 @@ describe('EthSignRequestDetail — EIP-712 special renderers', () => {
     expect(
       screen.getByText('0x1111111111111111111111111111111111111111'),
     ).toBeTruthy();
+    // The domain's lowercase verifyingContract and the Permit's token, both in EIP-55.
     expect(
-      screen.getByText('0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48'),
-    ).toBeTruthy();
+      screen.getAllByText('0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48'),
+    ).toHaveLength(2);
     expect(screen.getByText('1 USDC')).toBeTruthy();
     expect(screen.getByText('1712345678')).toBeTruthy();
     expect(screen.queryByText('Message Fields')).toBeNull();
   });
 
-  it('shows the registry descriptor for a Permit it binds', () => {
+  function usdcTransferAuthorization(): EthSignRequest {
+    return {
+      signData: typedDataHex({
+        types: {
+          EIP712Domain: [
+            { name: 'name', type: 'string' },
+            { name: 'version', type: 'string' },
+            { name: 'chainId', type: 'uint256' },
+            { name: 'verifyingContract', type: 'address' },
+          ],
+          TransferWithAuthorization: [
+            { name: 'from', type: 'address' },
+            { name: 'to', type: 'address' },
+            { name: 'value', type: 'uint256' },
+            { name: 'validAfter', type: 'uint256' },
+            { name: 'validBefore', type: 'uint256' },
+            { name: 'nonce', type: 'bytes32' },
+          ],
+        },
+        primaryType: 'TransferWithAuthorization',
+        domain: {
+          name: 'USD Coin',
+          version: '2',
+          chainId: 1,
+          verifyingContract: '0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48',
+        },
+        message: {
+          from: '0x2222222222222222222222222222222222222222',
+          to: '0x1111111111111111111111111111111111111111',
+          value: '1000000',
+          validAfter: '0',
+          validBefore: '1712345678',
+          nonce: `0x${'ab'.repeat(32)}`,
+        },
+      }),
+      dataType: 2,
+      derivationPath: "m/44'/60'/0'/0",
+      chainId: 1,
+    };
+  }
+
+  it("keeps the app's Permit reviewer over a registry descriptor nobody reviewed", () => {
     renderDetail(usdcPermit('2'));
 
-    expect(screen.getByText('Authorize spending of tokens')).toBeTruthy();
-    expect(screen.getByText('Max spending amount')).toBeTruthy();
+    expect(screen.getByText('EIP-712 Permit')).toBeTruthy();
     expect(screen.getByText('1 USDC')).toBeTruthy();
-    expect(screen.queryByText('EIP-712 Permit')).toBeNull();
+    expect(screen.queryByText('Authorize spending of tokens')).toBeNull();
   });
 
-  it('shows the registry descriptor for a WalletConnect Permit, which carries no chainId', () => {
-    const { signData, ...rest } = usdcPermit('2');
+  it('shows a reviewed registry descriptor and who reviewed it', () => {
+    renderDetail(usdcTransferAuthorization());
+
+    expect(screen.getByText('Authorize USDC transfer')).toBeTruthy();
+    expect(screen.getByText('Reviewed by Cyfrin')).toBeTruthy();
+    expect(screen.getByText('1 USDC')).toBeTruthy();
+  });
+
+  it('shows the registry descriptor for a WalletConnect request, which carries no chainId', () => {
+    const { signData, ...rest } = usdcTransferAuthorization();
     renderDetail({
       ...rest,
       chainId: undefined,
@@ -582,7 +779,7 @@ describe('EthSignRequestDetail — EIP-712 special renderers', () => {
       origin: 'WalletConnect',
     });
 
-    expect(screen.getByText('Authorize spending of tokens')).toBeTruthy();
+    expect(screen.getByText('Authorize USDC transfer')).toBeTruthy();
     expect(screen.getByText('1 USDC')).toBeTruthy();
   });
 
@@ -593,29 +790,11 @@ describe('EthSignRequestDetail — EIP-712 special renderers', () => {
     expect(screen.getByText(/Unlimited permit/)).toBeTruthy();
   });
 
-  it('flags an unlimited PermitSingle in the registry descriptor', () => {
+  it("keeps the app's reviewer for Permit2, whose registry descriptor nobody reviewed", () => {
     renderDetail(unlimitedPermitSingle('Permit2'));
 
-    expect(screen.getByText('Authorize spending of token')).toBeTruthy();
-    expect(screen.getByText('Unlimited USDC')).toBeTruthy();
-    expect(screen.getByText(UNLIMITED_APPROVAL_WARNING)).toBeTruthy();
-    expect(screen.queryByText(/Unlimited permit/)).toBeNull();
-  });
-
-  it('names the token of a registry Permit2 approval the app does not know', () => {
-    renderDetail(
-      unlimitedPermitSingle(
-        'Permit2',
-        '0x000000000000000000000000000000000000dead',
-      ),
-    );
-
-    expect(screen.getByText('Unlimited')).toBeTruthy();
-    expect(screen.getByText('Unknown token')).toBeTruthy();
-    expect(screen.getByText('Token contract')).toBeTruthy();
-    expect(
-      screen.getByText('0x000000000000000000000000000000000000dEaD'),
-    ).toBeTruthy();
+    expect(screen.getByText(/Unlimited permit/)).toBeTruthy();
+    expect(screen.queryByText('Authorize spending of token')).toBeNull();
   });
 
   it('decodes SafeTx inner calldata through the selector database', () => {
@@ -666,6 +845,60 @@ describe('EthSignRequestDetail — EIP-712 special renderers', () => {
     expect(screen.getByText('ERC-20 Transfer')).toBeTruthy();
     expect(screen.getByText('1 USDC')).toBeTruthy();
     expect(screen.queryByText(/a9059cbb/)).toBeNull();
+  });
+
+  it('refuses SafeTx data with an odd number of hex digits and shows it as written', () => {
+    const data =
+      '0xa9059cbb000000000000000000000000d8da6bf26964af9d7eed9e03e53415d37aa9604500000000000000000000000000000000000000000000000000000000000f424';
+    renderDetail({
+      signData: typedDataHex({
+        types: {
+          EIP712Domain: [
+            { name: 'chainId', type: 'uint256' },
+            { name: 'verifyingContract', type: 'address' },
+          ],
+          SafeTx: [
+            { name: 'to', type: 'address' },
+            { name: 'value', type: 'uint256' },
+            { name: 'data', type: 'bytes' },
+            { name: 'operation', type: 'uint8' },
+            { name: 'safeTxGas', type: 'uint256' },
+            { name: 'baseGas', type: 'uint256' },
+            { name: 'gasPrice', type: 'uint256' },
+            { name: 'gasToken', type: 'address' },
+            { name: 'refundReceiver', type: 'address' },
+            { name: 'nonce', type: 'uint256' },
+          ],
+        },
+        primaryType: 'SafeTx',
+        domain: {
+          chainId: 1,
+          verifyingContract: '0x3333333333333333333333333333333333333333',
+        },
+        message: {
+          to: '0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48',
+          value: '0',
+          data,
+          operation: 0,
+          safeTxGas: '100000',
+          baseGas: '21000',
+          gasPrice: '0',
+          gasToken: '0x0000000000000000000000000000000000000000',
+          refundReceiver: '0x0000000000000000000000000000000000000000',
+          nonce: '12',
+        },
+      }),
+      dataType: 2,
+      derivationPath: "m/44'/60'/0'/0",
+      chainId: 1,
+    });
+
+    expect(
+      screen.getByText(/This request cannot be signed. .*message\.data/),
+    ).toBeTruthy();
+    expect(screen.getByText('Safe Transaction')).toBeTruthy();
+    expect(screen.queryByText('ERC-20 Transfer')).toBeNull();
+    expect(screen.getByText(data)).toBeTruthy();
   });
 });
 

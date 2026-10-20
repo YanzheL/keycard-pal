@@ -73,28 +73,35 @@ _Avoid_: Recovery code, master PIN, unblock code
 The state of a card after three wrong PIN entries. Every operation that verifies the PIN fails with one error, and that error offers the unblock flow directly. Unblocking takes the PUK and a new PIN in one tap; the card refuses it while the PIN still has attempts.
 _Avoid_: Locked card, bricked card (that is a blocked PUK)
 
-The three terms that follow, and the EIP-7730 relationships below them, are the vocabulary of
-work that is not on `main`: the clear-signing pipeline lives on an unmerged branch (#179). They
-are recorded here so the branch and the app agree on names, not because the app ships them.
-
 **EIP-7730 descriptor**:
-A JSON file from the Ledger clear-signing registry that maps a specific contract deployment (chainId + address) to human-readable display rules for its function calls and EIP-712 messages.
+A JSON file from the clear-signing registry that maps a specific contract deployment (chainId + address) to human-readable display rules for its function calls and EIP-712 messages.
 _Avoid_: Clear-signing file, display metadata file
 
 **Descriptor index**:
-The merged, keyed snapshot of all EIP-7730 descriptors used at runtime. Bundled as `src/data/eip7730.json`. Keys: `chainId:address:selector` for calldata, `chainId:address:primaryType` for EIP-712. When a user imports or downloads a newer Ledger registry zip, the processed result is persisted via RNFS and overrides the bundled index on the next startup.
+The merged, keyed snapshot of all EIP-7730 descriptors used at runtime. Bundled as `src/data/eip7730.json`. Keys: `chainId:address:selector` for calldata, `chainId:address:primaryType` for EIP-712. When a user imports or downloads a newer registry zip, the processed result is persisted via RNFS and overrides the bundled index on the next startup.
 _Avoid_: EIP-7730 registry, descriptor database
 
 **Descriptor source**:
-The active mode for descriptor index updates. Three states: bundled (implicit default — no user action), manual import (user uploads a Ledger registry zip via the file picker), auto-download (online build only — fetches the Ledger registry zip from a configurable URL on startup, with ETag-based conditional fetch and wifi-only option). Auto-download and manual import are mutually exclusive; switching to either replaces the bundled index.
+The active mode for descriptor index updates. Three states: bundled (implicit default — no user action), manual import (user uploads a registry zip via the file picker), auto-download (online build only — fetches the registry zip from a configurable URL on startup, with ETag-based conditional fetch and wifi-only option). Auto-download and manual import are mutually exclusive; switching to either replaces the bundled index.
 _Avoid_: Descriptor mode, update mode
+
+**Attestation**:
+An auditor's signed statement (ERC-8176) that they reviewed one EIP-7730 descriptor with a specific content hash, includes resolved. An edit to the descriptor or to a file it includes leaves it covering nothing.
+_Avoid_: Audit, signature, sig file
+
+**Trusted attester**:
+An auditor whose attestations the app accepts; the set is fixed per release.
+_Avoid_: Auditor list, signer
+
+**Reviewed descriptor**:
+An EIP-7730 descriptor covered by a valid, unrevoked attestation from a trusted attester. Every other descriptor is unreviewed.
+_Avoid_: Audited descriptor, verified descriptor, trusted descriptor
 
 ## EIP-7730 relationships
 
-- A **descriptor index** entry takes full priority over existing `ContractCallSection` and `SpecialEip712Section` rendering when a match is found.
+- A **descriptor index** entry takes priority over `ContractCallSection` rendering when a match is found, and over `SpecialEip712Section` only when it comes from a **reviewed descriptor**.
 - When no **EIP-7730 descriptor** matches, the app falls back to existing ABI-based decoding and special renderers unchanged.
 - EIP-712 messages with no `verifyingContract` in the domain are excluded from **descriptor index** lookup and fall back to existing rendering.
-- The `calldata` EIP-7730 format type is not supported in v1; fields with that format are rendered as `raw`.
 - **Descriptor source** auto-download is opt-in per ADR-0003 — the default descriptor source is bundled.
 
 **Ethereum payload classification**:

@@ -1,17 +1,20 @@
 import { useCallback, useEffect, useState } from 'react';
 import { ScrollView, StyleSheet, TextInput, View } from 'react-native';
-import { BlurView } from '@react-native-community/blur';
 import { Text } from 'react-native-paper';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { GenerateKeyScreenProps } from '../../navigation/types';
-import theme from '../../theme';
+import { GenerateKeyScreenProps } from '@/navigation/types';
+import theme from '@/theme';
 
-import NFCBottomSheet from '../../components/NFCBottomSheet';
-import PrimaryButton from '../../components/PrimaryButton';
+import BlurredSecret from '@/components/BlurredSecret';
+import NFCBottomSheet from '@/components/NFCBottomSheet';
+import PrimaryButton from '@/components/PrimaryButton';
 
-import { useGenerateKey } from '../../hooks/keycard/useGenerateKey';
-import { useSeedReviewTimer } from '../../hooks/useSeedReviewTimer';
+import { useGenerateKey } from '@/hooks/keycard/useGenerateKey';
+import { useSeedReviewTimer } from '@/hooks/useSeedReviewTimer';
+
+export const RECOVERY_PHRASE_HIDDEN_LABEL =
+  'Recovery phrase hidden. Reveal recovery phrase shows it.';
 
 export default function GenerateKeyScreen({
   navigation,
@@ -73,7 +76,11 @@ export default function GenerateKeyScreen({
 
         {phase === 'done' && result && (
           <>
-            <View style={styles.wordGridWrapper}>
+            <BlurredSecret
+              revealed={revealed}
+              hiddenLabel={RECOVERY_PHRASE_HIDDEN_LABEL}
+              style={styles.wordGridWrapper}
+            >
               <View style={styles.wordGrid}>
                 <View style={styles.column}>
                   {words.slice(0, half).map((word, i) => (
@@ -96,14 +103,7 @@ export default function GenerateKeyScreen({
                   ))}
                 </View>
               </View>
-              {!revealed && (
-                <BlurView
-                  style={StyleSheet.absoluteFill}
-                  blurType="dark"
-                  blurAmount={10}
-                />
-              )}
-            </View>
+            </BlurredSecret>
             {revealed && withPassphrase && (
               <View style={styles.passphraseContainer}>
                 <Text style={styles.passphraseLabel}>Passphrase</Text>

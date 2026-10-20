@@ -26,6 +26,8 @@ export type Eip7730FieldContext = {
   depth?: number;
   /** A contract the review already shows, so an unknown token row would repeat it. */
   shownContract?: string;
+  /** Whether the request wrote an address at this path with a wrong checksum. */
+  miscasedAt?: (path: string) => boolean;
 };
 
 export type Eip7730FieldDisplay = {

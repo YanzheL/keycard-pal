@@ -1,7 +1,8 @@
 import { createContext, useContext, type ComponentRef } from 'react';
-import type { TextInput } from 'react-native';
+import type { View } from 'react-native';
 
-export type SettingsField = ComponentRef<typeof TextInput>;
+/** The whole field block, Revert and Save included, not just its input. */
+export type SettingsField = ComponentRef<typeof View>;
 export type FieldFocusHandler = (field: SettingsField | null) => void;
 
 /**

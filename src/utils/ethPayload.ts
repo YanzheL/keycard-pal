@@ -4,6 +4,7 @@ import { keccak_256 } from '@noble/hashes/sha3.js';
 import { getChainName } from './chainMetadata';
 
 import {
+  oddLengthBytesPath,
   parseEip712Prehashed,
   parseEip712RawTypedData,
   type Eip712Prehashed,
@@ -146,6 +147,12 @@ export function classifyEthPayload(
   if (dataType === 2) {
     const typedData = parseEip712RawTypedData(signData);
     if (typedData) {
+      const oddBytes = oddLengthBytesPath(typedData);
+      if (oddBytes) {
+        return invalid(
+          `EIP-712 value ${oddBytes} has an odd number of hex digits, so it is not whole bytes.`,
+        );
+      }
       const digest = computeEip712DigestFromJson(
         typedData.domain,
         typedData.message,
