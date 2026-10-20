@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [1.15.1] - 2026-10-20
+
+### Changed
+
+- The bundled clear-signing registry is updated: LI.FI and Morpho on more networks, and Ophis swap orders
+
 ### Fixed
 
 - The app opens on iOS 27 instead of crashing at launch
@@ -468,7 +474,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Signing transaction with Keycard
 - Scan back result QR code into the compatible Ethereum wallet
 
-[Unreleased]: https://github.com/mmlado/keycard-pal/compare/v1.15.0...HEAD
+[Unreleased]: https://github.com/mmlado/keycard-pal/compare/v1.15.1...HEAD
+[1.15.1]: https://github.com/mmlado/keycard-pal/compare/v1.15.0...v1.15.1
 [1.15.0]: https://github.com/mmlado/keycard-pal/compare/v1.14.0...v1.15.0
 [1.14.0]: https://github.com/mmlado/keycard-pal/compare/v1.13.0...v1.14.0
 [1.13.0]: https://github.com/mmlado/keycard-pal/compare/v1.12.0...v1.13.0

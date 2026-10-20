@@ -1,0 +1,1 @@
+This update brings a newer copy of the clear-signing registry: reviews now describe LI.FI and Morpho contracts on more networks, and Ophis swap orders.

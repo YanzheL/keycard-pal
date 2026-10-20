@@ -204,22 +204,27 @@ describe('bundled EIP-7730 descriptors', () => {
 });
 
 // A value of any ABI type, so calldata can be built for every bundled signature.
-function sample(param: AbiParameter): unknown {
+function sample(param: AbiParameter, bytesLength = 400): unknown {
   const array = param.type.match(/^(.*)\[(\d*)\]$/);
   if (array) {
     const inner = { ...param, type: array[1] } as AbiParameter;
-    return Array.from({ length: Number(array[2] || 2) }, () => sample(inner));
+    return Array.from({ length: Number(array[2] || 2) }, () =>
+      sample(inner, bytesLength),
+    );
   }
   if (param.type === 'tuple' && 'components' in param) {
     return Object.fromEntries(
-      param.components.map((c, i) => [c.name || String(i), sample(c)]),
+      param.components.map((c, i) => [
+        c.name || String(i),
+        sample(c, bytesLength),
+      ]),
     );
   }
   if (param.type === 'address') return RECIPIENT;
   if (param.type === 'bool') return true;
   if (param.type === 'string') return 'x';
   // Long enough for every byte slice the registry takes.
-  if (param.type === 'bytes') return `0x${'12'.repeat(400)}`;
+  if (param.type === 'bytes') return `0x${'12'.repeat(bytesLength)}`;
   if (param.type.startsWith('bytes')) {
     return `0x${'11'.repeat(Number(param.type.slice(5)))}`;
   }
@@ -296,7 +301,8 @@ describe('sentences', () => {
       const item = parseAbiItem(`function ${format.signature}`) as AbiFunction;
       const data = encodeFunctionData({
         abi: [item],
-        args: item.inputs.map(sample),
+        // An address-sized `bytes`: a 400-byte one is past the sentence's value limit.
+        args: item.inputs.map(p => sample(p, 20)),
       });
       const resolvePath = buildArgsPathResolver(
         decodeArgsBySignature(format.signature, data)!,
@@ -330,7 +336,7 @@ describe('every bundled calldata descriptor', () => {
       const item = parseAbiItem(`function ${format.signature}`) as AbiFunction;
       const data = encodeFunctionData({
         abi: [item],
-        args: item.inputs.map(sample),
+        args: item.inputs.map(p => sample(p)),
       });
       const args = decodeArgsBySignature(format.signature!, data);
       expect(args).not.toBeNull();
