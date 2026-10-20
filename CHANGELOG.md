@@ -8,6 +8,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [1.15.1] - 2026-10-20
 
+### Changed
+
+- The bundled clear-signing registry is updated: LI.FI and Morpho on more networks, and Ophis swap orders
+
 ### Fixed
 
 - The app opens on iOS 27 instead of crashing at launch
