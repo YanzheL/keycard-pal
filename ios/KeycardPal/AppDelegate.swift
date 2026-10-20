@@ -15,8 +15,6 @@ private let appBackground = UIColor(
 
 @main
 class AppDelegate: UIResponder, UIApplicationDelegate {
-  var window: UIWindow?
-
   var reactNativeDelegate: ReactNativeDelegate?
   var reactNativeFactory: RCTReactNativeFactory?
 
@@ -31,12 +29,31 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     reactNativeDelegate = delegate
     reactNativeFactory = factory
 
-    window = UIWindow(frame: UIScreen.main.bounds)
+    return true
+  }
+}
+
+/// iOS 27 refuses to launch an app built with its SDK that has no scene
+/// lifecycle, so the window lives here rather than on AppDelegate.
+class SceneDelegate: UIResponder, UIWindowSceneDelegate {
+  var window: UIWindow?
+
+  func scene(
+    _ scene: UIScene,
+    willConnectTo session: UISceneSession,
+    options connectionOptions: UIScene.ConnectionOptions
+  ) {
+    guard
+      let windowScene = scene as? UIWindowScene,
+      let factory = (UIApplication.shared.delegate as? AppDelegate)?.reactNativeFactory
+    else { return }
+
+    window = UIWindow(windowScene: windowScene)
 
     factory.startReactNative(
       withModuleName: "KeycardPal",
       in: window,
-      launchOptions: launchOptions
+      launchOptions: nil
     )
 
     // React Native paints its root view `systemBackground`, which is white on a
@@ -46,8 +63,6 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     // window is not on screen until this method returns, so repainting it here
     // is still ahead of the first frame.
     window?.rootViewController?.view.backgroundColor = appBackground
-
-    return true
   }
 }
 
