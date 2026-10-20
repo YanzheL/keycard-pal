@@ -9,7 +9,11 @@ import {
   parseKeycardBtcMessageSignature,
 } from './btcMessage';
 import { BtcSigningSession, buildCryptoPsbtUR } from './btcPsbt';
-import { classifyEthPayload, signingDigest } from './ethPayload';
+import {
+  classifyEthPayload,
+  payloadChainId,
+  signingDigest,
+} from './ethPayload';
 import {
   buildEthSignatureURFromResult,
   buildRawEthHexSignature,
@@ -79,7 +83,12 @@ type BtcMessageParams = Extract<
 type ExportKeyParams = Extract<KeycardParams, { operation: 'export_key' }>;
 
 function prepareEthSign(params: EthSignParams): KeycardFlowRun {
-  const payload = classifyEthPayload(params.signData, params.dataType);
+  const payload = classifyEthPayload(
+    params.signData,
+    params.dataType,
+    params.chainId,
+  );
+  const chainId = payloadChainId(payload, params.chainId);
   // signingDigest throws on 'invalid' with the classification reason —
   // buildSignKeycardParams withholds the Sign button for these, so this is
   // a belt-and-braces guard, surfaced as a prepare error.
@@ -98,12 +107,7 @@ function prepareEthSign(params: EthSignParams): KeycardFlowRun {
       if (params.wcContext) {
         return {
           kind: 'wc-signature',
-          rawSig: buildRawEthHexSignature(
-            result,
-            hash,
-            payload.kind,
-            params.chainId,
-          ),
+          rawSig: buildRawEthHexSignature(result, hash, payload.kind, chainId),
         };
       }
       return {
@@ -112,7 +116,7 @@ function prepareEthSign(params: EthSignParams): KeycardFlowRun {
           result,
           hash,
           payload.kind,
-          params.chainId,
+          chainId,
           params.requestId,
         ),
         title: SIGN_RESULT_TITLE,

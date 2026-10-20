@@ -10,7 +10,7 @@ export function buildSignKeycardParams(
       result.request;
     // An unclassifiable payload must never reach the Keycard screen — the
     // review shows the reason and the Sign button is withheld.
-    if (classifyEthPayload(signData, dataType).kind === 'invalid') {
+    if (classifyEthPayload(signData, dataType, chainId).kind === 'invalid') {
       return null;
     }
     return {
