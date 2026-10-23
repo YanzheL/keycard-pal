@@ -2,7 +2,11 @@ import { act, renderHook } from '@testing-library/react-native';
 
 import { useGenerateSlip39Shares } from '../src/hooks/keycard/useGenerateSlip39Shares';
 
-type OperationFn = (cmdSet: any, helpers: any) => Promise<Uint8Array>;
+type OperationFn = (
+  cmdSet: any,
+  input: void,
+  helpers: any,
+) => Promise<Uint8Array>;
 
 let capturedOperation: OperationFn | null = null;
 let capturedOptions: {
@@ -60,6 +64,7 @@ describe('useGenerateSlip39Shares', () => {
           checkOK,
         }),
       },
+      undefined,
       { setStatus },
     );
 

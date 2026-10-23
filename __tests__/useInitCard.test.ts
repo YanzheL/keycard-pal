@@ -167,6 +167,36 @@ describe('useInitCard', () => {
       });
       expect(result.current.phase).toBe('nfc');
       expect(mockStartNFC).toHaveBeenCalledTimes(1);
+
+      await act(async () => {
+        await capturedOnConnected?.();
+      });
+      expect(mockInit).toHaveBeenCalledWith(
+        '123456',
+        result.current.puk,
+        PAIRING_PASSWORD,
+        undefined,
+      );
+    });
+
+    it('has nothing to send after cancel', async () => {
+      mockSelect.mockResolvedValueOnce({ sw: 0x6a82 });
+      const { result } = renderHook(() => useInitCard());
+      await act(async () => {
+        result.current.start('123456');
+      });
+      await act(async () => {
+        await capturedOnConnected?.();
+      });
+      await act(async () => {
+        result.current.cancel();
+      });
+      mockStartNFC.mockClear();
+
+      await act(async () => {
+        result.current.retry();
+      });
+      expect(mockStartNFC).not.toHaveBeenCalled();
     });
   });
 
@@ -426,6 +456,9 @@ describe('useInitCard', () => {
 
     it('approving with no card waiting only opens the reader again', async () => {
       const { result } = renderHook(() => useInitCard());
+      await act(async () => {
+        result.current.start('123456');
+      });
       mockStartNFC.mockClear();
       await act(async () => {
         result.current.proceedWithNonGenuine();

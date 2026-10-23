@@ -10,6 +10,7 @@ import {
   useKeycardOperation,
 } from '../src/hooks/keycard/useKeycardOperation';
 import type { UseKeycardOperation } from '../src/hooks/keycard/useKeycardOperation';
+import { NOTHING_TO_SEND_STATUS } from '../src/hooks/keycard/useNFCOperation';
 import { checkGenuine } from '../src/utils/genuineCheck';
 import { loadPairing } from '../src/storage/pairingStorage';
 import { routeAbsence } from '../src/navigation/generationBoundRoutes';
@@ -1864,7 +1865,7 @@ describe('useKeycardOp', () => {
 
   it('start() transitions to nfc when requiresPin is false', async () => {
     const { result } = renderHook(() =>
-      useKeycardOp(jest.fn(), { requiresPin: false }),
+      useKeycardOp<string>(jest.fn(), { requiresPin: false }),
     );
     await act(async () => {
       result.current.start();
@@ -1874,11 +1875,276 @@ describe('useKeycardOp', () => {
   });
 
   it('start() transitions to pin_entry when requiresPin is true (default)', async () => {
-    const { result } = renderHook(() => useKeycardOp(jest.fn()));
+    const { result } = renderHook(() => useKeycardOp<string>(jest.fn()));
     await act(async () => {
       result.current.start();
     });
     expect(result.current.phase).toBe('pin_entry');
     expect(mockStartNFC).not.toHaveBeenCalled();
+  });
+});
+
+// The input start() is given rides with the queued operation.
+describe('the operation input', () => {
+  type Op = jest.Mock<Promise<string>, [unknown, string, any]>;
+  type Hook = { current: ReturnType<typeof useKeycardOp<string, string>> };
+
+  beforeEach(() => {
+    mockStartNFC.mockResolvedValue(undefined);
+    mockStopNFC.mockResolvedValue(undefined);
+    mockStopNFCWithError.mockResolvedValue(undefined);
+    mockStopNFCWithMessage.mockResolvedValue(undefined);
+    mockIsNFCEnabled.mockResolvedValue(true);
+    mockStartNFC.mockClear();
+    capturedOnConnected = null;
+    capturedAppStateListener = null;
+    (AppState.addEventListener as jest.Mock).mockImplementation(
+      (_event: string, cb: (state: string) => void) => {
+        capturedAppStateListener = cb;
+        return { remove: jest.fn() };
+      },
+    );
+    mockCheckGenuine.mockReset().mockResolvedValue(true);
+    mockLoadPairing.mockReset().mockResolvedValue({ pairingIndex: 0 } as any);
+    mockLoadApprovedCardKeys.mockReset().mockResolvedValue([]);
+    const Keycard = require('keycard-sdk').default;
+    Keycard.Commandset.mockImplementation(() => makeMockCmdSet());
+  });
+
+  async function tap() {
+    await act(async () => {
+      await capturedOnConnected?.();
+    });
+  }
+
+  async function startAndTap(result: Hook, { pin = true } = {}) {
+    await act(async () => {
+      result.current.start('input');
+    });
+    if (pin) {
+      await act(async () => {
+        result.current.submitPin('123456');
+      });
+    }
+    await tap();
+  }
+
+  function discarding(): Op {
+    return jest.fn(async (_cmdSet, _input, { discardInput }) => {
+      discardInput();
+      throw new Error('refused');
+    });
+  }
+
+  it('hands the operation the input start() was given', async () => {
+    const op: Op = jest.fn().mockResolvedValue('done');
+    const { result } = renderHook(() => useKeycardOp(op));
+    await startAndTap(result);
+
+    expect(op).toHaveBeenCalledWith(
+      expect.anything(),
+      'input',
+      expect.objectContaining({
+        setStatus: expect.any(Function),
+        discardInput: expect.any(Function),
+      }),
+    );
+    expect(result.current.phase).toBe('done');
+  });
+
+  it.each([
+    ['a refusal', new Error('refused')],
+    ['a lost tap', new Error('Tag was lost.')],
+  ])('sends the same input on Try again after %s', async (_, failure) => {
+    const op: Op = jest
+      .fn()
+      .mockRejectedValueOnce(failure)
+      .mockResolvedValueOnce('done');
+    const { result } = renderHook(() => useKeycardOp(op));
+    await startAndTap(result);
+    expect(result.current.phase).toBe('error');
+
+    await act(async () => {
+      result.current.retry();
+    });
+    await tap();
+
+    expect(op.mock.calls.map(call => call[1])).toEqual(['input', 'input']);
+    expect(result.current.phase).toBe('done');
+  });
+
+  it('sends the same input after a wrong PIN', async () => {
+    const { WrongPINException } = require('keycard-sdk/dist/apdu-exception');
+    const verifyPIN = jest
+      .fn()
+      .mockResolvedValueOnce({
+        sw: 0x63c2,
+        checkAuthOK: () => {
+          throw new WrongPINException(2);
+        },
+      })
+      .mockResolvedValue({ sw: 0x9000, checkAuthOK: jest.fn() });
+    const Keycard = require('keycard-sdk').default;
+    Keycard.Commandset.mockImplementation(() => ({
+      ...makeMockCmdSet(),
+      verifyPIN,
+    }));
+    const op: Op = jest.fn().mockResolvedValue('done');
+    const { result } = renderHook(() => useKeycardOp(op));
+    await startAndTap(result);
+    expect(result.current.phase).toBe('pin_entry');
+
+    await act(async () => {
+      result.current.submitPin('654321');
+    });
+    await tap();
+
+    expect(op).toHaveBeenCalledTimes(1);
+    expect(op.mock.calls[0][1]).toBe('input');
+  });
+
+  it('sends the same input on the tap after the genuine warning', async () => {
+    mockLoadPairing.mockResolvedValue(null);
+    mockCheckGenuine.mockResolvedValueOnce(false);
+    const op: Op = jest.fn().mockResolvedValue('done');
+    const { result } = renderHook(() => useKeycardOp(op));
+    await startAndTap(result);
+    expect(result.current.phase).toBe('genuine_warning');
+
+    await act(async () => {
+      result.current.proceedWithNonGenuine();
+    });
+    await tap();
+
+    expect(op).toHaveBeenCalledTimes(1);
+    expect(op.mock.calls[0][1]).toBe('input');
+  });
+
+  it('sends the same input on the re-tap after a lost read', async () => {
+    const op: Op = jest
+      .fn()
+      .mockRejectedValueOnce(new Error('Tag was lost.'))
+      .mockResolvedValueOnce('done');
+    const { result } = renderHook(() =>
+      useKeycardOp(op, { retryOnTagLoss: true }),
+    );
+    await startAndTap(result);
+    expect(result.current.phase).toBe('nfc');
+
+    await tap();
+
+    expect(op.mock.calls.map(call => call[1])).toEqual(['input', 'input']);
+    expect(result.current.phase).toBe('done');
+  });
+
+  it('sends the same input when NFC comes back on', async () => {
+    mockIsNFCEnabled.mockResolvedValue(false);
+    const op: Op = jest.fn().mockResolvedValue('done');
+    const { result } = renderHook(() =>
+      useKeycardOp(op, { requiresPin: false }),
+    );
+    await act(async () => {
+      result.current.start('input');
+    });
+    await act(async () => {});
+    expect(result.current.phase).toBe('error');
+
+    mockIsNFCEnabled.mockResolvedValue(true);
+    await act(async () => {
+      capturedAppStateListener?.('active');
+    });
+    await act(async () => {});
+    await tap();
+
+    expect(op).toHaveBeenCalledTimes(1);
+    expect(op.mock.calls[0][1]).toBe('input');
+  });
+
+  // Without a PIN, so the PIN check in retry() cannot hide a kept operation.
+  it('keeps nothing to send once the operation succeeds', async () => {
+    const op: Op = jest.fn().mockResolvedValue('done');
+    const { result } = renderHook(() =>
+      useKeycardOp(op, { requiresPin: false }),
+    );
+    await startAndTap(result, { pin: false });
+    mockStartNFC.mockClear();
+
+    await act(async () => {
+      result.current.retry();
+    });
+
+    expect(mockStartNFC).not.toHaveBeenCalled();
+    expect(op).toHaveBeenCalledTimes(1);
+  });
+
+  // The next operation asks for the PIN instead of reusing the last one.
+  it('forgets the PIN once the operation succeeds', async () => {
+    const op: Op = jest.fn().mockResolvedValue('done');
+    const { result } = renderHook(() => useKeycardOp(op));
+    await startAndTap(result);
+    await act(async () => {
+      result.current.start('next');
+    });
+    mockStartNFC.mockClear();
+
+    await act(async () => {
+      result.current.retry();
+    });
+
+    expect(mockStartNFC).not.toHaveBeenCalled();
+  });
+
+  it.each(['cancel', 'reset'] as const)(
+    'keeps nothing to send after %s',
+    async ending => {
+      const op: Op = jest.fn().mockRejectedValue(new Error('refused'));
+      const { result } = renderHook(() =>
+        useKeycardOp(op, { requiresPin: false }),
+      );
+      await startAndTap(result, { pin: false });
+      await act(async () => {
+        result.current[ending]();
+      });
+      mockStartNFC.mockClear();
+
+      await act(async () => {
+        result.current.retry();
+      });
+
+      expect(mockStartNFC).not.toHaveBeenCalled();
+    },
+  );
+
+  it('never sends a discarded input again', async () => {
+    const op = discarding();
+    const { result } = renderHook(() => useKeycardOp(op));
+    await startAndTap(result);
+    expect(result.current.phase).toBe('error');
+    mockStartNFC.mockClear();
+
+    await act(async () => {
+      result.current.retry();
+    });
+
+    expect(mockStartNFC).not.toHaveBeenCalled();
+    expect(op).toHaveBeenCalledTimes(1);
+  });
+
+  // Defensive: a phone's bridge forwards no tap after an error, but one that reaches the runner sends nothing past SELECT.
+  it('sends nothing on a tap after the input was discarded', async () => {
+    let cmdSet = makeMockCmdSet();
+    const Keycard = require('keycard-sdk').default;
+    Keycard.Commandset.mockImplementation(() => (cmdSet = makeMockCmdSet()));
+    const op = discarding();
+    const { result } = renderHook(() => useKeycardOp(op));
+    await startAndTap(result);
+
+    await tap();
+
+    expect(result.current.status).toBe(NOTHING_TO_SEND_STATUS);
+    expect(cmdSet.getData).not.toHaveBeenCalled();
+    expect(cmdSet.autoOpenSecureChannel).not.toHaveBeenCalled();
+    expect(cmdSet.verifyPIN).not.toHaveBeenCalled();
+    expect(op).toHaveBeenCalledTimes(1);
   });
 });

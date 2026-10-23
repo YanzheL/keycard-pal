@@ -288,6 +288,77 @@ describe('useNFCOperation', () => {
       });
       expect(result.current.result).toBeNull();
     });
+
+    // Cancel on Apple's sheet or ours while a command is out: the command then fails.
+    it('reopens no error sheet when the operation fails after cancel', async () => {
+      let rejectOp: ((e: Error) => void) | null = null;
+      const { result } = renderHook(() =>
+        useNFCOperation(
+          useCallback(
+            () =>
+              new Promise<string>((_, reject) => {
+                rejectOp = reject;
+              }),
+            [],
+          ),
+        ),
+      );
+      await act(async () => {
+        result.current.start();
+      });
+      let connectPromise: Promise<void> | undefined;
+      act(() => {
+        connectPromise = capturedOnConnected?.();
+      });
+      await act(async () => {});
+      expect(rejectOp).not.toBeNull();
+      await act(async () => {
+        result.current.cancel();
+      });
+      await act(async () => {
+        rejectOp?.(new Error('NFCError:100'));
+        await connectPromise;
+      });
+
+      expect(result.current.phase).toBe('idle');
+      expect(mockStopNFCWithError).not.toHaveBeenCalled();
+    });
+
+    // Before the screen has reacted to Apple's Cancel with a reset.
+    it("reopens no error sheet when the operation fails after Apple's Cancel", async () => {
+      let rejectOp: ((e: Error) => void) | null = null;
+      const { result } = renderHook(() =>
+        useNFCOperation(
+          useCallback(
+            () =>
+              new Promise<string>((_, reject) => {
+                rejectOp = reject;
+              }),
+            [],
+          ),
+        ),
+      );
+      await act(async () => {
+        result.current.start();
+      });
+      let connectPromise: Promise<void> | undefined;
+      act(() => {
+        connectPromise = capturedOnConnected?.();
+      });
+      await act(async () => {});
+      expect(rejectOp).not.toBeNull();
+      await act(async () => {
+        capturedOnCancelled?.();
+      });
+      await act(async () => {
+        rejectOp?.(new Error('NFCError:100'));
+        await connectPromise;
+      });
+
+      expect(result.current.phase).toBe('idle');
+      expect(result.current.userCancels).toBe(1);
+      expect(mockStopNFCWithError).not.toHaveBeenCalled();
+    });
   });
 
   // retryOnTagLoss defaults to false.
@@ -331,6 +402,79 @@ describe('useNFCOperation', () => {
       });
       expect(result.current.phase).toBe('nfc');
       expect(result.current.cardPresence).toBe('lost');
+    });
+  });
+
+  describe('the input', () => {
+    function renderWithInput(operation: jest.Mock) {
+      return renderHook(() =>
+        useNFCOperation<string, string>(
+          useCallback(
+            (_cmdSet, _setStatus, _card, input) => operation(input),
+            [],
+          ),
+        ),
+      );
+    }
+
+    async function tap() {
+      await act(async () => {
+        await capturedOnConnected?.();
+      });
+    }
+
+    it('reaches the operation, and the operation again on retry', async () => {
+      const operation = jest
+        .fn()
+        .mockRejectedValueOnce(new Error('refused'))
+        .mockResolvedValue('ok');
+      const { result } = renderWithInput(operation);
+      await act(async () => {
+        result.current.start('input');
+      });
+      await tap();
+      await act(async () => {
+        result.current.retry();
+      });
+      await tap();
+
+      expect(operation.mock.calls).toEqual([['input'], ['input']]);
+      expect(result.current.result).toBe('ok');
+    });
+
+    it('is gone once the operation succeeds', async () => {
+      const { result } = renderWithInput(jest.fn().mockResolvedValue('ok'));
+      await act(async () => {
+        result.current.start('input');
+      });
+      await tap();
+      mockStartNFC.mockClear();
+
+      await act(async () => {
+        result.current.retry();
+      });
+
+      expect(mockStartNFC).not.toHaveBeenCalled();
+    });
+
+    it.each(['cancel', 'reset'] as const)('is gone after %s', async ending => {
+      const { result } = renderWithInput(
+        jest.fn().mockRejectedValue(new Error('refused')),
+      );
+      await act(async () => {
+        result.current.start('input');
+      });
+      await tap();
+      await act(async () => {
+        result.current[ending]();
+      });
+      mockStartNFC.mockClear();
+
+      await act(async () => {
+        result.current.retry();
+      });
+
+      expect(mockStartNFC).not.toHaveBeenCalled();
     });
   });
 });

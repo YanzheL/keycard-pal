@@ -13,8 +13,13 @@ import {
   type SelectedCard,
 } from './useNFCOperation';
 
+interface InitInput {
+  pin: string;
+  duressPin: string | null;
+}
+
 export type UseInitCardOperation = Omit<
-  UseNFCOperation<void>,
+  UseNFCOperation<void, InitInput>,
   'start' | 'phase'
 > & {
   phase: KeycardPhase;
@@ -40,8 +45,6 @@ function generatePUK(): string {
 }
 
 export function useInitCard(): UseInitCardOperation {
-  const pinRef = useRef('');
-  const duressPinRef = useRef<string | null>(null);
   // One per screen, so a retry sends the digits done will show.
   const [puk] = useState(generatePUK);
   // INIT is the tap's last command: a loss inside it leaves the card's state unknown (#430).
@@ -55,6 +58,7 @@ export function useInitCard(): UseInitCardOperation {
 
   const {
     start: startNFC,
+    retry,
     cancel: nfcCancel,
     reset: nfcReset,
     phase: nfcPhase,
@@ -65,6 +69,7 @@ export function useInitCard(): UseInitCardOperation {
         cmdSet: Commandset,
         setStatus: (status: string) => void,
         card: SelectedCard,
+        { pin, duressPin: chosenDuressPin }: InitInput,
       ) => {
         const appInfo = cmdSet.applicationInfo;
         if (appInfo?.initializedCard) {
@@ -72,7 +77,7 @@ export function useInitCard(): UseInitCardOperation {
             'This card is already set up. Use a blank card to initialize.',
           );
         }
-        const duressPin = duressPinRef.current || undefined;
+        const duressPin = chosenDuressPin || undefined;
 
         if (appInfo && secureChannelVersion(appInfo) === 'v2') {
           const cardKey = getCardKey(appInfo);
@@ -84,12 +89,7 @@ export function useInitCard(): UseInitCardOperation {
           // No pairing on 4.0; the SDK opens the channel in init() (ADR-0008).
           setStatus('Initializing...');
           setInitSent(true);
-          const resp = await cmdSet.init(
-            pinRef.current,
-            puk,
-            undefined,
-            duressPin,
-          );
+          const resp = await cmdSet.init(pin, puk, undefined, duressPin);
           // An answer, refusal included, ends the unknown window.
           setInitSent(false);
           resp.checkOK('Initializing the Keycard failed');
@@ -99,12 +99,9 @@ export function useInitCard(): UseInitCardOperation {
           }
         } else {
           setInitSent(true);
-          await cmdSet.init(pinRef.current, puk, PAIRING_PASSWORD, duressPin);
+          await cmdSet.init(pin, puk, PAIRING_PASSWORD, duressPin);
           setInitSent(false);
         }
-
-        pinRef.current = '';
-        duressPinRef.current = null;
       },
       [handshakeSucceeded, puk],
     ),
@@ -114,9 +111,7 @@ export function useInitCard(): UseInitCardOperation {
 
   const start = useCallback(
     (pin: string, duressPin?: string | null) => {
-      pinRef.current = pin;
-      duressPinRef.current = duressPin || null;
-      startNFC();
+      startNFC({ pin, duressPin: duressPin || null });
     },
     [startNFC],
   );
@@ -129,8 +124,8 @@ export function useInitCard(): UseInitCardOperation {
       pendingCardKeyRef.current = null;
     }
     setShowGenuineWarning(false);
-    startNFC();
-  }, [approve, startNFC]);
+    retry();
+  }, [approve, retry]);
 
   const clearWarning = useCallback(() => {
     setShowGenuineWarning(false);
@@ -158,6 +153,7 @@ export function useInitCard(): UseInitCardOperation {
     puk,
     initSent,
     start,
+    retry,
     cancel,
     reset,
     proceedWithNonGenuine,

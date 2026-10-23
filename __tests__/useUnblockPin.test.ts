@@ -7,33 +7,38 @@ import {
   useUnblockPin,
 } from '../src/hooks/keycard/useUnblockPin';
 
-type OperationFn = (cmdSet: any) => Promise<void>;
+type UnblockInput = { puk: string; newPin: string };
+type OperationFn = (
+  cmdSet: any,
+  input: UnblockInput,
+  helpers: { setStatus: () => void; discardInput: () => void },
+) => Promise<void>;
 
 let capturedOperation: OperationFn | null = null;
 let capturedOptions: Record<string, unknown> | null = null;
 let mockPhase = 'idle';
 
-const mockExecute = jest.fn(
-  (fn: OperationFn, opts: Record<string, unknown>) => {
-    capturedOperation = fn;
-    capturedOptions = opts;
-  },
-);
+const mockStart = jest.fn();
+const mockDiscardInput = jest.fn();
 
 jest.mock('../src/hooks/keycard/useKeycardOperation', () => ({
-  useKeycardOperation: () => ({
-    phase: mockPhase,
-    status: '',
-    cardName: null,
-    result: null,
-    pinError: null,
-    pinBlocked: false,
-    execute: mockExecute,
-    cancel: jest.fn(),
-    reset: jest.fn(),
-    submitPin: jest.fn(),
-    proceedWithNonGenuine: jest.fn(),
-  }),
+  useKeycardOp: (fn: OperationFn, opts: Record<string, unknown>) => {
+    capturedOperation = fn;
+    capturedOptions = opts;
+    return {
+      phase: mockPhase,
+      status: '',
+      cardName: null,
+      result: null,
+      pinError: null,
+      pinBlocked: false,
+      start: mockStart,
+      cancel: jest.fn(),
+      reset: jest.fn(),
+      submitPin: jest.fn(),
+      proceedWithNonGenuine: jest.fn(),
+    };
+  },
 }));
 
 /** The card's answer, with the SDK's reading of it: 0x63CX is a refused secret with X attempts left. */
@@ -51,12 +56,21 @@ function response(sw: number) {
   };
 }
 
+const PUK = '123456789012';
+const NEW_PIN = '654321';
+
 /** Runs the captured operation and hands back what it threw, if anything. */
-async function runOperation(cmdSet: any): Promise<Error | null> {
+async function runOperation(
+  cmdSet: any,
+  input: UnblockInput = { puk: PUK, newPin: NEW_PIN },
+): Promise<Error | null> {
   let thrown: Error | null = null;
   await act(async () => {
     try {
-      await capturedOperation!(cmdSet);
+      await capturedOperation!(cmdSet, input, {
+        setStatus: jest.fn(),
+        discardInput: mockDiscardInput,
+      });
     } catch (e) {
       thrown = e as Error;
     }
@@ -64,22 +78,17 @@ async function runOperation(cmdSet: any): Promise<Error | null> {
   return thrown;
 }
 
-const PUK = '123456789012';
-const NEW_PIN = '654321';
-
 describe('useUnblockPin', () => {
   beforeEach(() => {
-    mockExecute.mockClear();
+    mockStart.mockClear();
+    mockDiscardInput.mockClear();
     capturedOperation = null;
     capturedOptions = null;
     mockPhase = 'idle';
   });
 
-  it('taps without a PIN or a key, and closes with the toast', async () => {
-    const { result } = renderHook(() => useUnblockPin());
-    await act(async () => {
-      result.current.start(PUK, NEW_PIN);
-    });
+  it('taps without a PIN or a key, and closes with the toast', () => {
+    renderHook(() => useUnblockPin());
     expect(capturedOptions).toEqual({
       requiresPin: false,
       requiresMasterKey: false,
@@ -88,19 +97,21 @@ describe('useUnblockPin', () => {
   });
 
   // UNBLOCK PIN spends a PUK attempt before the response is read (ADR-0007).
-  it('never retries on tag loss', async () => {
+  it('never retries on tag loss', () => {
+    renderHook(() => useUnblockPin());
+    expect(capturedOptions?.retryOnTagLoss).toBeUndefined();
+  });
+
+  it('hands the PUK and the new PIN to the runner', async () => {
     const { result } = renderHook(() => useUnblockPin());
     await act(async () => {
       result.current.start(PUK, NEW_PIN);
     });
-    expect(capturedOptions?.retryOnTagLoss).toBeUndefined();
+    expect(mockStart).toHaveBeenCalledWith({ puk: PUK, newPin: NEW_PIN });
   });
 
   it('sends the PUK followed by the new PIN', async () => {
     const { result } = renderHook(() => useUnblockPin());
-    await act(async () => {
-      result.current.start(PUK, NEW_PIN);
-    });
     const cmdSet = {
       unblockPIN: jest.fn().mockResolvedValue(response(0x9000)),
     };
@@ -123,6 +134,7 @@ describe('useUnblockPin', () => {
       expect(result.current.pukError).toBe(
         'PUK is not valid. 4 attempts left.',
       );
+      expect(mockDiscardInput).toHaveBeenCalledTimes(1);
 
       // The session ends in error; the hook shows the pad instead.
       mockPhase = 'error';
@@ -154,11 +166,10 @@ describe('useUnblockPin', () => {
         result.current.start('999999999999', NEW_PIN);
       });
       expect(result.current.pukError).toBeNull();
-      const cmdSet = {
-        unblockPIN: jest.fn().mockResolvedValue(response(0x9000)),
-      };
-      await runOperation(cmdSet);
-      expect(cmdSet.unblockPIN).toHaveBeenCalledWith('999999999999', NEW_PIN);
+      expect(mockStart).toHaveBeenLastCalledWith({
+        puk: '999999999999',
+        newPin: NEW_PIN,
+      });
     });
   });
 
@@ -173,6 +184,7 @@ describe('useUnblockPin', () => {
     });
     expect(thrown?.message).toBe(PUK_BLOCKED_STATUS);
     expect(result.current.pukError).toBeNull();
+    expect(mockDiscardInput).not.toHaveBeenCalled();
     mockPhase = 'error';
     rerender(undefined);
     expect(result.current.phase).toBe('error');

@@ -1,59 +1,24 @@
-import { useCallback, useRef } from 'react';
 import { BIP32KeyPair } from 'keycard-sdk/dist/bip32key';
+import { Commandset } from 'keycard-sdk/dist/commandset';
 
 import { deriveMnemonicSeed } from '@/utils/mnemonic';
 import { useKeycardOp } from './useKeycardOperation';
 
+async function loadKeyPair(cmdSet: Commandset, keyPair: BIP32KeyPair) {
+  if (cmdSet.applicationInfo?.hasMasterKey()) {
+    throw new Error('Card already has a key. Factory reset required.');
+  }
+  const response = await cmdSet.loadBIP32KeyPair(keyPair);
+  response.checkOK();
+}
+
 export function useLoadKey() {
-  const keyPairRef = useRef<BIP32KeyPair | null>(null);
-
-  const clearKeyPair = useCallback(() => {
-    keyPairRef.current = null;
-  }, []);
-
-  const {
-    start: startOp,
-    cancel: cancelOp,
-    reset: resetOp,
-    ...rest
-  } = useKeycardOp<void>(
-    useCallback(async cmdSet => {
-      const appInfo = cmdSet.applicationInfo;
-      if (appInfo?.hasMasterKey()) {
-        throw new Error('Card already has a key. Factory reset required.');
-      }
-      const response = await cmdSet.loadBIP32KeyPair(keyPairRef.current!);
-      response.checkOK();
-      // Only on success: retry() runs this closure again after a failure.
-      keyPairRef.current = null;
-    }, []),
-    {
-      requiresPin: true,
-      requiresMasterKey: false,
-      // Mirrors ConfirmKeyScreen's done toast.
-      successMessage: 'Key pair has been added to Keycard',
-    },
-  );
-
-  const start = useCallback(
-    (keyPair: BIP32KeyPair) => {
-      keyPairRef.current = keyPair;
-      startOp();
-    },
-    [startOp],
-  );
-
-  const cancel = useCallback(() => {
-    clearKeyPair();
-    cancelOp();
-  }, [clearKeyPair, cancelOp]);
-
-  const reset = useCallback(() => {
-    clearKeyPair();
-    resetOp();
-  }, [clearKeyPair, resetOp]);
-
-  return { ...rest, start, cancel, reset };
+  return useKeycardOp(loadKeyPair, {
+    requiresPin: true,
+    requiresMasterKey: false,
+    // Mirrors ConfirmKeyScreen's done toast.
+    successMessage: 'Key pair has been added to Keycard',
+  });
 }
 
 export function deriveMnemonicKeyPair(
