@@ -171,7 +171,13 @@ describe('Android purchase surfaces', () => {
     phase => {
       render(
         <NFCBottomSheet
-          nfc={{ phase, status: 'Ready', cardPresence: 'waiting' }}
+          nfc={{
+            phase,
+            status: 'Ready',
+            cardPresence: 'waiting',
+            retry: jest.fn(),
+            openNFCSettings: undefined,
+          }}
           onCancel={onCancel}
         />,
       );

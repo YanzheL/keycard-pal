@@ -18,7 +18,6 @@ import theme from '../../theme';
 import { Icons } from '../../assets/icons';
 import MnemonicBackupCheck from '../../components/MnemonicBackupCheck';
 import MnemonicWordEntry from '../../components/MnemonicWordEntry';
-import NFCBottomSheet from '../../components/NFCBottomSheet';
 import PrimaryButton from '../../components/PrimaryButton';
 
 import { useGenerateSlip39Shares } from '../../hooks/keycard/useGenerateSlip39Shares';
@@ -284,7 +283,7 @@ export default function Slip39Screen({ navigation, route }: Slip39ScreenProps) {
   // Done-navigation keys on the load/verify hook (`keycard`); the back guard,
   // PIN-entry title, and cancel key on whichever hook is running the tap
   // (`activeKeycard`, which is the generate hook during share generation).
-  const { onCancel } = useKeycardScreen({
+  const { sheet } = useKeycardScreen({
     keycard,
     navigation,
     title:
@@ -349,7 +348,7 @@ export default function Slip39Screen({ navigation, route }: Slip39ScreenProps) {
           />
         </View>
 
-        <NFCBottomSheet nfc={activeKeycard} onCancel={onCancel} />
+        {sheet}
       </View>
     );
   }
@@ -368,7 +367,7 @@ export default function Slip39Screen({ navigation, route }: Slip39ScreenProps) {
           </View>
         </View>
 
-        <NFCBottomSheet nfc={activeKeycard} onCancel={onCancel} />
+        {sheet}
       </View>
     );
   }
@@ -581,7 +580,7 @@ export default function Slip39Screen({ navigation, route }: Slip39ScreenProps) {
         ) : null}
       </View>
 
-      <NFCBottomSheet nfc={activeKeycard} onCancel={onCancel} />
+      {sheet}
     </View>
   );
 }

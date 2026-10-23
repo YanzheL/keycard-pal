@@ -69,6 +69,11 @@ jest.mock('../src/components/PrimaryButton', () => {
     );
 });
 
+jest.mock('@react-navigation/native', () => ({
+  ...jest.requireActual('@react-navigation/native'),
+  useFocusEffect: jest.fn(),
+}));
+
 jest.mock('../src/components/NFCBottomSheet', () => {
   const { Pressable, Text } = require('react-native');
   return ({ onCancel }: any) =>
@@ -93,6 +98,7 @@ let capturedKeycardOp: ((cmdSet: any) => Promise<unknown>) | null = null;
 let mockPhase: any = 'pairing';
 let mockNfcPhase: string = 'idle';
 let mockNfcResult: any = null;
+let mockNfcUserCancels = 0;
 
 jest.mock('../src/hooks/useWalletConnectSession.online', () => ({
   useWalletConnectSession: () => ({
@@ -115,6 +121,7 @@ jest.mock('../src/hooks/keycard/useKeycardOperation', () => ({
       phase: mockNfcPhase,
       status: '',
       result: mockNfcResult,
+      userCancels: mockNfcUserCancels,
       start: mockStartNfc,
       cancel: mockCancelNfc,
       submitPin: jest.fn(),
@@ -153,6 +160,7 @@ const navigation = {
   setOptions: jest.fn(),
   navigate: jest.fn(),
   goBack: jest.fn(),
+  addListener: jest.fn(() => jest.fn()),
 };
 const route = { params: { uri: 'wc:test-uri@2?relay-protocol=irn' } };
 
@@ -177,6 +185,7 @@ beforeEach(() => {
   mockPhase = 'pairing';
   mockNfcPhase = 'idle';
   mockNfcResult = null;
+  mockNfcUserCancels = 0;
   capturedKeycardOp = null;
 });
 
@@ -451,6 +460,41 @@ describe('WalletConnectPairingScreen', () => {
     fireEvent.press(screen.getByText('Confirm'));
     await act(async () => {});
     fireEvent.press(screen.getByText('Cancel NFC'));
+    await act(async () => {});
+
+    expect(mockCancelNfc).toHaveBeenCalled();
+    expect(mockRejectSession).toHaveBeenCalled();
+    expect(navigation.reset).toHaveBeenCalledWith(
+      expect.objectContaining({ routes: [{ name: 'Dashboard' }] }),
+    );
+  });
+
+  it("rejects the proposal and returns to Dashboard when Apple's sheet cancels the key tap", async () => {
+    mockPhase = {
+      kind: 'proposal',
+      proposal: {
+        id: 1,
+        params: {
+          id: 1,
+          proposer: { metadata: { name: 'App', url: '', icons: [] } },
+          requiredNamespaces: {
+            eip155: { chains: ['eip155:1'], methods: ['personal_sign'] },
+          },
+          optionalNamespaces: {},
+        },
+      },
+    };
+    const view = await renderScreen();
+    fireEvent.press(screen.getByText('Confirm'));
+    await act(async () => {});
+
+    mockNfcUserCancels = 1;
+    view.rerender(
+      <WalletConnectPairingScreen
+        navigation={navigation as any}
+        route={route as any}
+      />,
+    );
     await act(async () => {});
 
     expect(mockCancelNfc).toHaveBeenCalled();

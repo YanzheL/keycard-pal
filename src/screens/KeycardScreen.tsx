@@ -6,7 +6,6 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { KeycardScreenProps } from '../navigation/types';
 import theme from '../theme';
 
-import NFCBottomSheet from '../components/NFCBottomSheet';
 import PrimaryButton from '../components/PrimaryButton';
 
 import { useKeycardOperation } from '../hooks/keycard/useKeycardOperation';
@@ -50,11 +49,12 @@ export default function KeycardScreen({
     resetToDashboard();
   }, [wcContext, respondError, resetToDashboard]);
 
-  const { onCancel } = useKeycardScreen({
+  const { sheet } = useKeycardScreen({
     keycard,
     navigation,
     title: '',
     leaveOnCancel: rejectAndLeave,
+    showOnDone: true,
   });
 
   // Heavy local work runs before NFC; a failure shows an error, not the PIN pad.
@@ -147,7 +147,7 @@ export default function KeycardScreen({
           </View>
         </View>
       ) : (
-        <NFCBottomSheet nfc={keycard} onCancel={onCancel} showOnDone />
+        sheet
       )}
     </View>
   );

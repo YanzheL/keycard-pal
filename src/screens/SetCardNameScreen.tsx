@@ -7,7 +7,6 @@ import type { SetCardNameScreenProps } from '../navigation/types';
 import theme from '../theme';
 
 import { Icons } from '../assets/icons';
-import NFCBottomSheet from '../components/NFCBottomSheet';
 import PrimaryButton from '../components/PrimaryButton';
 import { useSetCardName } from '../hooks/keycard/useSetCardName';
 import { useKeycardScreen } from '../hooks/useKeycardScreen';
@@ -23,11 +22,12 @@ export default function SetCardNameScreen({
   const keycard = useSetCardName();
   const { phase, start } = keycard;
 
-  const { onCancel } = useKeycardScreen({
+  const { sheet } = useKeycardScreen({
     keycard,
     navigation,
     title: 'Set card name',
     done: { toast: 'Card name updated' },
+    showOnDone: true,
   });
 
   useEffect(() => {
@@ -105,7 +105,7 @@ export default function SetCardNameScreen({
         </View>
       )}
 
-      <NFCBottomSheet nfc={keycard} onCancel={onCancel} showOnDone />
+      {sheet}
     </View>
   );
 }

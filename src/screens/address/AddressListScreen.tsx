@@ -14,7 +14,6 @@ import theme from '../../theme';
 
 import { Icons } from '../../assets/icons';
 import AddressText from '../../components/AddressText';
-import NFCBottomSheet from '../../components/NFCBottomSheet';
 
 import {
   useAddressEnumeration,
@@ -58,7 +57,7 @@ export default function AddressListScreen({
   const { start } = nfc;
   const insets = useSafeAreaInsets();
 
-  const { onCancel } = useKeycardScreen({
+  const { sheet } = useKeycardScreen({
     keycard: nfc,
     navigation,
     title: `${coin === 'eth' ? 'Ethereum' : 'Bitcoin'} Addresses`,
@@ -101,7 +100,7 @@ export default function AddressListScreen({
         renderItem={renderItem}
       />
 
-      <NFCBottomSheet nfc={nfc} onCancel={onCancel} />
+      {sheet}
     </View>
   );
 }

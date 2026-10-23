@@ -9,7 +9,6 @@ import theme from '@/theme';
 
 import ConfirmPrompt from '@/components/ConfirmPropmpt';
 import Menu from '@/components/Menu';
-import NFCBottomSheet from '@/components/NFCBottomSheet';
 import PrimaryButton from '@/components/PrimaryButton';
 
 import { useKeycardOperation } from '@/hooks/keycard/useKeycardOperation';
@@ -45,11 +44,12 @@ export default function PairingSlotsScreen({
   } = unpairHook;
 
   const active = unpairing ? unpairHook : check;
-  const { onCancel } = useKeycardScreen({
+  const { sheet } = useKeycardScreen({
     keycard: active,
     navigation,
     title: 'Pairing slots',
     stayOnCancel: unpairing,
+    showOnDone: unpairing,
   });
 
   // Once per mount, not on focus: Apple's Cancel puts the read back to 'idle'.
@@ -201,7 +201,7 @@ export default function PairingSlotsScreen({
         </View>
       )}
 
-      <NFCBottomSheet nfc={active} onCancel={onCancel} showOnDone={unpairing} />
+      {sheet}
 
       <Snackbar
         visible={unpairNotice !== null}

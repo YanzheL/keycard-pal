@@ -78,7 +78,14 @@ function makeNfc(
   phase: KeycardPhase,
   extra: Partial<NFCOperation> = {},
 ): NFCOperation {
-  return { phase, status: 'Ready', ...extra };
+  return {
+    phase,
+    status: 'Ready',
+    cardPresence: 'waiting',
+    retry: jest.fn(),
+    openNFCSettings: undefined,
+    ...extra,
+  };
 }
 
 beforeEach(() => {
@@ -158,9 +165,11 @@ describe('NFCBottomSheet — Android sheet', () => {
       expect(onCancel).toHaveBeenCalledTimes(1);
     });
 
-    it('shows tap-again retry hint', () => {
+    // Every operation carries retry, so the sheet never promises a re-tap instead.
+    it('offers Try again, not a re-tap hint', () => {
       renderSheet(makeNfc('error', { status: 'Bad MAC' }));
-      expect(screen.getByText('Tap your card to try again')).toBeTruthy();
+      expect(screen.getByText('Try again')).toBeTruthy();
+      expect(screen.queryByText('Tap your card to try again')).toBeNull();
     });
   });
 
@@ -219,7 +228,7 @@ describe('NFCBottomSheet — Android sheet', () => {
 
     it('phase error + presence lost: error UI wins', () => {
       renderSheet(makeNfc('error', { cardPresence: 'lost' }));
-      expect(screen.getByText('Tap your card to try again')).toBeTruthy();
+      expect(screen.getByText('Try again')).toBeTruthy();
       expect(
         screen.queryByText('Hold your Keycard against the phone again'),
       ).toBeNull();
@@ -563,11 +572,6 @@ describe('NFCBottomSheet — iOS error overlay', () => {
     const onRetry = jest.fn();
     renderSheet(makeNfc('error', { status: 'err', retry: onRetry }));
     expect(screen.getByText('Try again')).toBeTruthy();
-  });
-
-  it('hides Try again button when retry prop is absent', () => {
-    renderSheet(makeNfc('error', { status: 'err' }));
-    expect(screen.queryByText('Try again')).toBeNull();
   });
 
   it('offers Unblock PIN in place of Try again for a blocked PIN', () => {

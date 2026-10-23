@@ -6,7 +6,6 @@ import { PUK_LENGTH } from '@/constants/keycard';
 import type { UnblockPinScreenProps } from '@/navigation/types';
 import theme from '@/theme';
 
-import NFCBottomSheet from '@/components/NFCBottomSheet';
 import PinPad from '@/components/PinPad';
 
 import { useUnblockPin } from '@/hooks/keycard/useUnblockPin';
@@ -58,13 +57,14 @@ export default function UnblockPinScreen({
       ? 'Enter new PIN'
       : 'Confirm new PIN';
 
-  const { onCancel } = useKeycardScreen({
+  const { sheet } = useKeycardScreen({
     keycard,
     navigation,
     title,
     // Mirrors useUnblockPin's success message.
     done: { toast: 'PIN unblocked' },
     stepBack,
+    showOnDone: true,
   });
 
   return (
@@ -90,7 +90,7 @@ export default function UnblockPinScreen({
         />
       )}
 
-      <NFCBottomSheet nfc={keycard} onCancel={onCancel} showOnDone />
+      {sheet}
     </View>
   );
 }

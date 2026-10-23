@@ -19,7 +19,6 @@ import { Icons } from '../../assets/icons';
 import CameraView from '../../components/CameraView';
 import { type ReadCodeEvent } from '../../components/Camera';
 import MnemonicWordEntry from '../../components/MnemonicWordEntry';
-import NFCBottomSheet from '../../components/NFCBottomSheet';
 import PrimaryButton from '../../components/PrimaryButton';
 
 import {
@@ -133,7 +132,7 @@ export default function MnemonicScreen({
     setScanning(true);
   }, [clearScanError]);
 
-  const { onCancel } = useKeycardScreen({
+  const { sheet } = useKeycardScreen({
     keycard,
     navigation,
     title: scanning
@@ -244,7 +243,7 @@ export default function MnemonicScreen({
         />
       </View>
 
-      <NFCBottomSheet nfc={keycard} onCancel={onCancel} />
+      {sheet}
 
       {scanning && (
         <CameraView

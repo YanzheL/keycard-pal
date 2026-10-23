@@ -7,7 +7,6 @@ import { ConfirmKeySreenProps } from '../../navigation/types';
 import theme from '../../theme';
 
 import MnemonicBackupCheck from '../../components/MnemonicBackupCheck';
-import NFCBottomSheet from '../../components/NFCBottomSheet';
 
 import {
   deriveMnemonicKeyPair,
@@ -29,7 +28,7 @@ export default function ConfirmKeyScreen({
   const keycard = useLoadKey();
   const { start } = keycard;
 
-  const { onCancel } = useKeycardScreen({
+  const { onCancel, sheet } = useKeycardScreen({
     keycard,
     navigation,
     title: 'Check your backup',
@@ -56,7 +55,7 @@ export default function ConfirmKeyScreen({
         onFailure={handleFailure}
       />
 
-      <NFCBottomSheet nfc={keycard} onCancel={onCancel} />
+      {sheet}
     </View>
   );
 }

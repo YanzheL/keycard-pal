@@ -1,18 +1,17 @@
-import { useCallback, useEffect, useLayoutEffect, useRef } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useRef } from 'react';
 import { BackHandler } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 
-import type { KeycardPhase } from './keycard/useKeycardOperation';
+import NFCBottomSheet, { type NFCOperation } from '@/components/NFCBottomSheet';
 
 type BeforeRemoveEvent = { preventDefault: () => void };
 
-export type KeycardScreenKeycard = {
-  phase: KeycardPhase;
+export type KeycardScreenKeycard = NFCOperation & {
   result?: unknown;
   /** Keeps its identity across renders: Apple's cancels are counted per hook by it. */
   cancel: () => void;
-  /** Absent on a hand-built keycard. See UseNFCSessionOperation.userCancels. */
-  userCancels?: number;
+  /** See UseNFCSessionOperation.userCancels. */
+  userCancels: number;
 };
 
 export type KeycardScreenNavigation = {
@@ -47,7 +46,7 @@ export type UseKeycardScreenOptions = {
    * done does not navigate, and back means leave(). Scope it to that state.
    */
   hold?: boolean;
-  /** The hook the guard, PIN title and onCancel follow when there are two. */
+  /** The hook the guard, PIN title, sheet and onCancel follow when there are two. */
   activeKeycard?: KeycardScreenKeycard;
   /**
    * Steps the screen's own form back once the keycard guard passes, for
@@ -59,13 +58,19 @@ export type UseKeycardScreenOptions = {
   stayOnCancel?: boolean;
   /** How the screen leaves after a cancel, in place of going back. */
   leaveOnCancel?: () => void;
+  /** The sheet shows its success state on done. */
+  showOnDone?: boolean;
+  /** The sheet leaves out "Don't have a Keycard?". */
+  hideNoCardExit?: boolean;
 };
 
-/** Done, back and the PIN-entry title for every Keycard screen, in one place. */
+/** The sheet, done, back and the PIN-entry title for every Keycard screen, in one place. */
 export function useKeycardScreen(options: UseKeycardScreenOptions): {
   onCancel: () => void;
   /** Dashboard with the done toast. */
   leave: () => void;
+  /** Render it as a child of the screen's root View: the PIN overlay fills its parent. */
+  sheet: React.ReactElement;
 } {
   const { navigation } = options;
   const { phase, result } = options.keycard;
@@ -175,7 +180,7 @@ export function useKeycardScreen(options: UseKeycardScreenOptions): {
   }, [navigation]);
 
   // Cancel on Apple's NFC sheet, the only one iOS gives during a tap.
-  const userCancels = active.userCancels ?? 0;
+  const userCancels = active.userCancels;
   // Per hook, so a hook handed back as activeKeycard is not read as cancelled.
   const seenUserCancelsRef = useRef(new Map<() => void, number>());
   useEffect(() => {
@@ -192,5 +197,14 @@ export function useKeycardScreen(options: UseKeycardScreenOptions): {
     onCancel();
   }, [userCancels, active.cancel, onCancel]);
 
-  return { onCancel, leave };
+  const sheet = (
+    <NFCBottomSheet
+      nfc={active}
+      onCancel={onCancel}
+      showOnDone={options.showOnDone}
+      hideNoCardExit={options.hideNoCardExit}
+    />
+  );
+
+  return { onCancel, leave, sheet };
 }

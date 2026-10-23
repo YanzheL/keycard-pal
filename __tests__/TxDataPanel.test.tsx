@@ -36,6 +36,19 @@ jest.mock('@react-native-async-storage/async-storage', () => ({
   setItem: jest.fn().mockResolvedValue(undefined),
 }));
 
+const mockNavigation = {
+  goBack: jest.fn(),
+  reset: jest.fn(),
+  setOptions: jest.fn(),
+  addListener: jest.fn(() => jest.fn()),
+};
+
+jest.mock('@react-navigation/native', () => ({
+  ...jest.requireActual('@react-navigation/native'),
+  useNavigation: () => mockNavigation,
+  useFocusEffect: jest.fn(),
+}));
+
 jest.mock('../src/components/NFCBottomSheet', () => () => null);
 
 jest.mock('../src/hooks/keycard/useKeycardOperation', () => ({

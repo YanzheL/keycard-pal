@@ -80,7 +80,14 @@ const route = (withPassphrase = false) =>
   } as any);
 
 function hookMock(phase: string, result: string[] | null = null) {
-  return { phase, status: '', result, start: mockStart, cancel: mockCancel };
+  return {
+    phase,
+    status: '',
+    result,
+    start: mockStart,
+    cancel: mockCancel,
+    userCancels: 0,
+  };
 }
 
 function renderScreen(

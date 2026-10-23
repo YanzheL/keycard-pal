@@ -36,6 +36,19 @@ jest.mock('../src/hooks/keycard/useKeycardOperation', () => ({
   },
 }));
 
+const mockNavigation = {
+  goBack: jest.fn(),
+  reset: jest.fn(),
+  setOptions: jest.fn(),
+  addListener: jest.fn(() => jest.fn()),
+};
+
+jest.mock('@react-navigation/native', () => ({
+  ...jest.requireActual('@react-navigation/native'),
+  useNavigation: () => mockNavigation,
+  useFocusEffect: jest.fn(),
+}));
+
 jest.mock('../src/components/NFCBottomSheet', () => {
   const { View: RNView } = require('react-native');
   return ({ nfc, onCancel }: any) => (
@@ -108,10 +121,11 @@ describe('SimulationAddressProvider', () => {
     expect(screen.getByTestId('nfc-sheet').props.nfc).toBe(mockOp);
   });
 
-  it('cancels the op when the sheet cancels', () => {
+  it('cancels the op when the sheet cancels, and keeps the review', () => {
     renderProvider(withPath);
     screen.getByTestId('nfc-sheet').props.onCancel();
     expect(mockCancel).toHaveBeenCalledTimes(1);
+    expect(mockNavigation.goBack).not.toHaveBeenCalled();
   });
 
   it('throws when the hook is used outside the provider', () => {

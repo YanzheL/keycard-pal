@@ -16,6 +16,8 @@ jest.mock('@react-navigation/native', () => {
   };
 });
 
+jest.mock('../src/components/NFCBottomSheet', () => jest.fn(() => null));
+
 function makeNavigation() {
   return {
     goBack: jest.fn(),
@@ -26,7 +28,16 @@ function makeNavigation() {
 }
 
 function makeKeycard(phase: string, result: unknown = null) {
-  return { phase: phase as any, result, cancel: jest.fn() };
+  return {
+    phase: phase as any,
+    status: '',
+    cardPresence: 'waiting' as const,
+    retry: jest.fn(),
+    openNFCSettings: undefined,
+    userCancels: 0,
+    result,
+    cancel: jest.fn(),
+  };
 }
 
 // reset() and goBack() ask the beforeRemove listeners first, as React
@@ -269,6 +280,27 @@ describe('onCancel', () => {
     expect(keycard.cancel).toHaveBeenCalled();
     expect(leaveOnCancel).not.toHaveBeenCalled();
     expect(navigation.goBack).not.toHaveBeenCalled();
+  });
+});
+
+describe('sheet', () => {
+  it('takes the active hook, onCancel and the sheet options', () => {
+    const navigation = makeNavigation();
+    const activeKeycard = makeKeycard('nfc');
+    const { result } = renderScreenHook({
+      keycard: makeKeycard('idle'),
+      activeKeycard,
+      navigation,
+      title: 'T',
+      showOnDone: true,
+      hideNoCardExit: true,
+    });
+    expect(result.current.sheet.props).toEqual({
+      nfc: activeKeycard,
+      onCancel: result.current.onCancel,
+      showOnDone: true,
+      hideNoCardExit: true,
+    });
   });
 });
 

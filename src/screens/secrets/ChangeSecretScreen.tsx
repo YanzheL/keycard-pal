@@ -11,7 +11,6 @@ import {
 import type { ChangeSecretScreenProps, SecretType } from '@/navigation/types';
 import theme from '@/theme';
 
-import NFCBottomSheet from '@/components/NFCBottomSheet';
 import PinPad from '@/components/PinPad';
 import PrimaryButton from '@/components/PrimaryButton';
 import TextEntry from '@/components/TextEntry';
@@ -110,7 +109,7 @@ export default function ChangeSecretScreen({
   // `keycard` stays the change, so only the second tap ends the screen.
   const activeKeycard = identifying ? identify : keycard;
 
-  const { onCancel } = useKeycardScreen({
+  const { sheet } = useKeycardScreen({
     keycard,
     activeKeycard,
     navigation,
@@ -118,6 +117,8 @@ export default function ChangeSecretScreen({
     pinEntryTitle: 'Enter current PIN',
     done: { toast: config.toast },
     stepBack: entry.goBack,
+    // The identify tap's done is no outcome: the sheet steps aside for the input.
+    showOnDone: !identifying,
   });
 
   if (unavailable) {
@@ -180,13 +181,7 @@ export default function ChangeSecretScreen({
         />
       )}
 
-      {/* The identify tap ends in 'done' too, and that is not an outcome to
-          celebrate: the sheet just steps aside for the input. */}
-      <NFCBottomSheet
-        nfc={activeKeycard}
-        onCancel={onCancel}
-        showOnDone={!identifying}
-      />
+      {sheet}
     </View>
   );
 }

@@ -7,7 +7,6 @@ import { DashboardAction, InitCardScreenProps } from '../navigation/types';
 import theme from '../theme';
 
 import ConfirmPrompt from '../components/ConfirmPropmpt';
-import NFCBottomSheet from '../components/NFCBottomSheet';
 import PinPad from '../components/PinPad';
 import PukReview from '../components/PukReview';
 
@@ -95,7 +94,7 @@ export default function InitCardScreen({ navigation }: InitCardScreenProps) {
   })();
 
   // The screen stays for the PUK; no toast when the card may not hold it.
-  const { onCancel, leave } = useKeycardScreen({
+  const { leave, sheet } = useKeycardScreen({
     keycard,
     navigation,
     title,
@@ -142,7 +141,7 @@ export default function InitCardScreen({ navigation }: InitCardScreenProps) {
         <PukReview puk={puk} uncertain={uncertainPuk} onDone={leave} />
       )}
 
-      <NFCBottomSheet nfc={keycard} onCancel={onCancel} />
+      {sheet}
     </View>
   );
 }

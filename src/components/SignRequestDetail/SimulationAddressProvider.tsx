@@ -1,9 +1,12 @@
 import React, { createContext, useCallback, useContext, useRef } from 'react';
+import { useNavigation } from '@react-navigation/native';
 import Keycard from 'keycard-sdk';
 
-import NFCBottomSheet from '@/components/NFCBottomSheet';
-
 import { useKeycardOp } from '@/hooks/keycard/useKeycardOperation';
+import {
+  useKeycardScreen,
+  type KeycardScreenNavigation,
+} from '@/hooks/useKeycardScreen';
 
 import { pubKeyToEthAddress } from '@/utils/ethereumAddress';
 
@@ -52,10 +55,19 @@ export default function SimulationAddressProvider({
     { requiresPin: true, retryOnTagLoss: true },
   );
 
+  const navigation = useNavigation<KeycardScreenNavigation>();
+  // The review screen's own title; cancelling the tap keeps the review.
+  const { sheet } = useKeycardScreen({
+    keycard: op,
+    navigation,
+    title: 'Review transaction',
+    stayOnCancel: true,
+  });
+
   return (
     <SimulationAddressContext.Provider value={op}>
       {children}
-      <NFCBottomSheet nfc={op} onCancel={op.cancel} />
+      {sheet}
     </SimulationAddressContext.Provider>
   );
 }

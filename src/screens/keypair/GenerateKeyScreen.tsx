@@ -7,7 +7,6 @@ import { GenerateKeyScreenProps } from '@/navigation/types';
 import theme from '@/theme';
 
 import BlurredSecret from '@/components/BlurredSecret';
-import NFCBottomSheet from '@/components/NFCBottomSheet';
 import PrimaryButton from '@/components/PrimaryButton';
 
 import { useGenerateKey } from '@/hooks/keycard/useGenerateKey';
@@ -40,7 +39,7 @@ export default function GenerateKeyScreen({
     }
   }, [revealed]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const { onCancel } = useKeycardScreen({
+  const { sheet } = useKeycardScreen({
     keycard,
     navigation,
     title: 'Backup recovery phrase',
@@ -144,7 +143,7 @@ export default function GenerateKeyScreen({
         </View>
       )}
 
-      <NFCBottomSheet nfc={keycard} onCancel={onCancel} />
+      {sheet}
     </View>
   );
 }

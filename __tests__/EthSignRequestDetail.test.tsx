@@ -13,6 +13,19 @@ import EthSignRequestDetail from '../src/components/SignRequestDetail/eth/SignRe
 import { MISCASED_ADDRESS_WARNING } from '../src/constants/eip712';
 import type { EthSignRequest } from '../src/types';
 
+const mockNavigation = {
+  goBack: jest.fn(),
+  reset: jest.fn(),
+  setOptions: jest.fn(),
+  addListener: jest.fn(() => jest.fn()),
+};
+
+jest.mock('@react-navigation/native', () => ({
+  ...jest.requireActual('@react-navigation/native'),
+  useNavigation: () => mockNavigation,
+  useFocusEffect: jest.fn(),
+}));
+
 jest.mock('../src/components/NFCBottomSheet', () => () => null);
 jest.mock('../src/hooks/keycard/useKeycardOperation', () => ({
   useKeycardOp: () => ({
