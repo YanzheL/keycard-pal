@@ -9,6 +9,7 @@ type BeforeRemoveEvent = { preventDefault: () => void };
 export type KeycardScreenKeycard = {
   phase: KeycardPhase;
   result?: unknown;
+  /** Keeps its identity across renders: Apple's cancels are counted per hook by it. */
   cancel: () => void;
   /** Absent on a hand-built keycard. See UseNFCSessionOperation.userCancels. */
   userCancels?: number;
@@ -170,12 +171,13 @@ export function useKeycardScreen(options: UseKeycardScreenOptions): {
 
   // Cancel on Apple's NFC sheet, the only one iOS gives during a tap.
   const userCancels = active.userCancels ?? 0;
-  const seenUserCancelsRef = useRef(userCancels);
+  // Per hook, so a hook handed back as activeKeycard is not read as cancelled.
+  const seenUserCancelsRef = useRef(new Map<() => void, number>());
   useEffect(() => {
-    const seen = seenUserCancelsRef.current;
-    seenUserCancelsRef.current = userCancels;
-    // A count that drops is activeKeycard switching hooks, not a cancel.
-    if (userCancels <= seen) {
+    const seenByHook = seenUserCancelsRef.current;
+    const seen = seenByHook.get(active.cancel);
+    seenByHook.set(active.cancel, userCancels);
+    if (seen === undefined || userCancels <= seen) {
       return;
     }
     // Phase is already 'idle'; the back guard would step the form back.
@@ -183,7 +185,7 @@ export function useKeycardScreen(options: UseKeycardScreenOptions): {
       leavingRef.current = true;
     }
     onCancel();
-  }, [userCancels, onCancel]);
+  }, [userCancels, active.cancel, onCancel]);
 
   return { onCancel, leave };
 }

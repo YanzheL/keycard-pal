@@ -1,12 +1,6 @@
-import React, {
-  useCallback,
-  useEffect,
-  useLayoutEffect,
-  useState,
-} from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { Snackbar, Text } from 'react-native-paper';
-import { useFocusEffect } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { routeAbsence } from '@/navigation/generationBoundRoutes';
@@ -15,11 +9,12 @@ import theme from '@/theme';
 
 import ConfirmPrompt from '@/components/ConfirmPropmpt';
 import Menu from '@/components/Menu';
-import NFCBottomSheet, { NFCOperation } from '@/components/NFCBottomSheet';
+import NFCBottomSheet from '@/components/NFCBottomSheet';
 import PrimaryButton from '@/components/PrimaryButton';
 
 import { useKeycardOperation } from '@/hooks/keycard/useKeycardOperation';
 import { usePairingSlots } from '@/hooks/keycard/usePairingSlots';
+import { useKeycardScreen } from '@/hooks/useKeycardScreen';
 
 import { deletePairing } from '@/storage/pairingStorage';
 
@@ -29,42 +24,45 @@ export default function PairingSlotsScreen({
   const insets = useSafeAreaInsets();
   const [pendingSlotIndex, setPendingSlotIndex] = useState<number | null>(null);
   const [unpairNotice, setUnpairNotice] = useState<string | null>(null);
+  // Until the unpair tap ends, so cancelling it, on Apple's sheet too, stays here.
+  const [unpairing, setUnpairing] = useState(false);
 
+  const check = usePairingSlots();
   const {
     phase: checkPhase,
-    cardPresence: checkCardPresence,
     slotInfo,
     noPairingSlots,
-    status: checkStatus,
     checkSlots,
-    cancel: cancelCheck,
     resetNFCOnly: resetCheckNFCOnly,
     readSlotInfoFromCmdSet,
-  } = usePairingSlots();
+  } = check;
 
   const unpairHook = useKeycardOperation<void>();
   const {
     phase: unpairPhase,
     execute: executeUnpair,
-    cancel: cancelUnpair,
     reset: resetUnpair,
   } = unpairHook;
 
-  const isUnpairing = unpairPhase !== 'idle';
+  const active = unpairing ? unpairHook : check;
+  const { onCancel } = useKeycardScreen({
+    keycard: active,
+    navigation,
+    title: 'Pairing slots',
+    stayOnCancel: unpairing,
+  });
 
-  useLayoutEffect(() => {
-    navigation.setOptions({ title: 'Pairing slots' });
-  }, [navigation]);
-
-  // Auto-start NFC check when the screen is focused and we have no data yet.
-  useFocusEffect(
-    useCallback(() => {
-      // A card without pairing slots leaves slotInfo empty for good; do not ask again.
-      if (checkPhase === 'idle' && !slotInfo && !noPairingSlots) {
-        checkSlots();
-      }
-    }, [checkPhase, slotInfo, noPairingSlots, checkSlots]),
-  );
+  // Once per mount, not on focus: Apple's Cancel puts the read back to 'idle'.
+  const readStartedRef = useRef(false);
+  useEffect(() => {
+    if (readStartedRef.current) {
+      return;
+    }
+    readStartedRef.current = true;
+    if (checkPhase === 'idle' && !slotInfo && !noPairingSlots) {
+      checkSlots();
+    }
+  }, [checkPhase, slotInfo, noPairingSlots, checkSlots]);
 
   useEffect(() => {
     if (unpairPhase === 'done') {
@@ -74,6 +72,16 @@ export default function PairingSlotsScreen({
     }
   }, [unpairPhase, resetUnpair, resetCheckNFCOnly]);
 
+  // When the unpair tap ends, not while it waits for its NFC check.
+  const lastUnpairPhaseRef = useRef(unpairPhase);
+  useEffect(() => {
+    const last = lastUnpairPhaseRef.current;
+    lastUnpairPhaseRef.current = unpairPhase;
+    if (last !== 'idle' && unpairPhase === 'idle') {
+      setUnpairing(false);
+    }
+  }, [unpairPhase]);
+
   const handleUnpairPress = useCallback((slotIndex: number) => {
     setPendingSlotIndex(slotIndex);
   }, []);
@@ -81,6 +89,7 @@ export default function PairingSlotsScreen({
   const handleConfirmUnpair = useCallback(() => {
     const slotIndex = pendingSlotIndex!;
     setPendingSlotIndex(null);
+    setUnpairing(true);
     executeUnpair(
       async cmdSet => {
         await cmdSet.unpair(slotIndex);
@@ -108,34 +117,6 @@ export default function PairingSlotsScreen({
     setPendingSlotIndex(null);
   }, []);
 
-  // Back can leave mid-session: tear both sessions down. Navigation is already under way.
-  useEffect(() => {
-    const unsubscribe = navigation.addListener('beforeRemove', () => {
-      cancelUnpair();
-      cancelCheck();
-    });
-    return unsubscribe;
-  }, [navigation, cancelUnpair, cancelCheck]);
-
-  const handleCancel = useCallback(() => {
-    if (isUnpairing) {
-      cancelUnpair();
-    } else {
-      cancelCheck();
-      navigation.goBack();
-    }
-  }, [isUnpairing, cancelUnpair, cancelCheck, navigation]);
-
-  const activeNfc: NFCOperation = isUnpairing
-    ? unpairHook
-    : {
-        phase: checkPhase,
-        status: checkStatus,
-        cardPresence: checkCardPresence,
-        // After an error the reader is stopped, so a re-tap emits nothing.
-        retry: checkSlots,
-      };
-
   if (pendingSlotIndex !== null) {
     return (
       <View style={[styles.container, { paddingBottom: insets.bottom + 16 }]}>
@@ -152,7 +133,7 @@ export default function PairingSlotsScreen({
   }
 
   const showContent =
-    !isUnpairing &&
+    !unpairing &&
     (checkPhase === 'idle' || checkPhase === 'done' || checkPhase === 'error');
 
   const absence = routeAbsence('PairingSlots');
@@ -220,11 +201,7 @@ export default function PairingSlotsScreen({
         </View>
       )}
 
-      <NFCBottomSheet
-        nfc={activeNfc}
-        onCancel={handleCancel}
-        showOnDone={isUnpairing}
-      />
+      <NFCBottomSheet nfc={active} onCancel={onCancel} showOnDone={unpairing} />
 
       <Snackbar
         visible={unpairNotice !== null}

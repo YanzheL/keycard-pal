@@ -737,6 +737,29 @@ describe('activeKeycard override', () => {
     expect(keycard.cancel).toHaveBeenCalledTimes(1);
   });
 
+  // PairingSlotsScreen hands the read and the unpair back and forth.
+  it('does not read a hook handed back with its old count as a cancel', () => {
+    const navigation = makeNavigation();
+    const read = makeKeycard('idle');
+    const unpair = makeKeycard('idle');
+    const options = {
+      keycard: read,
+      navigation,
+      title: 'T',
+      stayOnCancel: true,
+    };
+    const { rerender } = renderScreenHook({
+      ...options,
+      activeKeycard: { ...unpair, userCancels: 0 },
+    });
+    rerender({ ...options, activeKeycard: { ...unpair, userCancels: 1 } });
+    expect(unpair.cancel).toHaveBeenCalledTimes(1);
+
+    rerender({ ...options, activeKeycard: { ...read, userCancels: 0 } });
+    rerender({ ...options, activeKeycard: { ...unpair, userCancels: 1 } });
+    expect(unpair.cancel).toHaveBeenCalledTimes(1);
+  });
+
   it("PIN-entry title keys on the active hook's phase", () => {
     const navigation = makeNavigation();
     renderScreenHook({
