@@ -60,12 +60,10 @@ export type WalletConnectContextValue = {
   approveSession: (address: string, derivationPath: string) => Promise<void>;
   rejectSession: (proposal: SessionProposalEvent) => Promise<void>;
   disconnect: () => Promise<void>;
+  /** Answers the pending request once; an answer to any other request does nothing. */
   respondSuccess: (context: WCContext, result: string) => Promise<void>;
-  respondError: (
-    context: WCContext,
-    code: number,
-    message: string,
-  ) => Promise<void>;
+  /** The user's rejection (4001), under the same once-only rule. */
+  rejectRequest: (context: WCContext) => Promise<void>;
 };
 
 // Used by ScanResult conversion in requestAdapter (Task 5+)

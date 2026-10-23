@@ -3,16 +3,16 @@ import { StyleSheet, View } from 'react-native';
 import { Text } from 'react-native-paper';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import type { KeycardScreenProps } from '../navigation/types';
-import theme from '../theme';
+import type { KeycardScreenProps } from '@/navigation/types';
+import theme from '@/theme';
 
-import PrimaryButton from '../components/PrimaryButton';
+import PrimaryButton from '@/components/PrimaryButton';
 
-import { useKeycardOperation } from '../hooks/keycard/useKeycardOperation';
-import { useKeycardScreen } from '../hooks/useKeycardScreen';
-import { useWalletConnectSession } from '../hooks/useWalletConnectSession.online';
+import { useKeycardOperation } from '@/hooks/keycard/useKeycardOperation';
+import { useKeycardScreen } from '@/hooks/useKeycardScreen';
+import { useWalletConnectSession } from '@/hooks/useWalletConnectSession.online';
 
-import { prepareKeycardFlow, type KeycardFlowRun } from '../utils/keycardFlows';
+import { prepareKeycardFlow, type KeycardFlowRun } from '@/utils/keycardFlows';
 
 export default function KeycardScreen({
   route,
@@ -23,13 +23,7 @@ export default function KeycardScreen({
   const flowRef = useRef<KeycardFlowRun | null>(null);
   const [flowError, setFlowError] = useState<string | null>(null);
 
-  // Idempotent per request: a second answer does nothing.
-  const { respondSuccess, respondError } = useWalletConnectSession();
-
-  const wcContext =
-    params.operation === 'sign' && params.signMode === 'eth'
-      ? params.wcContext
-      : undefined;
+  const { respondSuccess } = useWalletConnectSession();
 
   const keycard = useKeycardOperation<unknown>();
   const { phase, result, execute } = keycard;
@@ -38,21 +32,12 @@ export default function KeycardScreen({
     navigation.reset({ index: 0, routes: [{ name: 'Dashboard' }] });
   }, [navigation]);
 
-  // Leaves first: the sheet may navigate right after (Unblock PIN, the shop).
-  const rejectAndLeave = useCallback(() => {
-    resetToDashboard();
-    if (wcContext) {
-      respondError(wcContext, 4001, 'User rejected').catch(() => {
-        // The relay may have expired.
-      });
-    }
-  }, [wcContext, respondError, resetToDashboard]);
-
+  // A WalletConnect request left this way is rejected by the provider.
   const { sheet } = useKeycardScreen({
     keycard,
     navigation,
     title: '',
-    leaveOnCancel: rejectAndLeave,
+    leaveOnCancel: resetToDashboard,
     showOnDone: true,
   });
 
@@ -87,8 +72,9 @@ export default function KeycardScreen({
         return;
       }
 
+      // Answered before the reset, so the provider sees no request left behind.
       if (outcome.kind === 'wc-signature') {
-        respondSuccess(wcContext!, outcome.rawSig).finally(() =>
+        respondSuccess(outcome.wcContext, outcome.rawSig).finally(() =>
           resetToDashboard(),
         );
         return;
@@ -126,7 +112,7 @@ export default function KeycardScreen({
     }, 800);
 
     return () => clearTimeout(timer);
-  }, [phase, result, navigation, wcContext, respondSuccess, resetToDashboard]);
+  }, [phase, result, navigation, respondSuccess, resetToDashboard]);
 
   return (
     <View style={[styles.container, { paddingBottom: insets.bottom + 16 }]}>

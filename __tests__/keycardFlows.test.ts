@@ -133,7 +133,11 @@ describe('eth sign flow', () => {
       'raw-digest',
       ethParams.chainId,
     );
-    expect(outcome).toEqual({ kind: 'wc-signature', rawSig: '0xrawsig' });
+    expect(outcome).toEqual({
+      kind: 'wc-signature',
+      rawSig: '0xrawsig',
+      wcContext: { id: 1, topic: 't' },
+    });
     expect(buildEthSignatureURFromResult).not.toHaveBeenCalled();
   });
 

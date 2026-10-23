@@ -21,6 +21,8 @@ const mockGetClient = jest.fn();
 let mockClientDetach: (() => void) | undefined;
 let mockNavigationReady = true;
 const mockNavigate = jest.fn();
+let mockRootState: { routes: object[] } = { routes: [] };
+const mockStateListeners = new Set<() => void>();
 let capturedAppStateHandler: ((next: any) => void) | null = null;
 
 jest.mock('../src/utils/walletConnect/client.online', () => ({
@@ -39,7 +41,17 @@ jest.mock('../src/utils/walletConnect/client.online', () => ({
 }));
 
 jest.mock('../src/navigation/navigationRef', () => ({
-  navigationRef: { isReady: () => mockNavigationReady, navigate: mockNavigate },
+  navigationRef: {
+    isReady: () => mockNavigationReady,
+    navigate: mockNavigate,
+    addListener: (event: string, listener: () => void) => {
+      if (event === 'state') {
+        mockStateListeners.add(listener);
+      }
+      return () => mockStateListeners.delete(listener);
+    },
+    getRootState: () => mockRootState,
+  },
 }));
 
 // ── Import after mocks ────────────────────────────────────────────────────────
@@ -109,6 +121,7 @@ beforeEach(() => {
   });
   mockGetClient.mockResolvedValue(makeFakeClient());
   mockNavigationReady = true;
+  mockRootState = { routes: [] };
   (navigationRef as any).isReady = jest.fn(() => mockNavigationReady);
   (navigationRef as any).navigate = mockNavigate;
   capturedAppStateHandler = null;
@@ -527,7 +540,7 @@ describe('WalletConnectProvider — session_request', () => {
   });
 });
 
-describe('WalletConnectProvider — respondSuccess / respondError', () => {
+describe('WalletConnectProvider — respondSuccess / rejectRequest', () => {
   it('respondSuccess calls wcClient and clears pendingRequest', async () => {
     const { result } = renderHook(() => useWalletConnectSession(), { wrapper });
     await waitForClientInit();
@@ -591,7 +604,7 @@ describe('WalletConnectProvider — respondSuccess / respondError', () => {
     expect(mockRespondSuccess).toHaveBeenCalledTimes(1);
   });
 
-  it('respondError calls wcClient, clears pendingRequest, and is idempotent', async () => {
+  it('rejectRequest answers 4001 once and clears pendingRequest', async () => {
     const { result } = renderHook(() => useWalletConnectSession(), { wrapper });
     await waitForClientInit();
     await approveTestSession(result);
@@ -610,18 +623,10 @@ describe('WalletConnectProvider — respondSuccess / respondError', () => {
     });
 
     await act(async () => {
-      await result.current.respondError(
-        { id: 77, topic: 'topic-x' },
-        4001,
-        'User rejected',
-      );
+      await result.current.rejectRequest({ id: 77, topic: 'topic-x' });
     });
     await act(async () => {
-      await result.current.respondError(
-        { id: 77, topic: 'topic-x' },
-        4001,
-        'User rejected again',
-      );
+      await result.current.rejectRequest({ id: 77, topic: 'topic-x' });
     });
 
     expect(mockRespondError).toHaveBeenCalledTimes(1);
@@ -632,6 +637,128 @@ describe('WalletConnectProvider — respondSuccess / respondError', () => {
       'User rejected',
     );
     expect(result.current.pendingRequest).toBeNull();
+  });
+});
+
+describe('WalletConnectProvider — leaving a request', () => {
+  const CONTEXT = { id: 77, topic: 'topic-x' };
+
+  async function deliverRequest(id = CONTEXT.id, topic = CONTEXT.topic) {
+    await act(async () => {
+      await capturedHandlers.session_request?.({
+        id,
+        topic,
+        params: {
+          request: {
+            method: 'personal_sign',
+            params: ['0xdeadbeef', signerAddress],
+          },
+        },
+      });
+    });
+  }
+
+  async function navigateTo(routes: object[]) {
+    mockRootState = { routes };
+    await act(async () => {
+      mockStateListeners.forEach(listener => listener());
+    });
+  }
+
+  async function renderWithRequest() {
+    const hook = renderHook(() => useWalletConnectSession(), { wrapper });
+    await waitForClientInit();
+    await approveTestSession(hook.result);
+    await deliverRequest();
+    return hook;
+  }
+
+  it('rejects the request once no screen shows it', async () => {
+    const { result } = await renderWithRequest();
+
+    await navigateTo([{ name: 'Dashboard' }]);
+    await navigateTo([{ name: 'Dashboard' }, { name: 'Settings' }]);
+
+    expect(mockRespondError).toHaveBeenCalledTimes(1);
+    expect(mockRespondError).toHaveBeenCalledWith(
+      77,
+      'topic-x',
+      4001,
+      'User rejected',
+    );
+    expect(result.current.pendingRequest).toBeNull();
+  });
+
+  it('keeps the request while its review or Keycard screen is up', async () => {
+    const { result } = await renderWithRequest();
+
+    await navigateTo([
+      { name: 'Dashboard' },
+      { name: 'TransactionDetail', params: { wcContext: CONTEXT } },
+    ]);
+    await navigateTo([
+      { name: 'Dashboard' },
+      {
+        name: 'Keycard',
+        params: { operation: 'sign', signMode: 'eth', wcContext: CONTEXT },
+      },
+    ]);
+    await navigateTo([
+      {
+        name: 'Root',
+        state: {
+          routes: [
+            { name: 'TransactionDetail', params: { wcContext: CONTEXT } },
+          ],
+        },
+      },
+    ]);
+
+    expect(mockRespondError).not.toHaveBeenCalled();
+    expect(result.current.pendingRequest).toMatchObject({ id: 77 });
+  });
+
+  // The Keycard screen answers first and resets to the Dashboard after.
+  it('adds no rejection after the signature was handed over', async () => {
+    const { result } = await renderWithRequest();
+
+    await act(async () => {
+      await result.current.respondSuccess(CONTEXT, '0xsig');
+    });
+    await navigateTo([{ name: 'Dashboard' }]);
+
+    expect(mockRespondSuccess).toHaveBeenCalledTimes(1);
+    expect(mockRespondError).not.toHaveBeenCalled();
+  });
+
+  it('ignores an answer meant for another request', async () => {
+    const { result } = await renderWithRequest();
+
+    await act(async () => {
+      await result.current.respondSuccess({ id: 999, topic: 'old' }, '0xsig');
+    });
+    await act(async () => {
+      await result.current.rejectRequest({ id: 999, topic: 'old' });
+    });
+
+    expect(mockRespondSuccess).not.toHaveBeenCalled();
+    expect(mockRespondError).not.toHaveBeenCalled();
+    expect(result.current.pendingRequest).toMatchObject({ id: 77 });
+  });
+
+  it('shows the next request after one was left', async () => {
+    await renderWithRequest();
+    await navigateTo([{ name: 'Dashboard' }]);
+    mockRespondError.mockClear();
+    mockNavigate.mockClear();
+
+    await deliverRequest(78, 'topic-y');
+
+    expect(mockRespondError).not.toHaveBeenCalled();
+    expect(mockNavigate).toHaveBeenCalledWith(
+      'TransactionDetail',
+      expect.objectContaining({ wcContext: { id: 78, topic: 'topic-y' } }),
+    );
   });
 });
 

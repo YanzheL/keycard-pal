@@ -21,11 +21,7 @@ export function useWalletConnectSession() {
     rejectSession: async (_proposal: unknown) => {},
     disconnect: async () => {},
     respondSuccess: async (_context: WCContext, _result: string) => {},
-    respondError: async (
-      _context: WCContext,
-      _code: number,
-      _message: string,
-    ) => {},
+    rejectRequest: async (_context: WCContext) => {},
   };
 }
 

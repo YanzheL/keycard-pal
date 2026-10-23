@@ -1,17 +1,19 @@
-import React, { useCallback, useEffect, useRef } from 'react';
+import React, { useCallback } from 'react';
 import { StyleSheet, ScrollView, View } from 'react-native';
 import { Button } from 'react-native-paper';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { Icons } from '../assets/icons';
-import type { TransactionDetailScreenProps } from '../navigation/types';
-import theme from '../theme';
+import { Icons } from '@/assets/icons';
+import type { TransactionDetailScreenProps } from '@/navigation/types';
+import theme from '@/theme';
 
-import SignRequestDetail from '../components/SignRequestDetail';
-import SimulationAddressProvider from '../components/SignRequestDetail/SimulationAddressProvider';
-import PrimaryButton from '../components/PrimaryButton';
-import { useWalletConnectSession } from '../hooks/useWalletConnectSession.online';
-import { buildSignKeycardParams } from '../utils/signNavigation';
+import PrimaryButton from '@/components/PrimaryButton';
+import SignRequestDetail from '@/components/SignRequestDetail';
+import SimulationAddressProvider from '@/components/SignRequestDetail/SimulationAddressProvider';
+
+import { useWalletConnectSession } from '@/hooks/useWalletConnectSession.online';
+
+import { buildSignKeycardParams } from '@/utils/signNavigation';
 
 export default function TransactionDetailScreen({
   route,
@@ -19,52 +21,26 @@ export default function TransactionDetailScreen({
 }: TransactionDetailScreenProps) {
   const insets = useSafeAreaInsets();
   const { result, wcContext } = route.params;
-  const { respondError } = useWalletConnectSession();
-
-  const respondedRef = useRef(false);
-  const navigatingToKeycardRef = useRef(false);
+  // Any other way out, the provider rejects the request itself.
+  const { rejectRequest } = useWalletConnectSession();
 
   const isBip322Message =
     result.kind === 'crypto-psbt' &&
     result.summary.requestType === 'bip322-message';
 
-  const keycardParams = buildSignKeycardParams(result);
-
-  const rejectWC = useCallback(async () => {
-    if (wcContext && !respondedRef.current) {
-      respondedRef.current = true;
-      try {
-        await respondError(wcContext, 4001, 'User rejected');
-      } catch {
-        // ignore — relay may have already expired
-      }
-    }
-  }, [wcContext, respondError]);
-
-  // Reject WC request on back/swipe unless we navigated forward to Keycard
-  useEffect(() => {
-    if (!wcContext) return;
-    const unsubscribe = navigation.addListener('beforeRemove', () => {
-      if (!navigatingToKeycardRef.current) {
-        rejectWC();
-      }
-    });
-    return unsubscribe;
-  }, [navigation, wcContext, rejectWC]);
+  const keycardParams = buildSignKeycardParams(result, wcContext);
 
   const handleSign = useCallback(() => {
     if (!keycardParams) return;
-    navigatingToKeycardRef.current = true;
-    navigation.navigate('Keycard', {
-      ...keycardParams,
-      ...(wcContext ? { wcContext } : {}),
-    } as any);
-  }, [keycardParams, navigation, wcContext]);
+    navigation.navigate('Keycard', keycardParams);
+  }, [keycardParams, navigation]);
 
   const handleReject = useCallback(async () => {
-    await rejectWC();
+    if (wcContext) {
+      await rejectRequest(wcContext);
+    }
     navigation.reset({ index: 0, routes: [{ name: 'Dashboard' }] });
-  }, [rejectWC, navigation]);
+  }, [rejectRequest, navigation, wcContext]);
 
   return (
     <View style={styles.container}>

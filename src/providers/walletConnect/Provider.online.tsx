@@ -6,6 +6,7 @@ import React, {
   useState,
 } from 'react';
 import { AppState, AppStateStatus } from 'react-native';
+import type { NavigationState, PartialState } from '@react-navigation/native';
 
 import { SUPPORTED_WC_METHODS, WCContext } from '@/constants/walletConnect';
 import { navigationRef } from '@/navigation/navigationRef';
@@ -25,9 +26,21 @@ import {
   WCRequest,
 } from './context';
 
-// Incoming session_request method gate — proposal-time policy lives in
+// Incoming session_request method gate; proposal-time policy lives in
 // utils/walletConnect/proposalPolicy.ts.
 const SUPPORTED_METHODS: string[] = [...SUPPORTED_WC_METHODS];
+
+// The review and the Keycard screen carry the request in their params.
+function showsRequest(
+  state: NavigationState | PartialState<NavigationState> | undefined,
+  id: number,
+): boolean {
+  return (state?.routes ?? []).some(
+    route =>
+      (route.params as { wcContext?: WCContext } | undefined)?.wcContext?.id ===
+        id || showsRequest(route.state, id),
+  );
+}
 
 export function WalletConnectProvider({
   children,
@@ -285,14 +298,16 @@ export function WalletConnectProvider({
     setPhase('idle');
   }, []);
 
-  const respondSuccess = useCallback(
-    async (context: WCContext, result: string) => {
-      if (respondedRef.current) return;
+  const answer = useCallback(
+    async (context: WCContext, send: () => Promise<void>) => {
+      if (activeRequestRef.current?.id !== context.id || respondedRef.current) {
+        return;
+      }
       respondedRef.current = true;
       try {
-        await wcClient.respondSuccess(context.id, context.topic, result);
+        await send();
       } catch {
-        // ignore — request may have expired on the relay
+        // The relay may have expired the request.
       }
       activeRequestRef.current = null;
       setPendingRequest(null);
@@ -300,19 +315,36 @@ export function WalletConnectProvider({
     [],
   );
 
-  const respondError = useCallback(
-    async (context: WCContext, code: number, message: string) => {
-      if (respondedRef.current) return;
-      respondedRef.current = true;
-      try {
-        await wcClient.respondError(context.id, context.topic, code, message);
-      } catch {
-        // ignore — request may have expired on the relay
-      }
-      activeRequestRef.current = null;
-      setPendingRequest(null);
-    },
-    [],
+  const respondSuccess = useCallback(
+    (context: WCContext, result: string) =>
+      answer(context, () =>
+        wcClient.respondSuccess(context.id, context.topic, result),
+      ),
+    [answer],
+  );
+
+  const rejectRequest = useCallback(
+    (context: WCContext) =>
+      answer(context, () =>
+        wcClient.respondError(context.id, context.topic, 4001, 'User rejected'),
+      ),
+    [answer],
+  );
+
+  // However the user leaves the request's screens, the dApp gets its answer.
+  useEffect(
+    () =>
+      navigationRef.addListener('state', () => {
+        const request = activeRequestRef.current;
+        if (
+          request &&
+          !respondedRef.current &&
+          !showsRequest(navigationRef.getRootState(), request.id)
+        ) {
+          rejectRequest(request);
+        }
+      }),
+    [rejectRequest],
   );
 
   const value = useMemo<WalletConnectContextValue>(
@@ -325,7 +357,7 @@ export function WalletConnectProvider({
       rejectSession,
       disconnect,
       respondSuccess,
-      respondError,
+      rejectRequest,
     }),
     [
       phase,
@@ -336,7 +368,7 @@ export function WalletConnectProvider({
       rejectSession,
       disconnect,
       respondSuccess,
-      respondError,
+      rejectRequest,
     ],
   );
 

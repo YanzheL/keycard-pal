@@ -1,6 +1,7 @@
 import type { Commandset } from 'keycard-sdk/dist/commandset';
 
 import { XPUB_EXPLAINER } from '@/constants/exportKey';
+import type { WCContext } from '@/constants/walletConnect';
 import type { KeycardParams } from '@/navigation/types';
 
 import {
@@ -38,7 +39,7 @@ export type FlowOutcome =
       description?: string;
       doneNavigation: 'sign' | 'export';
     }
-  | { kind: 'wc-signature'; rawSig: string };
+  | { kind: 'wc-signature'; rawSig: string; wcContext: WCContext };
 
 /**
  * One Keycard operation, prepared and ready to run: the card op and the
@@ -108,6 +109,7 @@ function prepareEthSign(params: EthSignParams): KeycardFlowRun {
         return {
           kind: 'wc-signature',
           rawSig: buildRawEthHexSignature(result, hash, payload.kind, chainId),
+          wcContext: params.wcContext,
         };
       }
       return {
