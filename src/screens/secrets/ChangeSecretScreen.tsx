@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef } from 'react';
+import React, { useEffect, useRef } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -104,14 +104,6 @@ export default function ChangeSecretScreen({
     length: config.length,
   });
 
-  const onScreenBack = useCallback(() => {
-    const handled = entry.goBack();
-    if (!handled) {
-      navigation.goBack();
-    }
-    return true;
-  }, [entry, navigation]);
-
   const stepTitle =
     entry.step === 'entry' ? config.entryTitle : config.confirmTitle;
 
@@ -125,13 +117,7 @@ export default function ChangeSecretScreen({
     title: identifying || unavailable ? PAIRING_SECRET_TITLE : stepTitle,
     pinEntryTitle: 'Enter current PIN',
     done: { toast: config.toast },
-    onHardwareBack: onScreenBack,
-    onBeforeRemove: e => {
-      if (entry.step === 'confirm') {
-        e.preventDefault();
-        entry.goBack();
-      }
-    },
+    stepBack: entry.goBack,
   });
 
   if (unavailable) {

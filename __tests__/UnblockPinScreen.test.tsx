@@ -315,10 +315,15 @@ describe('UnblockPinScreen', () => {
       expect(navigation.goBack).not.toHaveBeenCalled();
     });
 
+    // The navigator goes back, and the removal that follows is not vetoed.
     it('leaves the screen from the first entry', async () => {
       await renderScreen();
-      expect(await pressHardwareBack()).toBe(true);
-      expect(navigation.goBack).toHaveBeenCalledTimes(1);
+      expect(await pressHardwareBack()).toBe(false);
+      const e = { preventDefault: jest.fn() };
+      await act(async () => {
+        lastBeforeRemoveHandler()(e);
+      });
+      expect(e.preventDefault).not.toHaveBeenCalled();
     });
   });
 });

@@ -49,10 +49,12 @@ export type UseKeycardScreenOptions = {
   hold?: boolean;
   /** The hook the guard, PIN title and onCancel follow when there are two. */
   activeKeycard?: KeycardScreenKeycard;
-  /** Hardware-back fallback once the keycard guard passes; BackHandler semantics. */
-  onHardwareBack?: () => boolean;
-  /** beforeRemove fallback once the keycard guard passes. */
-  onBeforeRemove?: (e: BeforeRemoveEvent) => void;
+  /**
+   * Steps the screen's own form back once the keycard guard passes, for
+   * hardware back and the header back alike. True when it stepped; false lets
+   * the screen go.
+   */
+  stepBack?: () => boolean;
   /** onCancel only cancels the tap instead of also leaving the screen. */
   stayOnCancel?: boolean;
   /** How the screen leaves after a cancel, in place of going back. */
@@ -74,8 +76,8 @@ export function useKeycardScreen(options: UseKeycardScreenOptions): {
   optionsRef.current = options;
   const activeRef = useRef(active);
   activeRef.current = active;
-  // Set before this hook navigates: beforeRemove fires for reset too, and the
-  // screen's back guard would veto it and step its form back.
+  // Set before this hook navigates: beforeRemove fires for reset too, and
+  // stepBack would veto it.
   const leavingRef = useRef(false);
 
   const leave = useCallback(() => {
@@ -131,7 +133,8 @@ export function useKeycardScreen(options: UseKeycardScreenOptions): {
           leave();
           return true;
         }
-        return optionsRef.current.onHardwareBack?.() ?? false;
+        // False hands it to the navigator, whose beforeRemove asks again.
+        return optionsRef.current.stepBack?.() ?? false;
       });
       return () => sub.remove();
     }, [keycardBusy, held, leave, navigation]),
@@ -151,7 +154,9 @@ export function useKeycardScreen(options: UseKeycardScreenOptions): {
         leave();
         return;
       }
-      optionsRef.current.onBeforeRemove?.(e);
+      if (optionsRef.current.stepBack?.()) {
+        e.preventDefault();
+      }
     });
     return unsubscribe;
   }, [navigation, keycardBusy, held, leave]);

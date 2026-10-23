@@ -62,13 +62,9 @@ export default function InitCardScreen({ navigation }: InitCardScreenProps) {
     startInit(null);
   }, [startInit]);
 
-  const onScreenBack = useCallback(() => {
+  const stepBack = useCallback(() => {
     if (screenStep === 'pin_setup') {
-      const handled = pinSetup.goBack();
-      if (!handled) {
-        navigation.goBack();
-      }
-      return true;
+      return pinSetup.goBack();
     }
 
     if (screenStep === 'duress_question') {
@@ -77,12 +73,11 @@ export default function InitCardScreen({ navigation }: InitCardScreenProps) {
       return true;
     }
 
-    const handled = duressSetup.goBack();
-    if (!handled) {
+    if (!duressSetup.goBack()) {
       setScreenStep('duress_question');
     }
     return true;
-  }, [screenStep, pinSetup, duressSetup, navigation]);
+  }, [screenStep, pinSetup, duressSetup]);
 
   const title = (() => {
     if (showPuk) {
@@ -107,27 +102,7 @@ export default function InitCardScreen({ navigation }: InitCardScreenProps) {
     done: { toast: () => (uncertainPuk ? undefined : 'Card initialized') },
     hold: showPuk,
     stayOnCancel: initSent,
-    onHardwareBack: onScreenBack,
-    onBeforeRemove: e => {
-      if (screenStep === 'pin_setup' && pinSetup.step === 'confirm') {
-        e.preventDefault();
-        pinSetup.goBack();
-        return;
-      }
-      if (screenStep === 'duress_question') {
-        e.preventDefault();
-        setScreenStep('pin_setup');
-        pinSetup.jumpToConfirm();
-        return;
-      }
-      if (screenStep === 'duress_setup') {
-        e.preventDefault();
-        const handled = duressSetup.goBack();
-        if (!handled) {
-          setScreenStep('duress_question');
-        }
-      }
-    },
+    stepBack,
   });
 
   const activePinSetup =
