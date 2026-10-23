@@ -25,6 +25,20 @@ describe('buildSignKeycardParams', () => {
     });
   });
 
+  it('carries the WalletConnect request on the eth params', () => {
+    const result: ScanResult = {
+      kind: 'eth-sign-request',
+      request: {
+        signData: 'ab'.repeat(32),
+        dataType: 0,
+        derivationPath: "m/44'/60'/0'/0",
+      },
+    };
+    expect(buildSignKeycardParams(result, { id: 5, topic: 't' })).toMatchObject(
+      { signMode: 'eth', wcContext: { id: 5, topic: 't' } },
+    );
+  });
+
   it('returns null for an eth-sign-request whose payload classifies as invalid', () => {
     // dataType=1 with a first byte that is neither 0x01 nor an RLP list
     const result: ScanResult = {

@@ -1,15 +1,16 @@
+import type { WCContext } from '@/constants/walletConnect';
 import type { KeycardParams } from '@/navigation/types';
 import type { ScanResult } from '@/types';
 import { classifyEthPayload } from '@/utils/ethPayload';
 
 export function buildSignKeycardParams(
   result: ScanResult,
+  wcContext?: WCContext,
 ): KeycardParams | null {
   if (result.kind === 'eth-sign-request') {
     const { signData, derivationPath, chainId, requestId, dataType } =
       result.request;
-    // An unclassifiable payload must never reach the Keycard screen — the
-    // review shows the reason and the Sign button is withheld.
+    // The review shows why instead and withholds Sign.
     if (classifyEthPayload(signData, dataType, chainId).kind === 'invalid') {
       return null;
     }
@@ -21,6 +22,7 @@ export function buildSignKeycardParams(
       chainId,
       requestId,
       dataType,
+      ...(wcContext ? { wcContext } : {}),
     };
   }
   if (result.kind === 'crypto-psbt') {

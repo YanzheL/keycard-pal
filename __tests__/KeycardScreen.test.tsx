@@ -81,12 +81,12 @@ jest.mock('../src/hooks/keycard/useKeycardOperation', () => ({
 }));
 
 const mockRespondSuccess = jest.fn().mockResolvedValue(undefined);
-const mockRespondError = jest.fn().mockResolvedValue(undefined);
+const mockRejectRequest = jest.fn().mockResolvedValue(undefined);
 
 jest.mock('../src/hooks/useWalletConnectSession.online', () => ({
   useWalletConnectSession: () => ({
     respondSuccess: mockRespondSuccess,
-    respondError: mockRespondError,
+    rejectRequest: mockRejectRequest,
   }),
 }));
 
@@ -502,7 +502,8 @@ describe('KeycardScreen', () => {
       });
     });
 
-    it('calls respondError and resets to Dashboard when wcContext is present', async () => {
+    // The provider rejects the request once its screens are gone.
+    it('resets to Dashboard and leaves the WalletConnect reject to the provider', async () => {
       const wcSignRoute = {
         params: {
           operation: 'sign',
@@ -521,40 +522,15 @@ describe('KeycardScreen', () => {
       await act(async () => {
         await lastOnCancel()();
       });
-      expect(mockRespondError).toHaveBeenCalledWith(
-        { id: 99, topic: 'test-topic' },
-        4001,
-        'User rejected',
-      );
+      expect(mockRejectRequest).not.toHaveBeenCalled();
+      expect(mockRespondSuccess).not.toHaveBeenCalled();
       expect(navigation.reset).toHaveBeenCalledWith({
         index: 0,
         routes: [{ name: 'Dashboard' }],
       });
     });
 
-    // The sheet navigates right after a cancel (Unblock PIN, the shop); a later reset would undo it.
-    it('leaves before the relay answers the reject', async () => {
-      mockRespondError.mockReturnValueOnce(new Promise(() => {}));
-      const wcSignRoute = {
-        ...signRoute,
-        params: { ...signRoute.params, wcContext: { id: 7, topic: 't' } },
-      };
-      mockUseKeycardOperation.mockReturnValue(hookMock('error'));
-      render(<KeycardScreen route={wcSignRoute} navigation={navigation} />);
-      await act(async () => {});
-
-      act(() => {
-        lastOnCancel()();
-      });
-
-      expect(mockRespondError).toHaveBeenCalled();
-      expect(navigation.reset).toHaveBeenCalledWith({
-        index: 0,
-        routes: [{ name: 'Dashboard' }],
-      });
-    });
-
-    it("rejects the WalletConnect request and leaves when Apple's sheet is cancelled", async () => {
+    it("leaves when Apple's sheet is cancelled during a WalletConnect request", async () => {
       const wcSignRoute = {
         ...signRoute,
         params: { ...signRoute.params, wcContext: { id: 7, topic: 't' } },
@@ -578,11 +554,7 @@ describe('KeycardScreen', () => {
       await act(async () => {});
 
       expect(mockCancel).toHaveBeenCalledTimes(1);
-      expect(mockRespondError).toHaveBeenCalledWith(
-        { id: 7, topic: 't' },
-        4001,
-        'User rejected',
-      );
+      expect(mockRejectRequest).not.toHaveBeenCalled();
       expect(navigation.reset).toHaveBeenCalledWith({
         index: 0,
         routes: [{ name: 'Dashboard' }],

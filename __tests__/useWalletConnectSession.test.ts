@@ -94,7 +94,7 @@ describe('useWalletConnectSession offline stub', () => {
       result.respondSuccess({ id: 1, topic: 't' }, '0x'),
     ).resolves.toBeUndefined();
     await expect(
-      result.respondError({ id: 1, topic: 't' }, -32000, 'err'),
+      result.rejectRequest({ id: 1, topic: 't' }),
     ).resolves.toBeUndefined();
   });
 });
@@ -109,7 +109,7 @@ describe('useWalletConnectSession online hook', () => {
     rejectSession: jest.fn(),
     disconnect: jest.fn(),
     respondSuccess: jest.fn(),
-    respondError: jest.fn(),
+    rejectRequest: jest.fn(),
   };
 
   it('throws when used outside WalletConnectProvider', () => {

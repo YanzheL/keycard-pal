@@ -49,7 +49,7 @@ jest.mock('../src/utils/tenderly/client.online', () => ({
   simulateTransaction: jest.fn(),
 }));
 
-const mockRespondError = jest.fn().mockResolvedValue(undefined);
+const mockRejectRequest = jest.fn().mockResolvedValue(undefined);
 
 jest.mock('../src/hooks/useWalletConnectSession.online', () => ({
   useWalletConnectSession: () => ({
@@ -61,7 +61,7 @@ jest.mock('../src/hooks/useWalletConnectSession.online', () => ({
     rejectSession: jest.fn(),
     disconnect: jest.fn(),
     respondSuccess: jest.fn(),
-    respondError: mockRespondError,
+    rejectRequest: mockRejectRequest,
   }),
 }));
 
@@ -579,69 +579,48 @@ describe('TransactionDetailScreen – btc-sign-request result', () => {
 });
 
 describe('TransactionDetailScreen – WalletConnect context', () => {
-  beforeEach(() => mockRespondError.mockClear());
+  beforeEach(() => mockRejectRequest.mockClear());
 
   it('shows Reject button when wcContext is present', async () => {
     renderScreenWithWc({ kind: 'eth-sign-request', request: fullRequest });
     expect(screen.getByText('Reject')).toBeTruthy();
   });
 
-  it('calls respondError and navigates to Dashboard on Reject press', async () => {
+  it('rejects the request and goes to the Dashboard on Reject', async () => {
     const { navigation } = renderScreenWithWc({
       kind: 'eth-sign-request',
       request: fullRequest,
     });
     fireEvent.press(screen.getByText('Reject'));
     await act(async () => {});
-    expect(mockRespondError).toHaveBeenCalledWith(
-      wcContext,
-      4001,
-      'User rejected',
-    );
+    expect(mockRejectRequest).toHaveBeenCalledWith(wcContext);
     expect(navigation.reset).toHaveBeenCalledWith(
       expect.objectContaining({ routes: [{ name: 'Dashboard' }] }),
     );
   });
 
-  it('registers beforeRemove listener when wcContext is present', () => {
+  it('hands the request on to the Keycard screen', async () => {
     const { navigation } = renderScreenWithWc({
       kind: 'eth-sign-request',
       request: fullRequest,
     });
-    expect(navigation.addListener).toHaveBeenCalledWith(
+    fireEvent.press(screen.getByText('Sign transaction'));
+    expect(navigation.navigate).toHaveBeenCalledWith(
+      'Keycard',
+      expect.objectContaining({ signMode: 'eth', wcContext }),
+    );
+  });
+
+  // The provider rejects a request left any other way.
+  it('answers nothing itself when the screen is left', async () => {
+    const { navigation } = renderScreenWithWc({
+      kind: 'eth-sign-request',
+      request: fullRequest,
+    });
+    expect(navigation.addListener).not.toHaveBeenCalledWith(
       'beforeRemove',
       expect.any(Function),
     );
-  });
-
-  it('rejects WalletConnect request on back navigation', async () => {
-    const { navigation } = renderScreenWithWc({
-      kind: 'eth-sign-request',
-      request: fullRequest,
-    });
-    const beforeRemove = navigation.addListener.mock.calls[0][1];
-
-    beforeRemove();
-    await act(async () => {});
-
-    expect(mockRespondError).toHaveBeenCalledWith(
-      wcContext,
-      4001,
-      'User rejected',
-    );
-  });
-
-  it('does not reject on beforeRemove when navigating to Keycard', async () => {
-    const { navigation } = renderScreenWithWc({
-      kind: 'eth-sign-request',
-      request: fullRequest,
-    });
-    const beforeRemove = navigation.addListener.mock.calls[0][1];
-
-    fireEvent.press(screen.getByText('Sign transaction'));
-    beforeRemove();
-    await act(async () => {});
-
-    expect(mockRespondError).not.toHaveBeenCalled();
+    expect(mockRejectRequest).not.toHaveBeenCalled();
   });
 });
