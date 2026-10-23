@@ -281,6 +281,23 @@ describe('onCancel', () => {
     expect(leaveOnCancel).not.toHaveBeenCalled();
     expect(navigation.goBack).not.toHaveBeenCalled();
   });
+
+  // Cancel on the error sheet: the tap is no longer busy, so only leavingRef keeps stepBack out.
+  it("leaves from an error past the screen's step guard", () => {
+    const { navigation, left } = makeNavigationThatAsksFirst();
+    const stepBack = stepGuard();
+    const keycard = makeKeycard('error');
+    const { result } = renderScreenHook({
+      keycard,
+      navigation,
+      title: 'T',
+      stepBack,
+    });
+    result.current.onCancel();
+    expect(keycard.cancel).toHaveBeenCalled();
+    expect(stepBack).not.toHaveBeenCalled();
+    expect(left).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe('sheet', () => {
@@ -324,6 +341,28 @@ describe('back guard', () => {
 
     expect(capturedBackHandler(backSpy)()).toBe(true);
     expect(keycard.cancel).toHaveBeenCalled();
+  });
+
+  it('hardware back during a tap stays with stayOnCancel', () => {
+    const navigation = makeNavigation();
+    const keycard = makeKeycard('nfc');
+    renderScreenHook({ keycard, navigation, title: 'T', stayOnCancel: true });
+
+    expect(capturedBackHandler(backSpy)()).toBe(true);
+    expect(keycard.cancel).toHaveBeenCalled();
+    expect(navigation.goBack).not.toHaveBeenCalled();
+  });
+
+  it('hardware back during a tap leaves through leaveOnCancel', () => {
+    const navigation = makeNavigation();
+    const keycard = makeKeycard('pin_entry');
+    const leaveOnCancel = jest.fn();
+    renderScreenHook({ keycard, navigation, title: 'T', leaveOnCancel });
+
+    expect(capturedBackHandler(backSpy)()).toBe(true);
+    expect(keycard.cancel).toHaveBeenCalled();
+    expect(leaveOnCancel).toHaveBeenCalledTimes(1);
+    expect(navigation.goBack).not.toHaveBeenCalled();
   });
 
   it('hardware back when idle steps the screen back', () => {

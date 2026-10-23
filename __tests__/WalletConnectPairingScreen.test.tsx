@@ -421,6 +421,33 @@ describe('WalletConnectPairingScreen', () => {
     expect(navigation.reset).toHaveBeenCalled();
   });
 
+  // After a cancel the sheet may navigate right away (Unblock PIN, the shop); a later reset would undo it.
+  it('leaves before the relay answers the reject', async () => {
+    mockRejectSession.mockReturnValueOnce(new Promise(() => {}));
+    mockPhase = {
+      kind: 'proposal',
+      proposal: {
+        id: 1,
+        params: {
+          id: 1,
+          proposer: { metadata: { name: 'App', url: '', icons: [] } },
+          requiredNamespaces: {
+            eip155: { chains: ['eip155:1'], methods: ['personal_sign'] },
+          },
+          optionalNamespaces: {},
+        },
+      },
+    };
+    await renderScreen();
+
+    fireEvent.press(screen.getByText('Reject'));
+
+    expect(mockRejectSession).toHaveBeenCalled();
+    expect(navigation.reset).toHaveBeenCalledWith(
+      expect.objectContaining({ routes: [{ name: 'Dashboard' }] }),
+    );
+  });
+
   it('exports the selected account key from Keycard', async () => {
     await renderScreen();
     const response = { data: 'extended-key-data', checkOK: jest.fn() };

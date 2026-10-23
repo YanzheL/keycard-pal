@@ -117,11 +117,14 @@ export default function WalletConnectPairingScreen({
     startNfc();
   }, [startNfc]);
 
-  const handleRejectProposal = useCallback(async () => {
-    if (proposal) {
-      await rejectSession(proposal as SessionProposalEvent);
-    }
+  // Leaves first: after a cancel the sheet may navigate right after (Unblock PIN, the shop).
+  const handleRejectProposal = useCallback(() => {
     navigation.reset({ index: 0, routes: [{ name: 'Dashboard' }] });
+    if (proposal) {
+      rejectSession(proposal as SessionProposalEvent).catch(() => {
+        // The relay may have expired.
+      });
+    }
   }, [proposal, rejectSession, navigation]);
 
   // No header on this route; a cancelled key tap rejects the proposal.

@@ -56,7 +56,10 @@ export type UseKeycardScreenOptions = {
   stepBack?: () => boolean;
   /** onCancel only cancels the tap instead of also leaving the screen. */
   stayOnCancel?: boolean;
-  /** How the screen leaves after a cancel, in place of going back. */
+  /**
+   * How the screen leaves after a cancel, in place of going back. Navigate
+   * before awaiting anything: the sheet may navigate right after (Unblock PIN, the shop).
+   */
   leaveOnCancel?: () => void;
   /** The sheet shows its success state on done. */
   showOnDone?: boolean;
@@ -126,12 +129,26 @@ export function useKeycardScreen(options: UseKeycardScreenOptions): {
   // A held screen has nothing behind it: back means leave.
   const held = useCallback(() => optionsRef.current.hold === true, []);
 
+  const onCancel = useCallback(() => {
+    activeRef.current.cancel();
+    const { stayOnCancel, leaveOnCancel } = optionsRef.current;
+    if (stayOnCancel) {
+      return;
+    }
+    // Otherwise stepBack vetoes leaving once the tap is not busy (an error, Apple's cancel).
+    leavingRef.current = true;
+    if (leaveOnCancel) {
+      leaveOnCancel();
+    } else {
+      navigation.goBack();
+    }
+  }, [navigation]);
+
   useFocusEffect(
     useCallback(() => {
       const sub = BackHandler.addEventListener('hardwareBackPress', () => {
         if (keycardBusy()) {
-          activeRef.current.cancel();
-          navigation.goBack();
+          onCancel();
           return true;
         }
         if (held()) {
@@ -142,7 +159,7 @@ export function useKeycardScreen(options: UseKeycardScreenOptions): {
         return optionsRef.current.stepBack?.() ?? false;
       });
       return () => sub.remove();
-    }, [keycardBusy, held, leave, navigation]),
+    }, [keycardBusy, held, leave, onCancel]),
   );
 
   useEffect(() => {
@@ -166,19 +183,6 @@ export function useKeycardScreen(options: UseKeycardScreenOptions): {
     return unsubscribe;
   }, [navigation, keycardBusy, held, leave]);
 
-  const onCancel = useCallback(() => {
-    activeRef.current.cancel();
-    const { stayOnCancel, leaveOnCancel } = optionsRef.current;
-    if (stayOnCancel) {
-      return;
-    }
-    if (leaveOnCancel) {
-      leaveOnCancel();
-    } else {
-      navigation.goBack();
-    }
-  }, [navigation]);
-
   // Cancel on Apple's NFC sheet, the only one iOS gives during a tap.
   const userCancels = active.userCancels;
   // Per hook, so a hook handed back as activeKeycard is not read as cancelled.
@@ -189,10 +193,6 @@ export function useKeycardScreen(options: UseKeycardScreenOptions): {
     seenByHook.set(active.cancel, userCancels);
     if (seen === undefined || userCancels <= seen) {
       return;
-    }
-    // Phase is already 'idle'; the back guard would step the form back.
-    if (!optionsRef.current.stayOnCancel) {
-      leavingRef.current = true;
     }
     onCancel();
   }, [userCancels, active.cancel, onCancel]);

@@ -38,15 +38,14 @@ export default function KeycardScreen({
     navigation.reset({ index: 0, routes: [{ name: 'Dashboard' }] });
   }, [navigation]);
 
-  const rejectAndLeave = useCallback(async () => {
-    if (wcContext) {
-      try {
-        await respondError(wcContext, 4001, 'User rejected');
-      } catch {
-        // The relay may have expired.
-      }
-    }
+  // Leaves first: the sheet may navigate right after (Unblock PIN, the shop).
+  const rejectAndLeave = useCallback(() => {
     resetToDashboard();
+    if (wcContext) {
+      respondError(wcContext, 4001, 'User rejected').catch(() => {
+        // The relay may have expired.
+      });
+    }
   }, [wcContext, respondError, resetToDashboard]);
 
   const { sheet } = useKeycardScreen({

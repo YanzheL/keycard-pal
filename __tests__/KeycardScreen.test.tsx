@@ -532,6 +532,28 @@ describe('KeycardScreen', () => {
       });
     });
 
+    // The sheet navigates right after a cancel (Unblock PIN, the shop); a later reset would undo it.
+    it('leaves before the relay answers the reject', async () => {
+      mockRespondError.mockReturnValueOnce(new Promise(() => {}));
+      const wcSignRoute = {
+        ...signRoute,
+        params: { ...signRoute.params, wcContext: { id: 7, topic: 't' } },
+      };
+      mockUseKeycardOperation.mockReturnValue(hookMock('error'));
+      render(<KeycardScreen route={wcSignRoute} navigation={navigation} />);
+      await act(async () => {});
+
+      act(() => {
+        lastOnCancel()();
+      });
+
+      expect(mockRespondError).toHaveBeenCalled();
+      expect(navigation.reset).toHaveBeenCalledWith({
+        index: 0,
+        routes: [{ name: 'Dashboard' }],
+      });
+    });
+
     it("rejects the WalletConnect request and leaves when Apple's sheet is cancelled", async () => {
       const wcSignRoute = {
         ...signRoute,
