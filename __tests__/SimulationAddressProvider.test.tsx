@@ -16,6 +16,7 @@ const mockStart = jest.fn();
 const mockCancel = jest.fn();
 const mockOp = {
   phase: 'idle',
+  userCancels: 0,
   status: '',
   cardName: null,
   pinError: null,
@@ -82,14 +83,18 @@ function Consumer() {
   return <Text onPress={op.start}>consumer</Text>;
 }
 
-function renderProvider({ derivationPath }: { derivationPath?: string }) {
-  return render(
+function providerTree(derivationPath?: string) {
+  return (
     <View testID="root">
       <SimulationAddressProvider derivationPath={derivationPath}>
         <Consumer />
       </SimulationAddressProvider>
-    </View>,
+    </View>
   );
+}
+
+function renderProvider({ derivationPath }: { derivationPath?: string }) {
+  return render(providerTree(derivationPath));
 }
 
 const withPath = { derivationPath: PATH };
@@ -97,8 +102,12 @@ const withPath = { derivationPath: PATH };
 beforeEach(() => {
   capturedOperation = null;
   capturedOptions = null;
+  mockOp.phase = 'idle';
+  mockOp.userCancels = 0;
   mockStart.mockClear();
   mockCancel.mockClear();
+  mockNavigation.goBack.mockClear();
+  mockNavigation.setOptions.mockClear();
   mockPubKeyToEthAddress.mockClear();
 });
 
@@ -124,6 +133,29 @@ describe('SimulationAddressProvider', () => {
   it('cancels the op when the sheet cancels, and keeps the review', () => {
     renderProvider(withPath);
     screen.getByTestId('nfc-sheet').props.onCancel();
+    expect(mockCancel).toHaveBeenCalledTimes(1);
+    expect(mockNavigation.goBack).not.toHaveBeenCalled();
+  });
+
+  // The provider owns the review screen's title while its tap can run.
+  it("keeps the review's title, and names the PIN pad while it is up", () => {
+    mockOp.phase = 'pin_entry';
+    const view = renderProvider(withPath);
+    expect(mockNavigation.setOptions).toHaveBeenLastCalledWith({
+      title: 'Enter Keycard PIN',
+    });
+
+    mockOp.phase = 'idle';
+    view.rerender(providerTree(PATH));
+    expect(mockNavigation.setOptions).toHaveBeenLastCalledWith({
+      title: 'Review transaction',
+    });
+  });
+
+  it("keeps the review when Apple's sheet cancels the tap", () => {
+    const view = renderProvider(withPath);
+    mockOp.userCancels = 1;
+    view.rerender(providerTree(PATH));
     expect(mockCancel).toHaveBeenCalledTimes(1);
     expect(mockNavigation.goBack).not.toHaveBeenCalled();
   });

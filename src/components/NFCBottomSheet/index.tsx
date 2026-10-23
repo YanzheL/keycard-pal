@@ -101,8 +101,7 @@ export default function NFCBottomSheet({
   }, [onCancel, buyKeycard]);
   // A card that was on the antenna proves ownership, so the shop link is left out then.
   const onBuyKeycard =
-    !hideNoCardExit &&
-    (cardPresence === undefined || cardPresence === 'waiting')
+    !hideNoCardExit && cardPresence === 'waiting'
       ? handleBuyKeycard
       : undefined;
 

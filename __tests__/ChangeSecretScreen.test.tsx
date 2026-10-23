@@ -570,5 +570,16 @@ describe('ChangeSecretScreen', () => {
         title: 'Enter new PIN',
       });
     });
+
+    it('lets the screen go from the entry step', async () => {
+      await renderScreen('pin');
+      const event = { preventDefault: jest.fn() };
+
+      await act(async () => {
+        lastBeforeRemoveHandler()?.(event);
+      });
+
+      expect(event.preventDefault).not.toHaveBeenCalled();
+    });
   });
 });

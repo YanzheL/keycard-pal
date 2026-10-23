@@ -128,7 +128,6 @@ const mockNavigate = jest.fn();
 
 const navigation = {
   goBack: jest.fn(),
-  // Both sessions are torn down on beforeRemove.
   addListener: jest.fn(() => jest.fn()),
   setOptions: jest.fn(),
   navigate: mockNavigate,

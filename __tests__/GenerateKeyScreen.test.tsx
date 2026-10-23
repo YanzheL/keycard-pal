@@ -308,15 +308,9 @@ describe('GenerateKeyScreen', () => {
   });
 
   describe('header title', () => {
-    it('is "Enter Keycard PIN" only during PIN entry', () => {
-      const view = renderScreen('pin_entry');
-      expect(navigation.setOptions).toHaveBeenLastCalledWith({
-        title: 'Enter Keycard PIN',
-      });
-      mockUseGenerateKey.mockReturnValue(hookMock('nfc'));
-      view.rerender(
-        <GenerateKeyScreen navigation={navigation} route={route()} />,
-      );
+    // Generating takes no PIN, so the title holds through the tap.
+    it('stays "Backup recovery phrase" during the tap', () => {
+      renderScreen('nfc');
       expect(navigation.setOptions).toHaveBeenLastCalledWith({
         title: 'Backup recovery phrase',
       });
