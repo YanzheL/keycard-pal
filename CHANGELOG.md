@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- Try again after the card refuses a PIN, PUK or pairing secret change sends the entered secret again instead of an empty one
+
 ## [1.15.1] - 2026-10-20
 
 ### Changed

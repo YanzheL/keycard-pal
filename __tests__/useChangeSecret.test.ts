@@ -136,4 +136,59 @@ describe('useChangeSecret', () => {
     expect(cmdSet.changePairingPassword).toHaveBeenCalledWith('newpassword');
     expect(checkOK).toHaveBeenCalledTimes(1);
   });
+
+  // retry() runs the same closure again.
+  it.each([
+    ['pin', 'changePIN', '123456'],
+    ['puk', 'changePUK', '123456789012'],
+    ['pairing', 'changePairingPassword', 'newpassword'],
+  ] as const)(
+    'sends the entered %s again when a refused change is retried',
+    async (secretType, command, secret) => {
+      const { result } = renderHook(() => useChangeSecret(secretType));
+      await act(async () => {
+        result.current.start(secret);
+      });
+
+      const refused = {
+        checkOK: jest.fn(() => {
+          throw new Error('refused');
+        }),
+      };
+      const cmdSet = {
+        [command]: jest
+          .fn()
+          .mockResolvedValueOnce(refused)
+          .mockResolvedValueOnce({ checkOK: jest.fn() }),
+      };
+      await expect(capturedOperation!(cmdSet)).rejects.toThrow('refused');
+      await capturedOperation!(cmdSet);
+
+      expect(cmdSet[command]).toHaveBeenNthCalledWith(2, secret);
+    },
+  );
+
+  it.each(['success', 'cancel', 'reset'] as const)(
+    'drops the entered secret on %s',
+    async ending => {
+      const { result } = renderHook(() => useChangeSecret('pairing'));
+      await act(async () => {
+        result.current.start('newpassword');
+      });
+
+      const cmdSet = {
+        changePairingPassword: jest
+          .fn()
+          .mockResolvedValue({ checkOK: jest.fn() }),
+      };
+      if (ending === 'success') {
+        await capturedOperation!(cmdSet);
+      } else {
+        act(() => result.current[ending]());
+      }
+      await capturedOperation!(cmdSet);
+
+      expect(cmdSet.changePairingPassword).toHaveBeenLastCalledWith('');
+    },
+  );
 });

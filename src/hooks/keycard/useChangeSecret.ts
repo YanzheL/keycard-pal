@@ -26,8 +26,12 @@ export function useChangeSecret(
 ): UseChangeSecretOperation {
   const newSecretRef = useRef('');
 
-  const keycard = useKeycardOperation<void>();
-  const { execute, ...rest } = keycard;
+  const {
+    execute,
+    cancel: cancelOp,
+    reset: resetOp,
+    ...rest
+  } = useKeycardOperation<void>();
 
   const start = useCallback(
     (newSecret: string) => {
@@ -42,8 +46,9 @@ export function useChangeSecret(
           } else {
             resp = await cmdSet.changePairingPassword(newSecretRef.current);
           }
-          newSecretRef.current = '';
           resp.checkOK();
+          // Not before checkOK: retry() runs this closure again after a refusal.
+          newSecretRef.current = '';
         },
         {
           requiresMasterKey: false,
@@ -58,5 +63,15 @@ export function useChangeSecret(
     [execute, secretType],
   );
 
-  return { ...rest, start };
+  const cancel = useCallback(() => {
+    newSecretRef.current = '';
+    cancelOp();
+  }, [cancelOp]);
+
+  const reset = useCallback(() => {
+    newSecretRef.current = '';
+    resetOp();
+  }, [resetOp]);
+
+  return { ...rest, start, cancel, reset };
 }
