@@ -12,7 +12,11 @@ import { useKeycardOperation } from '@/hooks/keycard/useKeycardOperation';
 import { useKeycardScreen } from '@/hooks/useKeycardScreen';
 import { useWalletConnectSession } from '@/hooks/useWalletConnectSession.online';
 
-import { prepareKeycardFlow, type KeycardFlowRun } from '@/utils/keycardFlows';
+import {
+  prepareKeycardFlow,
+  type FlowOutcome,
+  type KeycardFlowRun,
+} from '@/utils/keycardFlows';
 
 export default function KeycardScreen({
   route,
@@ -59,27 +63,24 @@ export default function KeycardScreen({
     if (phase !== 'done' || result == null || !flowRef.current) {
       return;
     }
-    const flowRun = flowRef.current;
+    let outcome: FlowOutcome;
+    try {
+      outcome = flowRef.current.buildOutput(result);
+    } catch (e: any) {
+      setFlowError(
+        `Failed to build the result: ${e?.message ?? 'unknown error'}`,
+      );
+      return;
+    }
+
+    if (outcome.kind === 'wc-signature') {
+      // Sent at once: back on the success sheet must not turn it into a rejection.
+      const answered = respondSuccess(outcome.wcContext, outcome.rawSig);
+      const timer = setTimeout(() => answered.finally(resetToDashboard), 800);
+      return () => clearTimeout(timer);
+    }
 
     const timer = setTimeout(() => {
-      let outcome;
-      try {
-        outcome = flowRun.buildOutput(result);
-      } catch (e: any) {
-        setFlowError(
-          `Failed to build the result: ${e?.message ?? 'unknown error'}`,
-        );
-        return;
-      }
-
-      // Answered before the reset, so the provider sees no request left behind.
-      if (outcome.kind === 'wc-signature') {
-        respondSuccess(outcome.wcContext, outcome.rawSig).finally(() =>
-          resetToDashboard(),
-        );
-        return;
-      }
-
       if (outcome.doneNavigation === 'export') {
         navigation.reset({
           index: 2,

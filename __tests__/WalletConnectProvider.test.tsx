@@ -673,6 +673,75 @@ describe('WalletConnectProvider — leaving a request', () => {
     return hook;
   }
 
+  // Its own error answer is the only one, whatever the screens do meanwhile.
+  async function leaveDuringErrorAnswer(
+    request: object,
+    setUp: (session: unknown) => Promise<void> = async () => {},
+  ) {
+    const { result } = renderHook(() => useWalletConnectSession(), {
+      wrapper,
+    });
+    await waitForClientInit();
+    await setUp(result);
+    let finishAnswer = () => {};
+    mockRespondError.mockImplementationOnce(
+      () =>
+        new Promise<void>(resolve => {
+          finishAnswer = resolve;
+        }),
+    );
+    await act(async () => {
+      capturedHandlers.session_request?.(request);
+    });
+    await navigateTo([{ name: 'Dashboard' }]);
+    await act(async () => {
+      finishAnswer();
+    });
+  }
+
+  it('adds no rejection while Invalid params is on its way', async () => {
+    await leaveDuringErrorAnswer({
+      id: 55,
+      topic: 'topic-bad',
+      params: { request: { method: 'personal_sign', params: [] } },
+    });
+
+    expect(mockRespondError).toHaveBeenCalledTimes(1);
+    expect(mockRespondError).toHaveBeenCalledWith(
+      55,
+      'topic-bad',
+      -32602,
+      'Invalid params',
+    );
+  });
+
+  it('adds no rejection while Wallet not ready is on its way', async () => {
+    await leaveDuringErrorAnswer(
+      {
+        id: 56,
+        topic: 'topic',
+        params: {
+          request: {
+            method: 'personal_sign',
+            params: ['0xdeadbeef', signerAddress],
+          },
+        },
+      },
+      async session => {
+        await approveTestSession(session);
+        mockNavigationReady = false;
+      },
+    );
+
+    expect(mockRespondError).toHaveBeenCalledTimes(1);
+    expect(mockRespondError).toHaveBeenCalledWith(
+      56,
+      'topic',
+      -32000,
+      'Wallet not ready',
+    );
+  });
+
   it('rejects the request once no screen shows it', async () => {
     const { result } = await renderWithRequest();
 

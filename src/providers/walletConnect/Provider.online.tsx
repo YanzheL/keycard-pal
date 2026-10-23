@@ -115,29 +115,26 @@ export function WalletConnectProvider({
         }
 
         const req: WCRequest = { id, topic, method, params };
+        let result;
+        try {
+          result = wcRequestToScanResult(req, addressPathRef.current);
+        } catch {
+          await wcClient.respondError(id, topic, -32602, 'Invalid params');
+          return;
+        }
+        if (!navigationRef.isReady()) {
+          await wcClient.respondError(id, topic, -32000, 'Wallet not ready');
+          return;
+        }
+
+        // Claimed last: the state listener rejects a claimed request no route carries.
         activeRequestRef.current = req;
         respondedRef.current = false;
         setPendingRequest(req);
-
-        try {
-          const result = wcRequestToScanResult(req, addressPathRef.current);
-          if (navigationRef.isReady()) {
-            navigationRef.navigate('TransactionDetail', {
-              result,
-              wcContext: { id, topic },
-            });
-          } else {
-            await wcClient.respondError(id, topic, -32000, 'Wallet not ready');
-            activeRequestRef.current = null;
-            respondedRef.current = true;
-            setPendingRequest(null);
-          }
-        } catch {
-          await wcClient.respondError(id, topic, -32602, 'Invalid params');
-          activeRequestRef.current = null;
-          respondedRef.current = true;
-          setPendingRequest(null);
-        }
+        navigationRef.navigate('TransactionDetail', {
+          result,
+          wcContext: { id, topic },
+        });
       }
 
       function onDelete() {

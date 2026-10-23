@@ -613,14 +613,29 @@ describe('TransactionDetailScreen – WalletConnect context', () => {
 
   // The provider rejects a request left any other way.
   it('answers nothing itself when the screen is left', async () => {
-    const { navigation } = renderScreenWithWc({
+    mockNavigation.addListener.mockClear();
+    const { navigation, unmount } = renderScreenWithWc({
       kind: 'eth-sign-request',
       request: fullRequest,
     });
-    expect(navigation.addListener).not.toHaveBeenCalledWith(
-      'beforeRemove',
-      expect.any(Function),
-    );
+    const leaving = {
+      preventDefault: jest.fn(),
+      data: { action: { type: 'GO_BACK' } },
+    };
+    let fired = 0;
+    for (const nav of [navigation, mockNavigation]) {
+      for (const [event, listener] of (nav.addListener as jest.Mock).mock
+        .calls) {
+        if (event === 'beforeRemove') {
+          listener(leaving);
+          fired++;
+        }
+      }
+    }
+    unmount();
+    await act(async () => {});
+
+    expect(fired).toBeGreaterThan(0);
     expect(mockRejectRequest).not.toHaveBeenCalled();
   });
 });

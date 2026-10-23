@@ -189,6 +189,11 @@ async function renderWithMockedHook(route = signRoute) {
   return view;
 }
 
+function lastOnCancel() {
+  const calls = MockNFCBottomSheet.mock.calls;
+  return calls[calls.length - 1][0].onCancel as () => Promise<void>;
+}
+
 describe('KeycardScreen', () => {
   beforeEach(() => {
     jest.clearAllMocks();
@@ -473,11 +478,6 @@ describe('KeycardScreen', () => {
   });
 
   describe('handleCancel', () => {
-    function lastOnCancel() {
-      const calls = MockNFCBottomSheet.mock.calls;
-      return calls[calls.length - 1][0].onCancel as () => Promise<void>;
-    }
-
     // Back can leave mid-session: the reader is torn down without handleCancel's reset.
     it('cancels the session when the screen is removed', async () => {
       await renderScreen('nfc');
@@ -638,50 +638,71 @@ describe('KeycardScreen', () => {
   });
 
   describe('WalletConnect eth sign done', () => {
-    it('calls respondSuccess and resets to Dashboard instead of navigating to QRResult', async () => {
+    const wcSignRoute = {
+      params: {
+        operation: 'sign',
+        signMode: 'eth',
+        signData: 'deadbeef',
+        derivationPath: "m/44'/60'/0'/0",
+        dataType: 1,
+        chainId: 1,
+        wcContext: { id: 42, topic: 'wc-topic' },
+      },
+      key: 'Keycard',
+      name: 'Keycard',
+    } as any;
+
+    beforeEach(() => {
       const { buildRawEthHexSignature } =
         require('../src/utils/ethSignature') as {
           buildRawEthHexSignature: jest.Mock;
         };
       buildRawEthHexSignature.mockReturnValue('0xdeadbeef');
-
-      const wcSignRoute = {
-        params: {
-          operation: 'sign',
-          signMode: 'eth',
-          signData: 'deadbeef',
-          derivationPath: "m/44'/60'/0'/0",
-          dataType: 1,
-          chainId: 1,
-          wcContext: { id: 42, topic: 'wc-topic' },
-        },
-        key: 'Keycard',
-        name: 'Keycard',
-      } as any;
-
       mockUseKeycardOperation.mockReturnValue({
         ...hookMock('done'),
         result: new Uint8Array(65).fill(0xab),
       });
+    });
+
+    it('sends the signature at once and resets to Dashboard after the success sheet', async () => {
       await renderWithMockedHook(wcSignRoute);
-      await act(async () => {
-        jest.advanceTimersByTime(800);
-      });
-      await act(async () => {});
 
       expect(mockRespondSuccess).toHaveBeenCalledWith(
         { id: 42, topic: 'wc-topic' },
         '0xdeadbeef',
       );
+      expect(navigation.reset).not.toHaveBeenCalled();
+
+      await act(async () => {
+        jest.advanceTimersByTime(800);
+      });
+      await act(async () => {});
+
       expect(navigation.reset).toHaveBeenCalledWith({
         index: 0,
         routes: [{ name: 'Dashboard' }],
       });
     });
+
+    // Android's back closes the success sheet through its cancel.
+    it('keeps the signature when back closes the success sheet', async () => {
+      const view = await renderWithMockedHook(wcSignRoute);
+      await act(async () => {
+        await lastOnCancel()();
+      });
+      view.unmount();
+      await act(async () => {
+        jest.advanceTimersByTime(800);
+      });
+
+      expect(mockRespondSuccess).toHaveBeenCalledTimes(1);
+      expect(mockRejectRequest).not.toHaveBeenCalled();
+      expect(navigation.reset).toHaveBeenCalledTimes(1);
+    });
   });
 
   describe('UR build error handling', () => {
-    it('shows a visible error state when UR building throws inside the 800ms timer', async () => {
+    it('shows a visible error state when UR building throws', async () => {
       const { buildEthSignatureURFromResult } =
         require('../src/utils/ethSignature') as {
           buildEthSignatureURFromResult: jest.Mock;
