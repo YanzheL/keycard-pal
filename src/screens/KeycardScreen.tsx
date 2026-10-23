@@ -1,10 +1,4 @@
-import React, {
-  useCallback,
-  useEffect,
-  useLayoutEffect,
-  useRef,
-  useState,
-} from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { Text } from 'react-native-paper';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -12,10 +6,10 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { KeycardScreenProps } from '../navigation/types';
 import theme from '../theme';
 
-import NFCBottomSheet from '../components/NFCBottomSheet';
 import PrimaryButton from '../components/PrimaryButton';
 
 import { useKeycardOperation } from '../hooks/keycard/useKeycardOperation';
+import { useKeycardScreen } from '../hooks/useKeycardScreen';
 import { useWalletConnectSession } from '../hooks/useWalletConnectSession.online';
 
 import { prepareKeycardFlow, type KeycardFlowRun } from '../utils/keycardFlows';
@@ -29,8 +23,7 @@ export default function KeycardScreen({
   const flowRef = useRef<KeycardFlowRun | null>(null);
   const [flowError, setFlowError] = useState<string | null>(null);
 
-  // respondSuccess/respondError are idempotent behind the provider's
-  // interface — a second call for the same request is a no-op.
+  // Idempotent per request: a second answer does nothing.
   const { respondSuccess, respondError } = useWalletConnectSession();
 
   const wcContext =
@@ -39,21 +32,36 @@ export default function KeycardScreen({
       : undefined;
 
   const keycard = useKeycardOperation<unknown>();
-  const { phase, result, execute, cancel } = keycard;
+  const { phase, result, execute } = keycard;
 
   const resetToDashboard = useCallback(() => {
     navigation.reset({ index: 0, routes: [{ name: 'Dashboard' }] });
   }, [navigation]);
 
-  // Prepare the flow (all heavy local work, before NFC) and start the card
-  // operation. A prepare failure — e.g. an unparseable PSBT — becomes a
-  // visible error state instead of opening the PIN pad.
+  // Leaves first: the sheet may navigate right after (Unblock PIN, the shop).
+  const rejectAndLeave = useCallback(() => {
+    resetToDashboard();
+    if (wcContext) {
+      respondError(wcContext, 4001, 'User rejected').catch(() => {
+        // The relay may have expired.
+      });
+    }
+  }, [wcContext, respondError, resetToDashboard]);
+
+  const { sheet } = useKeycardScreen({
+    keycard,
+    navigation,
+    title: '',
+    leaveOnCancel: rejectAndLeave,
+    showOnDone: true,
+  });
+
+  // Heavy local work runs before NFC; a failure shows an error, not the PIN pad.
   useEffect(() => {
     try {
       const flowRun = prepareKeycardFlow(params);
       flowRef.current = flowRun;
-      // Signing and key export do not mutate card state: safe to re-run the
-      // flow from SELECT when the card is re-tapped after a mid-operation loss.
+      // Read-only on the card, so a re-tap may run it again.
       execute((cmdSet, { setStatus }) => flowRun.cardOp(cmdSet, setStatus), {
         retryOnTagLoss: true,
       });
@@ -120,33 +128,6 @@ export default function KeycardScreen({
     return () => clearTimeout(timer);
   }, [phase, result, navigation, wcContext, respondSuccess, resetToDashboard]);
 
-  useLayoutEffect(() => {
-    navigation.setOptions({ title: 'Enter Keycard PIN' });
-  }, [navigation]);
-
-  // The PIN pad no longer covers the navigator header, so the real back button
-  // and the iOS swipe-back gesture can leave this screen mid-session. Tear the
-  // NFC session down on the way out; navigation itself is already happening, so
-  // this deliberately does not call handleCancel's reset.
-  useEffect(() => {
-    const unsubscribe = navigation.addListener('beforeRemove', () => {
-      cancel();
-    });
-    return unsubscribe;
-  }, [navigation, cancel]);
-
-  const handleCancel = useCallback(async () => {
-    cancel();
-    if (wcContext) {
-      try {
-        await respondError(wcContext, 4001, 'User rejected');
-      } catch {
-        // ignore — relay may have already expired
-      }
-    }
-    resetToDashboard();
-  }, [cancel, wcContext, respondError, resetToDashboard]);
-
   return (
     <View style={[styles.container, { paddingBottom: insets.bottom + 16 }]}>
       {flowError !== null ? (
@@ -165,7 +146,7 @@ export default function KeycardScreen({
           </View>
         </View>
       ) : (
-        <NFCBottomSheet nfc={keycard} onCancel={handleCancel} showOnDone />
+        sheet
       )}
     </View>
   );

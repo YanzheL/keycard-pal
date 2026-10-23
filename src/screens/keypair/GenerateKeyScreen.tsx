@@ -7,10 +7,10 @@ import { GenerateKeyScreenProps } from '@/navigation/types';
 import theme from '@/theme';
 
 import BlurredSecret from '@/components/BlurredSecret';
-import NFCBottomSheet from '@/components/NFCBottomSheet';
 import PrimaryButton from '@/components/PrimaryButton';
 
 import { useGenerateKey } from '@/hooks/keycard/useGenerateKey';
+import { useKeycardScreen } from '@/hooks/useKeycardScreen';
 import { useSeedReviewTimer } from '@/hooks/useSeedReviewTimer';
 
 export const RECOVERY_PHRASE_HIDDEN_LABEL =
@@ -25,7 +25,7 @@ export default function GenerateKeyScreen({
   const timer = useSeedReviewTimer();
 
   const keycard = useGenerateKey(route.params.size);
-  const { phase, result, start, cancel } = keycard;
+  const { phase, result, start } = keycard;
   const withPassphrase = route.params.passphrase ?? false;
   const [passphrase, setPassphrase] = useState('');
 
@@ -39,10 +39,11 @@ export default function GenerateKeyScreen({
     }
   }, [revealed]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const handleCancel = useCallback(() => {
-    cancel();
-    navigation.goBack();
-  }, [cancel, navigation]);
+  const { sheet } = useKeycardScreen({
+    keycard,
+    navigation,
+    title: 'Backup recovery phrase',
+  });
 
   const [hasAttemptedConfirm, setHasAttemptedConfirm] = useState(false);
   const timerDone = timer.done || hasAttemptedConfirm;
@@ -142,7 +143,7 @@ export default function GenerateKeyScreen({
         </View>
       )}
 
-      <NFCBottomSheet nfc={keycard} onCancel={handleCancel} />
+      {sheet}
     </View>
   );
 }

@@ -140,12 +140,6 @@ export default function NFCSheet({
         </Pressable>
       )}
 
-      {variant === 'error' && !openNFCSettings && !onUnblockPin && !retry && (
-        <Text variant="bodyMedium" style={styles.retryHint}>
-          Tap your card to try again
-        </Text>
-      )}
-
       {variant === 'disconnected' && (
         <Text variant="bodyMedium" style={styles.retryHint}>
           Hold your Keycard against the phone again

@@ -9,6 +9,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Fixed
 
 - Try again after the card refuses a PIN, PUK or pairing secret change sends the entered secret again instead of an empty one
+- Cancel on Apple's NFC sheet leaves the signing, key export, key generation, Pairing slots and WalletConnect pairing screens, and rejects the WalletConnect request or proposal it was for
+- Pairing slots offers Open NFC Settings when a read stops because NFC is off
+- Cancel after a refused tap leaves Change PIN, Unblock PIN and Initialize instead of stepping back through the form
+- With a WalletConnect request or proposal open, Unblock PIN and Don't have a Keycard? from the NFC sheet stay open instead of returning to the Dashboard
+- The signing and key export screen's title reads "Enter Keycard PIN" only while the PIN pad is up
 
 ## [1.15.1] - 2026-10-20
 

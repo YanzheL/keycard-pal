@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef } from 'react';
+import React, { useEffect, useRef } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -11,7 +11,6 @@ import {
 import type { ChangeSecretScreenProps, SecretType } from '@/navigation/types';
 import theme from '@/theme';
 
-import NFCBottomSheet from '@/components/NFCBottomSheet';
 import PinPad from '@/components/PinPad';
 import PrimaryButton from '@/components/PrimaryButton';
 import TextEntry from '@/components/TextEntry';
@@ -104,34 +103,22 @@ export default function ChangeSecretScreen({
     length: config.length,
   });
 
-  const onScreenBack = useCallback(() => {
-    const handled = entry.goBack();
-    if (!handled) {
-      navigation.goBack();
-    }
-    return true;
-  }, [entry, navigation]);
-
   const stepTitle =
     entry.step === 'entry' ? config.entryTitle : config.confirmTitle;
 
   // `keycard` stays the change, so only the second tap ends the screen.
   const activeKeycard = identifying ? identify : keycard;
 
-  const { onCancel } = useKeycardScreen({
+  const { sheet } = useKeycardScreen({
     keycard,
     activeKeycard,
     navigation,
     title: identifying || unavailable ? PAIRING_SECRET_TITLE : stepTitle,
     pinEntryTitle: 'Enter current PIN',
     done: { toast: config.toast },
-    onHardwareBack: onScreenBack,
-    onBeforeRemove: e => {
-      if (entry.step === 'confirm') {
-        e.preventDefault();
-        entry.goBack();
-      }
-    },
+    stepBack: entry.goBack,
+    // The identify tap's done is no outcome: the sheet steps aside for the input.
+    showOnDone: !identifying,
   });
 
   if (unavailable) {
@@ -194,13 +181,7 @@ export default function ChangeSecretScreen({
         />
       )}
 
-      {/* The identify tap ends in 'done' too, and that is not an outcome to
-          celebrate: the sheet just steps aside for the input. */}
-      <NFCBottomSheet
-        nfc={activeKeycard}
-        onCancel={onCancel}
-        showOnDone={!identifying}
-      />
+      {sheet}
     </View>
   );
 }

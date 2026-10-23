@@ -207,24 +207,13 @@ describe('AddressSelectionPhase', () => {
 });
 
 describe('ApprovingPhase', () => {
-  it('renders tap prompt and calls onCancel', async () => {
-    const onCancel = jest.fn();
-    const fakeOp = {
-      phase: 'idle',
-      status: '',
-      result: null,
-      start: jest.fn(),
-      cancel: jest.fn(),
-      submitPin: jest.fn(),
-    };
+  it('renders the tap prompt and the sheet it is given', async () => {
+    const { Text } = require('react-native');
     render(
-      <ApprovingPhase
-        accountKeyOp={fakeOp as any}
-        insets={insets}
-        onCancel={onCancel}
-      />,
+      <ApprovingPhase insets={insets} sheet={<Text>keycard sheet</Text>} />,
     );
     expect(screen.getByText('Tap Keycard to connect…')).toBeTruthy();
+    expect(screen.getByText('keycard sheet')).toBeTruthy();
   });
 });
 

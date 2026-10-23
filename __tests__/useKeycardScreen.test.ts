@@ -16,6 +16,8 @@ jest.mock('@react-navigation/native', () => {
   };
 });
 
+jest.mock('../src/components/NFCBottomSheet', () => jest.fn(() => null));
+
 function makeNavigation() {
   return {
     goBack: jest.fn(),
@@ -26,7 +28,16 @@ function makeNavigation() {
 }
 
 function makeKeycard(phase: string, result: unknown = null) {
-  return { phase: phase as any, result, cancel: jest.fn() };
+  return {
+    phase: phase as any,
+    status: '',
+    cardPresence: 'waiting' as const,
+    retry: jest.fn(),
+    openNFCSettings: undefined,
+    userCancels: 0,
+    result,
+    cancel: jest.fn(),
+  };
 }
 
 // reset() and goBack() ask the beforeRemove listeners first, as React
@@ -61,7 +72,7 @@ function makeNavigationThatAsksFirst() {
 
 /** A step machine like InitCardScreen's: back steps the form, never leaves. */
 function stepGuard() {
-  return jest.fn((e: { preventDefault: () => void }) => e.preventDefault());
+  return jest.fn(() => true);
 }
 
 function renderScreenHook(options: UseKeycardScreenOptions) {
@@ -237,6 +248,77 @@ describe('onCancel', () => {
     expect(keycard.cancel).toHaveBeenCalled();
     expect(navigation.goBack).not.toHaveBeenCalled();
   });
+
+  it('leaves through leaveOnCancel instead of going back', () => {
+    const navigation = makeNavigation();
+    const keycard = makeKeycard('nfc');
+    const leaveOnCancel = jest.fn();
+    const { result } = renderScreenHook({
+      keycard,
+      navigation,
+      title: 'T',
+      leaveOnCancel,
+    });
+    result.current.onCancel();
+    expect(keycard.cancel).toHaveBeenCalled();
+    expect(leaveOnCancel).toHaveBeenCalledTimes(1);
+    expect(navigation.goBack).not.toHaveBeenCalled();
+  });
+
+  it('stayOnCancel wins over leaveOnCancel', () => {
+    const navigation = makeNavigation();
+    const keycard = makeKeycard('nfc');
+    const leaveOnCancel = jest.fn();
+    const { result } = renderScreenHook({
+      keycard,
+      navigation,
+      title: 'T',
+      stayOnCancel: true,
+      leaveOnCancel,
+    });
+    result.current.onCancel();
+    expect(keycard.cancel).toHaveBeenCalled();
+    expect(leaveOnCancel).not.toHaveBeenCalled();
+    expect(navigation.goBack).not.toHaveBeenCalled();
+  });
+
+  // Cancel on the error sheet: the tap is no longer busy, so only leavingRef keeps stepBack out.
+  it("leaves from an error past the screen's step guard", () => {
+    const { navigation, left } = makeNavigationThatAsksFirst();
+    const stepBack = stepGuard();
+    const keycard = makeKeycard('error');
+    const { result } = renderScreenHook({
+      keycard,
+      navigation,
+      title: 'T',
+      stepBack,
+    });
+    result.current.onCancel();
+    expect(keycard.cancel).toHaveBeenCalled();
+    expect(stepBack).not.toHaveBeenCalled();
+    expect(left).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('sheet', () => {
+  it('takes the active hook, onCancel and the sheet options', () => {
+    const navigation = makeNavigation();
+    const activeKeycard = makeKeycard('nfc');
+    const { result } = renderScreenHook({
+      keycard: makeKeycard('idle'),
+      activeKeycard,
+      navigation,
+      title: 'T',
+      showOnDone: true,
+      hideNoCardExit: true,
+    });
+    expect(result.current.sheet.props).toEqual({
+      nfc: activeKeycard,
+      onCancel: result.current.onCancel,
+      showOnDone: true,
+      hideNoCardExit: true,
+    });
+  });
 });
 
 describe('back guard', () => {
@@ -261,18 +343,55 @@ describe('back guard', () => {
     expect(keycard.cancel).toHaveBeenCalled();
   });
 
-  it('hardware back when idle defers to the screen fallback', () => {
+  it('hardware back during a tap stays with stayOnCancel', () => {
     const navigation = makeNavigation();
-    const keycard = makeKeycard('idle');
-    const onHardwareBack = jest.fn(() => true);
-    renderScreenHook({ keycard, navigation, title: 'T', onHardwareBack });
+    const keycard = makeKeycard('nfc');
+    renderScreenHook({ keycard, navigation, title: 'T', stayOnCancel: true });
 
     expect(capturedBackHandler(backSpy)()).toBe(true);
-    expect(onHardwareBack).toHaveBeenCalled();
+    expect(keycard.cancel).toHaveBeenCalled();
+    expect(navigation.goBack).not.toHaveBeenCalled();
+  });
+
+  it('hardware back during a tap leaves through leaveOnCancel', () => {
+    const navigation = makeNavigation();
+    const keycard = makeKeycard('pin_entry');
+    const leaveOnCancel = jest.fn();
+    renderScreenHook({ keycard, navigation, title: 'T', leaveOnCancel });
+
+    expect(capturedBackHandler(backSpy)()).toBe(true);
+    expect(keycard.cancel).toHaveBeenCalled();
+    expect(leaveOnCancel).toHaveBeenCalledTimes(1);
+    expect(navigation.goBack).not.toHaveBeenCalled();
+  });
+
+  it('hardware back when idle steps the screen back', () => {
+    const navigation = makeNavigation();
+    const keycard = makeKeycard('idle');
+    const stepBack = jest.fn(() => true);
+    renderScreenHook({ keycard, navigation, title: 'T', stepBack });
+
+    expect(capturedBackHandler(backSpy)()).toBe(true);
+    expect(stepBack).toHaveBeenCalled();
     expect(keycard.cancel).not.toHaveBeenCalled();
   });
 
-  it('hardware back when idle without a fallback lets the system handle it', () => {
+  it('hardware back with nothing to step back lets the system go back', () => {
+    const navigation = makeNavigation();
+    const stepBack = jest.fn(() => false);
+    renderScreenHook({
+      keycard: makeKeycard('idle'),
+      navigation,
+      title: 'T',
+      stepBack,
+    });
+
+    expect(capturedBackHandler(backSpy)()).toBe(false);
+    expect(stepBack).toHaveBeenCalled();
+    expect(navigation.goBack).not.toHaveBeenCalled();
+  });
+
+  it('hardware back when idle without stepBack lets the system handle it', () => {
     const navigation = makeNavigation();
     renderScreenHook({
       keycard: makeKeycard('idle'),
@@ -285,29 +404,71 @@ describe('back guard', () => {
   it('beforeRemove during an active tap cancels without preventing removal', () => {
     const navigation = makeNavigation();
     const keycard = makeKeycard('nfc');
-    const onBeforeRemove = jest.fn();
-    renderScreenHook({ keycard, navigation, title: 'T', onBeforeRemove });
+    const stepBack = jest.fn(() => true);
+    renderScreenHook({ keycard, navigation, title: 'T', stepBack });
 
     const e = { preventDefault: jest.fn() };
     capturedBeforeRemove(navigation)(e);
 
     expect(keycard.cancel).toHaveBeenCalled();
     expect(e.preventDefault).not.toHaveBeenCalled();
-    expect(onBeforeRemove).not.toHaveBeenCalled();
+    expect(stepBack).not.toHaveBeenCalled();
   });
 
-  it('beforeRemove when idle defers to the screen fallback', () => {
+  it('beforeRemove when idle stays when the screen steps back', () => {
     const navigation = makeNavigation();
     const keycard = makeKeycard('idle');
-    const onBeforeRemove = jest.fn(e => e.preventDefault());
-    renderScreenHook({ keycard, navigation, title: 'T', onBeforeRemove });
+    const stepBack = jest.fn(() => true);
+    renderScreenHook({ keycard, navigation, title: 'T', stepBack });
 
     const e = { preventDefault: jest.fn() };
     capturedBeforeRemove(navigation)(e);
 
-    expect(onBeforeRemove).toHaveBeenCalledWith(e);
+    expect(stepBack).toHaveBeenCalled();
     expect(e.preventDefault).toHaveBeenCalled();
     expect(keycard.cancel).not.toHaveBeenCalled();
+  });
+
+  it('beforeRemove lets the screen go when nothing is left to step back', () => {
+    const navigation = makeNavigation();
+    const stepBack = jest.fn(() => false);
+    renderScreenHook({
+      keycard: makeKeycard('idle'),
+      navigation,
+      title: 'T',
+      stepBack,
+    });
+
+    const e = { preventDefault: jest.fn() };
+    capturedBeforeRemove(navigation)(e);
+
+    expect(stepBack).toHaveBeenCalled();
+    expect(e.preventDefault).not.toHaveBeenCalled();
+  });
+
+  // Hardware back on the first step: the system's goBack fires beforeRemove.
+  it('one stepBack answers hardware back and the removal it leads to', () => {
+    const { navigation, left } = makeNavigationThatAsksFirst();
+    let onConfirmStep = true;
+    const stepBack = jest.fn(() => {
+      const stepped = onConfirmStep;
+      onConfirmStep = false;
+      return stepped;
+    });
+    renderScreenHook({
+      keycard: makeKeycard('idle'),
+      navigation,
+      title: 'T',
+      stepBack,
+    });
+    const back = capturedBackHandler(backSpy);
+
+    expect(back()).toBe(true);
+    expect(left).not.toHaveBeenCalled();
+
+    expect(back()).toBe(false);
+    navigation.goBack();
+    expect(left).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -316,12 +477,12 @@ describe('done navigation against a screen with its own back guard', () => {
   // the back guard is long registered by the time the operation is done.
   it('leaves when the operation is done, whatever step the form is on', () => {
     const { navigation, left } = makeNavigationThatAsksFirst();
-    const onBeforeRemove = stepGuard();
+    const stepBack = stepGuard();
     const options = {
       navigation,
       title: 'T',
       done: { toast: 'Card initialized', requireResult: true },
-      onBeforeRemove,
+      stepBack,
     };
     const { rerender } = renderScreenHook({
       ...options,
@@ -336,35 +497,35 @@ describe('done navigation against a screen with its own back guard', () => {
       routes: [{ name: 'Dashboard', params: { toast: 'Card initialized' } }],
     });
     // The form is not stepped back either: nothing is left to go back to.
-    expect(onBeforeRemove).not.toHaveBeenCalled();
+    expect(stepBack).not.toHaveBeenCalled();
   });
 
   it('still lets the screen veto a real back press before the operation', () => {
     const { navigation } = makeNavigationThatAsksFirst();
-    const onBeforeRemove = stepGuard();
+    const stepBack = stepGuard();
     renderScreenHook({
       keycard: makeKeycard('idle'),
       navigation,
       title: 'T',
       done: { toast: 'Card initialized' },
-      onBeforeRemove,
+      stepBack,
     });
 
     const e = { preventDefault: jest.fn() };
     capturedBeforeRemove(navigation as any)(e);
-    expect(onBeforeRemove).toHaveBeenCalledWith(e);
+    expect(stepBack).toHaveBeenCalled();
     expect(e.preventDefault).toHaveBeenCalled();
   });
 
   it('leaves once the operation finishes, after earlier back presses were vetoed', () => {
     const { navigation, left } = makeNavigationThatAsksFirst();
-    const onBeforeRemove = stepGuard();
+    const stepBack = stepGuard();
     const { rerender } = renderScreenHook({
       keycard: makeKeycard('idle'),
       navigation,
       title: 'T',
       done: { toast: 'PIN changed' },
-      onBeforeRemove,
+      stepBack,
     });
     capturedBeforeRemove(navigation as any)({ preventDefault: jest.fn() });
     expect(left).not.toHaveBeenCalled();
@@ -374,7 +535,7 @@ describe('done navigation against a screen with its own back guard', () => {
       navigation,
       title: 'T',
       done: { toast: 'PIN changed' },
-      onBeforeRemove,
+      stepBack,
     });
     expect(left).toHaveBeenCalledTimes(1);
   });
@@ -400,16 +561,16 @@ describe('held screen', () => {
 
   it('leave() resets to Dashboard with the toast, past the screen guard', () => {
     const { navigation, left } = makeNavigationThatAsksFirst();
-    const onBeforeRemove = stepGuard();
+    const stepBack = stepGuard();
     const { result } = renderScreenHook({
       ...options,
       keycard: makeKeycard('done'),
       navigation,
-      onBeforeRemove,
+      stepBack,
     });
     result.current.leave();
     expect(left).toHaveBeenCalledWith(dashboard);
-    expect(onBeforeRemove).not.toHaveBeenCalled();
+    expect(stepBack).not.toHaveBeenCalled();
   });
 
   it('leave() computes the toast from the result', () => {
@@ -448,54 +609,54 @@ describe('held screen', () => {
 
   it('hardware back on the held screen leaves, not the screen fallback', () => {
     const navigation = makeNavigation();
-    const onHardwareBack = jest.fn(() => true);
+    const stepBack = jest.fn(() => true);
     renderScreenHook({
       ...options,
       keycard: makeKeycard('done'),
       navigation,
-      onHardwareBack,
+      stepBack,
     });
     expect(capturedBackHandler(backSpy)()).toBe(true);
     expect(navigation.reset).toHaveBeenCalledWith(dashboard);
-    expect(onHardwareBack).not.toHaveBeenCalled();
+    expect(stepBack).not.toHaveBeenCalled();
     expect(navigation.goBack).not.toHaveBeenCalled();
   });
 
   it('a back gesture on the held screen is turned into the Dashboard reset', () => {
     const { navigation, left } = makeNavigationThatAsksFirst();
-    const onBeforeRemove = stepGuard();
+    const stepBack = stepGuard();
     renderScreenHook({
       ...options,
       keycard: makeKeycard('done'),
       navigation,
-      onBeforeRemove,
+      stepBack,
     });
     // goBack asks the listeners like a swipe would; the hold answers with reset.
     navigation.goBack();
     expect(left).toHaveBeenCalledTimes(1);
     expect(left).toHaveBeenCalledWith(dashboard);
-    expect(onBeforeRemove).not.toHaveBeenCalled();
+    expect(stepBack).not.toHaveBeenCalled();
   });
 
   // The screen scopes the hold; a back press outside it still reaches the screen.
   it('follows the hold as it changes', () => {
     const navigation = makeNavigation();
-    const onBeforeRemove = jest.fn();
+    const stepBack = jest.fn(() => false);
     const base = {
       ...options,
       keycard: makeKeycard('idle'),
       navigation,
-      onBeforeRemove,
+      stepBack,
     };
     const { rerender } = renderScreenHook({ ...base, hold: false });
     const e = { preventDefault: jest.fn() };
     capturedBeforeRemove(navigation)(e);
-    expect(onBeforeRemove).toHaveBeenCalledWith(e);
+    expect(stepBack).toHaveBeenCalledTimes(1);
     expect(navigation.reset).not.toHaveBeenCalled();
 
     rerender({ ...base, hold: true });
     capturedBeforeRemove(navigation)(e);
-    expect(onBeforeRemove).toHaveBeenCalledTimes(1);
+    expect(stepBack).toHaveBeenCalledTimes(1);
     expect(navigation.reset).toHaveBeenCalledWith(dashboard);
   });
 
@@ -539,6 +700,20 @@ describe("cancel from Apple's NFC sheet", () => {
     expect(navigation.goBack).not.toHaveBeenCalled();
   });
 
+  it('leaves through leaveOnCancel', () => {
+    const navigation = makeNavigation();
+    const keycard = makeKeycard('idle');
+    const leaveOnCancel = jest.fn();
+    const options = { keycard, navigation, title: 'T', leaveOnCancel };
+    const { rerender } = renderScreenHook(options);
+
+    rerender({ ...options, keycard: { ...keycard, userCancels: 1 } });
+
+    expect(keycard.cancel).toHaveBeenCalledTimes(1);
+    expect(leaveOnCancel).toHaveBeenCalledTimes(1);
+    expect(navigation.goBack).not.toHaveBeenCalled();
+  });
+
   it('cancels again when a re-tap is cancelled too', () => {
     const navigation = makeNavigation();
     const keycard = makeKeycard('idle');
@@ -575,27 +750,27 @@ describe("cancel from Apple's NFC sheet", () => {
 
   it("leaves instead of stepping the screen's own form back", () => {
     const { navigation, left } = makeNavigationThatAsksFirst();
-    const onBeforeRemove = stepGuard();
+    const stepBack = stepGuard();
     const keycard = makeKeycard('idle');
-    const options = { keycard, navigation, title: 'T', onBeforeRemove };
+    const options = { keycard, navigation, title: 'T', stepBack };
     const { rerender } = renderScreenHook(options);
 
     rerender({ ...options, keycard: { ...keycard, userCancels: 1 } });
 
     expect(keycard.cancel).toHaveBeenCalled();
-    expect(onBeforeRemove).not.toHaveBeenCalled();
+    expect(stepBack).not.toHaveBeenCalled();
     expect(left).toHaveBeenCalled();
   });
 
   it('still lets the screen veto a real back press afterwards', () => {
     const { navigation } = makeNavigationThatAsksFirst();
-    const onBeforeRemove = stepGuard();
+    const stepBack = stepGuard();
     const keycard = makeKeycard('idle');
     const options = {
       keycard,
       navigation,
       title: 'T',
-      onBeforeRemove,
+      stepBack,
       stayOnCancel: true,
     };
     const { rerender } = renderScreenHook(options);
@@ -604,7 +779,7 @@ describe("cancel from Apple's NFC sheet", () => {
     const e = { preventDefault: jest.fn() };
     capturedBeforeRemove(navigation as any)(e);
 
-    expect(onBeforeRemove).toHaveBeenCalledWith(e);
+    expect(stepBack).toHaveBeenCalled();
     expect(e.preventDefault).toHaveBeenCalled();
   });
 });
@@ -688,6 +863,29 @@ describe('activeKeycard override', () => {
 
     rerender({ ...options, activeKeycard: { ...keycard, userCancels: 1 } });
     expect(keycard.cancel).toHaveBeenCalledTimes(1);
+  });
+
+  // PairingSlotsScreen hands the read and the unpair back and forth.
+  it('does not read a hook handed back with its old count as a cancel', () => {
+    const navigation = makeNavigation();
+    const read = makeKeycard('idle');
+    const unpair = makeKeycard('idle');
+    const options = {
+      keycard: read,
+      navigation,
+      title: 'T',
+      stayOnCancel: true,
+    };
+    const { rerender } = renderScreenHook({
+      ...options,
+      activeKeycard: { ...unpair, userCancels: 0 },
+    });
+    rerender({ ...options, activeKeycard: { ...unpair, userCancels: 1 } });
+    expect(unpair.cancel).toHaveBeenCalledTimes(1);
+
+    rerender({ ...options, activeKeycard: { ...read, userCancels: 0 } });
+    rerender({ ...options, activeKeycard: { ...unpair, userCancels: 1 } });
+    expect(unpair.cancel).toHaveBeenCalledTimes(1);
   });
 
   it("PIN-entry title keys on the active hook's phase", () => {

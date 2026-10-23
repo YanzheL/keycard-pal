@@ -26,14 +26,18 @@ export interface SlotInfo {
 export interface UsePairingSlots {
   phase: NFCSessionPhase;
   cardPresence: CardPresence;
+  userCancels: number;
   slotInfo: SlotInfo | null;
   /** A tap showed a card without pairing slots. The read still ends in 'done'. */
   noPairingSlots: boolean;
   status: string;
   checkSlots: () => void;
+  /** Same as `checkSlots`, for the sheet's "Try again". */
+  retry: () => void;
   cancel: () => void;
   reset: () => void;
   resetNFCOnly: () => void;
+  openNFCSettings: (() => void) | undefined;
   readSlotInfoFromCmdSet: (cmdSet: Commandset) => Promise<void>;
 }
 
@@ -79,6 +83,8 @@ export function usePairingSlots(): UsePairingSlots {
     phase,
     status,
     cardPresence,
+    userCancels,
+    openNFCSettings,
   } = useNFCOperation(handleConnected, {
     // Read-only SELECT-response read: safe to re-run on a re-tap.
     retryOnTagLoss: true,
@@ -120,13 +126,16 @@ export function usePairingSlots(): UsePairingSlots {
   return {
     phase,
     cardPresence,
+    userCancels,
     slotInfo,
     noPairingSlots,
     status,
     checkSlots,
+    retry: checkSlots,
     cancel,
     reset,
     resetNFCOnly,
+    openNFCSettings,
     readSlotInfoFromCmdSet,
   };
 }

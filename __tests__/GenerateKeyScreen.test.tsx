@@ -29,6 +29,10 @@ jest.mock('@react-native-community/blur', () => ({
   BlurView: 'BlurView',
 }));
 
+jest.mock('@react-navigation/native', () => ({
+  useFocusEffect: jest.fn(),
+}));
+
 jest.mock('../src/components/NFCBottomSheet', () => jest.fn(() => null));
 const MockNFCBottomSheet = NFCBottomSheet as jest.MockedFunction<
   typeof NFCBottomSheet
@@ -65,6 +69,7 @@ const navigation = {
   goBack: jest.fn(),
   navigate: jest.fn(),
   setOptions: jest.fn(),
+  addListener: jest.fn(() => jest.fn()),
 } as any;
 
 const route = (withPassphrase = false) =>
@@ -75,7 +80,14 @@ const route = (withPassphrase = false) =>
   } as any);
 
 function hookMock(phase: string, result: string[] | null = null) {
-  return { phase, status: '', result, start: mockStart, cancel: mockCancel };
+  return {
+    phase,
+    status: '',
+    result,
+    start: mockStart,
+    cancel: mockCancel,
+    userCancels: 0,
+  };
 }
 
 function renderScreen(
@@ -279,6 +291,29 @@ describe('GenerateKeyScreen', () => {
       });
       expect(mockCancel).toHaveBeenCalledTimes(1);
       expect(navigation.goBack).toHaveBeenCalledTimes(1);
+    });
+
+    it("leaves when Apple's sheet is cancelled", () => {
+      const view = renderScreen('nfc');
+      mockUseGenerateKey.mockReturnValue({
+        ...hookMock('idle'),
+        userCancels: 1,
+      });
+      view.rerender(
+        <GenerateKeyScreen navigation={navigation} route={route()} />,
+      );
+      expect(mockCancel).toHaveBeenCalledTimes(1);
+      expect(navigation.goBack).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('header title', () => {
+    // Generating takes no PIN, so the title holds through the tap.
+    it('stays "Backup recovery phrase" during the tap', () => {
+      renderScreen('nfc');
+      expect(navigation.setOptions).toHaveBeenLastCalledWith({
+        title: 'Backup recovery phrase',
+      });
     });
   });
 });

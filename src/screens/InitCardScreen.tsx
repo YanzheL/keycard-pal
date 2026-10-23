@@ -7,7 +7,6 @@ import { DashboardAction, InitCardScreenProps } from '../navigation/types';
 import theme from '../theme';
 
 import ConfirmPrompt from '../components/ConfirmPropmpt';
-import NFCBottomSheet from '../components/NFCBottomSheet';
 import PinPad from '../components/PinPad';
 import PukReview from '../components/PukReview';
 
@@ -62,13 +61,9 @@ export default function InitCardScreen({ navigation }: InitCardScreenProps) {
     startInit(null);
   }, [startInit]);
 
-  const onScreenBack = useCallback(() => {
+  const stepBack = useCallback(() => {
     if (screenStep === 'pin_setup') {
-      const handled = pinSetup.goBack();
-      if (!handled) {
-        navigation.goBack();
-      }
-      return true;
+      return pinSetup.goBack();
     }
 
     if (screenStep === 'duress_question') {
@@ -77,12 +72,11 @@ export default function InitCardScreen({ navigation }: InitCardScreenProps) {
       return true;
     }
 
-    const handled = duressSetup.goBack();
-    if (!handled) {
+    if (!duressSetup.goBack()) {
       setScreenStep('duress_question');
     }
     return true;
-  }, [screenStep, pinSetup, duressSetup, navigation]);
+  }, [screenStep, pinSetup, duressSetup]);
 
   const title = (() => {
     if (showPuk) {
@@ -100,34 +94,14 @@ export default function InitCardScreen({ navigation }: InitCardScreenProps) {
   })();
 
   // The screen stays for the PUK; no toast when the card may not hold it.
-  const { onCancel, leave } = useKeycardScreen({
+  const { leave, sheet } = useKeycardScreen({
     keycard,
     navigation,
     title,
     done: { toast: () => (uncertainPuk ? undefined : 'Card initialized') },
     hold: showPuk,
     stayOnCancel: initSent,
-    onHardwareBack: onScreenBack,
-    onBeforeRemove: e => {
-      if (screenStep === 'pin_setup' && pinSetup.step === 'confirm') {
-        e.preventDefault();
-        pinSetup.goBack();
-        return;
-      }
-      if (screenStep === 'duress_question') {
-        e.preventDefault();
-        setScreenStep('pin_setup');
-        pinSetup.jumpToConfirm();
-        return;
-      }
-      if (screenStep === 'duress_setup') {
-        e.preventDefault();
-        const handled = duressSetup.goBack();
-        if (!handled) {
-          setScreenStep('duress_question');
-        }
-      }
-    },
+    stepBack,
   });
 
   const activePinSetup =
@@ -167,7 +141,7 @@ export default function InitCardScreen({ navigation }: InitCardScreenProps) {
         <PukReview puk={puk} uncertain={uncertainPuk} onDone={leave} />
       )}
 
-      <NFCBottomSheet nfc={keycard} onCancel={onCancel} />
+      {sheet}
     </View>
   );
 }

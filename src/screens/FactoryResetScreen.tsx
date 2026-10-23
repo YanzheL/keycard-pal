@@ -7,7 +7,6 @@ import { Icons } from '../assets/icons';
 import { DashboardAction, FactoryResetSreenProps } from '../navigation/types';
 import theme from '../theme';
 
-import NFCBottomSheet from '../components/NFCBottomSheet';
 import PrimaryButton from '../components/PrimaryButton';
 
 import { useFactoryReset } from '../hooks/keycard/useFactoryReset';
@@ -28,11 +27,12 @@ export default function FactoryResetScreen({
   const keycard = useFactoryReset();
   const { phase, start } = keycard;
 
-  const { onCancel } = useKeycardScreen({
+  const { sheet } = useKeycardScreen({
     keycard,
     navigation,
     title: 'Factory reset',
     done: { toast: 'Factory reset done' },
+    showOnDone: true,
   });
 
   const handleStart = useCallback(() => {
@@ -79,7 +79,7 @@ export default function FactoryResetScreen({
         </View>
       )}
 
-      <NFCBottomSheet nfc={keycard} onCancel={onCancel} showOnDone />
+      {sheet}
     </View>
   );
 }

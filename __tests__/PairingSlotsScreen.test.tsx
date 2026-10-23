@@ -128,7 +128,6 @@ const mockNavigate = jest.fn();
 
 const navigation = {
   goBack: jest.fn(),
-  // Both sessions are torn down on beforeRemove.
   addListener: jest.fn(() => jest.fn()),
   setOptions: jest.fn(),
   navigate: mockNavigate,
@@ -150,7 +149,10 @@ function makeCheckHook(
     status: phase === 'nfc' ? 'Selecting applet...' : '',
     slotInfo,
     noPairingSlots,
+    userCancels: 0,
     checkSlots: mockCheckSlots,
+    retry: mockCheckSlots,
+    openNFCSettings: undefined as (() => void) | undefined,
     cancel: mockCancel,
     reset: jest.fn(),
     resetNFCOnly: jest.fn(),
@@ -186,6 +188,38 @@ function renderScreen(
   );
 }
 
+const unpairSlotInfo = {
+  totalSlots: 10,
+  freeSlots: 7,
+  ourSlotIndex: 3,
+  cardKey: 'abcd',
+};
+
+async function confirmUnpair(slotLabel: string) {
+  fireEvent.press(screen.getByText(slotLabel));
+  await act(async () => {
+    fireEvent.press(screen.getByText('Unpair'));
+  });
+}
+
+function rerenderWith(
+  view: ReturnType<typeof render>,
+  checkPhase: string,
+  unpairPhase: string,
+  unpairCancels = 0,
+) {
+  mockUsePairingSlots.mockReturnValue(
+    makeCheckHook(checkPhase, unpairSlotInfo),
+  );
+  mockUseKeycardOperation.mockReturnValue({
+    ...makeUnpairHook(unpairPhase),
+    userCancels: unpairCancels,
+  });
+  view.rerender(
+    <PairingSlotsScreen navigation={navigation} route={undefined as any} />,
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
@@ -203,7 +237,7 @@ describe('PairingSlotsScreen', () => {
     MockNFCBottomSheet.mockClear();
   });
 
-  describe('auto-start on focus', () => {
+  describe('auto-start on mount', () => {
     it('calls checkSlots automatically when idle and no slotInfo', () => {
       renderScreen();
       expect(mockCheckSlots).toHaveBeenCalled();
@@ -410,8 +444,10 @@ describe('PairingSlotsScreen', () => {
   });
 
   describe('unpairing state', () => {
-    it('passes unpair hook to NFCBottomSheet with showOnDone', () => {
-      renderScreen('done', null, 'nfc');
+    it('passes unpair hook to NFCBottomSheet with showOnDone', async () => {
+      const view = renderScreen('done', unpairSlotInfo);
+      await confirmUnpair('Slot 2');
+      rerenderWith(view, 'done', 'nfc');
       const lastCall = MockNFCBottomSheet.mock.calls.at(-1);
       expect(lastCall?.[0].nfc.phase).toBe('nfc');
       expect(lastCall?.[0].showOnDone).toBe(true);
@@ -419,32 +455,92 @@ describe('PairingSlotsScreen', () => {
   });
 
   describe('cancel NFC', () => {
+    beforeEach(() => {
+      navigation.goBack.mockClear();
+    });
+
     it('calls cancelCheck when cancelling during slot check', () => {
       renderScreen('nfc');
       const lastCall = MockNFCBottomSheet.mock.calls.at(-1);
       lastCall?.[0].onCancel();
       expect(mockCancel).toHaveBeenCalled();
       expect(mockUnpairCancel).not.toHaveBeenCalled();
+      expect(navigation.goBack).toHaveBeenCalledTimes(1);
     });
 
-    // Back can leave mid-session: both readers are torn down.
-    it('cancels both sessions when the screen is removed', () => {
+    it('cancels the running read when the screen is removed', () => {
       renderScreen('nfc');
-      const beforeRemove = navigation.addListener.mock.calls.find(
-        (c: unknown[]) => c[0] === 'beforeRemove',
-      );
+      const beforeRemove = navigation.addListener.mock.calls
+        .filter((c: unknown[]) => c[0] === 'beforeRemove')
+        .at(-1);
       expect(beforeRemove).toBeTruthy();
       (beforeRemove?.[1] as () => void)();
       expect(mockCancel).toHaveBeenCalled();
-      expect(mockUnpairCancel).toHaveBeenCalled();
     });
 
-    it('calls cancelUnpair when cancelling during unpair', () => {
-      renderScreen('done', null, 'nfc');
+    it('calls cancelUnpair when cancelling during unpair, and stays', async () => {
+      const view = renderScreen('done', unpairSlotInfo);
+      await confirmUnpair('Slot 2');
+      rerenderWith(view, 'done', 'nfc');
       const lastCall = MockNFCBottomSheet.mock.calls.at(-1);
       lastCall?.[0].onCancel();
       expect(mockUnpairCancel).toHaveBeenCalled();
       expect(mockCancel).not.toHaveBeenCalled();
+      expect(navigation.goBack).not.toHaveBeenCalled();
+    });
+
+    it("leaves when Apple's sheet cancels the read, without reading again", () => {
+      const view = renderScreen('idle');
+      expect(mockCheckSlots).toHaveBeenCalledTimes(1);
+
+      mockUsePairingSlots.mockReturnValue(makeCheckHook('nfc'));
+      view.rerender(
+        <PairingSlotsScreen navigation={navigation} route={undefined as any} />,
+      );
+      mockUsePairingSlots.mockReturnValue({
+        ...makeCheckHook('idle'),
+        userCancels: 1,
+      });
+      view.rerender(
+        <PairingSlotsScreen navigation={navigation} route={undefined as any} />,
+      );
+
+      expect(mockCancel).toHaveBeenCalledTimes(1);
+      expect(navigation.goBack).toHaveBeenCalledTimes(1);
+      expect(mockCheckSlots).toHaveBeenCalledTimes(1);
+    });
+
+    it("stays when Apple's sheet cancels an unpair, and does not cancel the next one", async () => {
+      const view = renderScreen('done', unpairSlotInfo);
+      await confirmUnpair('Slot 2');
+      rerenderWith(view, 'done', 'nfc');
+      rerenderWith(view, 'done', 'idle', 1);
+
+      expect(mockUnpairCancel).toHaveBeenCalledTimes(1);
+      expect(navigation.goBack).not.toHaveBeenCalled();
+
+      await confirmUnpair('Slot 2');
+      rerenderWith(view, 'done', 'pin_entry', 1);
+
+      expect(mockUnpairCancel).toHaveBeenCalledTimes(1);
+      expect(MockNFCBottomSheet.mock.calls.at(-1)?.[0].nfc.phase).toBe(
+        'pin_entry',
+      );
+    });
+
+    it('offers Open NFC Settings on a read that NFC being off stopped', () => {
+      const openNFCSettings = jest.fn();
+      mockUsePairingSlots.mockReturnValue({
+        ...makeCheckHook('error'),
+        openNFCSettings,
+      });
+      mockUseKeycardOperation.mockReturnValue(makeUnpairHook('idle'));
+      render(
+        <PairingSlotsScreen navigation={navigation} route={undefined as any} />,
+      );
+      const nfc = MockNFCBottomSheet.mock.calls.at(-1)?.[0].nfc;
+      expect(nfc?.openNFCSettings).toBe(openNFCSettings);
+      expect(nfc?.retry).toBe(mockCheckSlots);
     });
   });
 
@@ -518,7 +614,6 @@ describe('PairingSlotsScreen', () => {
     });
   });
 
-  // The screen hand-builds its NFCOperation, so cardPresence is threaded explicitly.
   describe('cardPresence threading', () => {
     it('passes the check hook presence into the sheet object', () => {
       renderScreen('nfc');

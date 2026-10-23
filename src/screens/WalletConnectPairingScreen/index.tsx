@@ -6,6 +6,7 @@ import {
   useAddressEnumeration,
   type AddressRow,
 } from '@/hooks/keycard/useAddressEnumeration';
+import { useKeycardScreen } from '@/hooks/useKeycardScreen';
 import { useWalletConnectSession } from '@/hooks/useWalletConnectSession.online';
 import type { SessionProposalEvent } from '@/providers/walletConnect/context';
 import { getChainName } from '@/utils/chainMetadata';
@@ -103,7 +104,7 @@ export default function WalletConnectPairingScreen({
     pubKeyToEthAddress,
     { hasExternalChain: selectedOpt.hasExternalChain },
   );
-  const { phase: nfcPhase, start: startNfc, cancel: cancelNfc } = nfc;
+  const { phase: nfcPhase, start: startNfc } = nfc;
 
   useEffect(() => {
     if (nfcPhase === 'done') {
@@ -116,20 +117,23 @@ export default function WalletConnectPairingScreen({
     startNfc();
   }, [startNfc]);
 
-  const handleRejectProposal = useCallback(async () => {
-    if (proposal) {
-      await rejectSession(proposal as SessionProposalEvent);
-    }
+  // Leaves first: after a cancel the sheet may navigate right after (Unblock PIN, the shop).
+  const handleRejectProposal = useCallback(() => {
     navigation.reset({ index: 0, routes: [{ name: 'Dashboard' }] });
+    if (proposal) {
+      rejectSession(proposal as SessionProposalEvent).catch(() => {
+        // The relay may have expired.
+      });
+    }
   }, [proposal, rejectSession, navigation]);
 
-  const handleNfcCancel = useCallback(async () => {
-    cancelNfc();
-    if (proposal) {
-      await rejectSession(proposal as SessionProposalEvent);
-    }
-    navigation.reset({ index: 0, routes: [{ name: 'Dashboard' }] });
-  }, [cancelNfc, proposal, rejectSession, navigation]);
+  // No header on this route; a cancelled key tap rejects the proposal.
+  const { sheet } = useKeycardScreen({
+    keycard: nfc,
+    navigation,
+    title: '',
+    leaveOnCancel: handleRejectProposal,
+  });
 
   const handleConnect = useCallback(async () => {
     if (!selectedRow) return;
@@ -184,13 +188,7 @@ export default function WalletConnectPairingScreen({
   }
 
   if (localPhase === 'approving') {
-    return (
-      <ApprovingPhase
-        accountKeyOp={nfc}
-        insets={insets}
-        onCancel={handleNfcCancel}
-      />
-    );
+    return <ApprovingPhase insets={insets} sheet={sheet} />;
   }
 
   if (localPhase === 'address_selection') {

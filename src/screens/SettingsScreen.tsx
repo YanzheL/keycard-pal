@@ -21,7 +21,6 @@ import { Icons } from '@/assets/icons';
 import type { DashboardAction, SettingsScreenProps } from '@/navigation/types';
 import theme from '@/theme';
 
-import NFCBottomSheet from '@/components/NFCBottomSheet';
 import DashboardLayoutSettingsSection from '@/components/settings/DashboardLayoutSettingsSection';
 import Eip7730SettingsSection from '@/components/settings/eip7730/Eip7730SettingsSection.online';
 import EnsSettingsSection from '@/components/settings/ens/EnsSettingsSection.online';
@@ -142,11 +141,12 @@ export default function SettingsScreen({ navigation }: SettingsScreenProps) {
   );
 
   // No `done` navigation here: the user stays in Settings.
-  const { onCancel } = useKeycardScreen({
+  const { sheet } = useKeycardScreen({
     keycard: identify,
     navigation,
     title: 'Settings',
     stayOnCancel: true,
+    hideNoCardExit: true,
   });
 
   return (
@@ -187,7 +187,7 @@ export default function SettingsScreen({ navigation }: SettingsScreenProps) {
 
       {/* No shop link on this sheet: "Buy a Keycard" is the first row of this
           very screen, and the user stays here when the tap is cancelled. */}
-      <NFCBottomSheet nfc={identify} onCancel={onCancel} hideNoCardExit />
+      {sheet}
     </KeyboardAvoidingView>
   );
 }

@@ -90,6 +90,24 @@ describe('usePairingSlots', () => {
       expect(result.current.status).toBe('');
       expect(result.current.slotInfo).toBeNull();
     });
+
+    // The sheet takes this hook as it is, so the session's fields come with it.
+    it("carries the session's cancel count and NFC settings action", () => {
+      const { result } = renderHook(() => usePairingSlots());
+      expect(result.current.userCancels).toBe(0);
+      expect('openNFCSettings' in result.current).toBe(true);
+    });
+  });
+
+  describe('retry', () => {
+    it('reads the slots again', async () => {
+      const { result } = renderHook(() => usePairingSlots());
+      await act(async () => {
+        result.current.retry();
+      });
+      expect(result.current.phase).toBe('nfc');
+      expect(mockStartNFC).toHaveBeenCalledWith('Tap your Keycard');
+    });
   });
 
   describe('checkSlots', () => {

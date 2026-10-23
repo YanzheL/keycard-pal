@@ -10,6 +10,19 @@ jest.mock('@react-native-async-storage/async-storage', () => ({
   default: { getItem: jest.fn(), setItem: jest.fn() },
 }));
 
+const mockNavigation = {
+  goBack: jest.fn(),
+  reset: jest.fn(),
+  setOptions: jest.fn(),
+  addListener: jest.fn(() => jest.fn()),
+};
+
+jest.mock('@react-navigation/native', () => ({
+  ...jest.requireActual('@react-navigation/native'),
+  useNavigation: () => mockNavigation,
+  useFocusEffect: jest.fn(),
+}));
+
 jest.mock('../src/components/NFCBottomSheet', () => {
   const { View } = require('react-native');
   return () => <View testID="nfc-sheet" />;

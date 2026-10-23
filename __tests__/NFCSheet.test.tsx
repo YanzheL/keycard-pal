@@ -60,9 +60,7 @@ describe('NFCSheet', () => {
     });
   });
 
-  // After an error the bridge reader is disarmed (stopNFCWithError sets the
-  // channel's listening=false), so a re-tap emits nothing — the sheet must
-  // offer an explicit restart when the caller provides one.
+  // After an error the reader stops listening, so a re-tap emits nothing.
   describe('Try again button', () => {
     it('shows "Try again" instead of the hint when retry is provided', () => {
       render(
@@ -181,10 +179,11 @@ describe('NFCSheet', () => {
     });
   });
 
+  // Nothing restarts a stopped reader but Try again, so the sheet never promises a re-tap.
   describe('retry hint', () => {
-    it('shows "Tap your card to try again" when variant is error and no retry is provided', () => {
+    it('does not promise a re-tap on an error without Try again', () => {
       render(<NFCSheet variant="error" status="Bad MAC" onCancel={onCancel} />);
-      expect(screen.getByText('Tap your card to try again')).toBeTruthy();
+      expect(screen.queryByText('Tap your card to try again')).toBeNull();
     });
 
     it('does not show retry hint when variant is scanning', () => {
@@ -211,8 +210,7 @@ describe('NFCSheet', () => {
     });
   });
 
-  // T5: presence variants. 'disconnected' must read as recoverable, not as a
-  // failure — reconnect hint, Cancel available, no failure icon treatment.
+  // 'disconnected' reads as recoverable, not as a failure.
   describe('presence variants', () => {
     it('disconnected shows the reconnect hint', () => {
       render(

@@ -38,10 +38,11 @@ export type NFCVariant =
   | 'error'
   | 'genuine_warning';
 
+/** Required where a hook that drops the field would lose a sheet button silently. */
 export type NFCOperation = {
   phase: KeycardPhase;
   status: string;
-  cardPresence?: CardPresence;
+  cardPresence: CardPresence;
   cardName?: string | null;
   cardFingerprint?: number | null;
   pinError?: string | null;
@@ -51,8 +52,8 @@ export type NFCOperation = {
   pairingPasswordError?: string | null;
   submitPairingPassword?: (password: string) => void;
   proceedWithNonGenuine?: () => void;
-  retry?: () => void;
-  openNFCSettings?: () => void;
+  retry: () => void;
+  openNFCSettings: (() => void) | undefined;
 };
 
 type Props = {
@@ -100,8 +101,7 @@ export default function NFCBottomSheet({
   }, [onCancel, buyKeycard]);
   // A card that was on the antenna proves ownership, so the shop link is left out then.
   const onBuyKeycard =
-    !hideNoCardExit &&
-    (cardPresence === undefined || cardPresence === 'waiting')
+    !hideNoCardExit && cardPresence === 'waiting'
       ? handleBuyKeycard
       : undefined;
 

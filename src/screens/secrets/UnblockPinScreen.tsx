@@ -6,7 +6,6 @@ import { PUK_LENGTH } from '@/constants/keycard';
 import type { UnblockPinScreenProps } from '@/navigation/types';
 import theme from '@/theme';
 
-import NFCBottomSheet from '@/components/NFCBottomSheet';
 import PinPad from '@/components/PinPad';
 
 import { useUnblockPin } from '@/hooks/keycard/useUnblockPin';
@@ -43,17 +42,13 @@ export default function UnblockPinScreen({
     pinSetup.jumpToConfirm();
   }, [pinSetup]);
 
-  const onScreenBack = useCallback(() => {
+  const stepBack = useCallback(() => {
     if (screenStep === 'puk_entry') {
       backToPinConfirm();
       return true;
     }
-    const handled = pinSetup.goBack();
-    if (!handled) {
-      navigation.goBack();
-    }
-    return true;
-  }, [screenStep, pinSetup, backToPinConfirm, navigation]);
+    return pinSetup.goBack();
+  }, [screenStep, pinSetup, backToPinConfirm]);
 
   const title =
     screenStep === 'puk_entry'
@@ -62,24 +57,14 @@ export default function UnblockPinScreen({
       ? 'Enter new PIN'
       : 'Confirm new PIN';
 
-  const { onCancel } = useKeycardScreen({
+  const { sheet } = useKeycardScreen({
     keycard,
     navigation,
     title,
     // Mirrors useUnblockPin's success message.
     done: { toast: 'PIN unblocked' },
-    onHardwareBack: onScreenBack,
-    onBeforeRemove: e => {
-      if (screenStep === 'puk_entry') {
-        e.preventDefault();
-        backToPinConfirm();
-        return;
-      }
-      if (pinSetup.step === 'confirm') {
-        e.preventDefault();
-        pinSetup.goBack();
-      }
-    },
+    stepBack,
+    showOnDone: true,
   });
 
   return (
@@ -105,7 +90,7 @@ export default function UnblockPinScreen({
         />
       )}
 
-      <NFCBottomSheet nfc={keycard} onCancel={onCancel} showOnDone />
+      {sheet}
     </View>
   );
 }
