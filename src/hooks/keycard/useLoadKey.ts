@@ -1,7 +1,7 @@
 import { useCallback, useRef } from 'react';
 import { BIP32KeyPair } from 'keycard-sdk/dist/bip32key';
-import { deriveMnemonicSeed } from '../../utils/mnemonic';
 
+import { deriveMnemonicSeed } from '@/utils/mnemonic';
 import { useKeycardOp } from './useKeycardOperation';
 
 export function useLoadKey() {
@@ -22,12 +22,10 @@ export function useLoadKey() {
       if (appInfo?.hasMasterKey()) {
         throw new Error('Card already has a key. Factory reset required.');
       }
-      try {
-        const response = await cmdSet.loadBIP32KeyPair(keyPairRef.current!);
-        response.checkOK();
-      } finally {
-        keyPairRef.current = null;
-      }
+      const response = await cmdSet.loadBIP32KeyPair(keyPairRef.current!);
+      response.checkOK();
+      // Only on success: retry() runs this closure again after a failure.
+      keyPairRef.current = null;
     }, []),
     {
       requiresPin: true,
