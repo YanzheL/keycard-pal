@@ -23,6 +23,7 @@ import { attemptsLeft, isTagLostError } from '@/utils/keycardErrors';
 import { displayKeycardName, parseKeycardName } from '@/utils/keycardName';
 import { useCertificateApprovals } from './useCertificateApprovals';
 import {
+  NOTHING_TO_SEND_STATUS,
   useNFCOperation,
   type CardPresence,
   type NFCSessionPhase,
@@ -40,9 +41,15 @@ export type KeycardPhase =
   | 'pairing_password'
   | 'genuine_warning';
 
+export interface KeycardOperationHelpers {
+  setStatus: (status: string) => void;
+  /** The card refused the input itself: no retry may send it again. */
+  discardInput: () => void;
+}
+
 export type KeycardOperationFn<T> = (
   cmdSet: InstanceType<typeof Keycard.Commandset>,
-  helpers: { setStatus: (status: string) => void },
+  helpers: KeycardOperationHelpers,
 ) => Promise<T>;
 
 export interface ExecuteOptions {
@@ -301,13 +308,32 @@ export function useKeycardOperation<T>(): UseKeycardOperation<T> {
         }
       }
 
-      if (operationRunningRef.current || !operationRef.current) {
+      const operation = operationRef.current;
+      if (operationRunningRef.current || !operation) {
         return null;
       }
       operationRunningRef.current = true;
       setStatus('Processing...');
+      let inputDiscarded = false;
       try {
-        return await operationRef.current(cmdSet, { setStatus });
+        const value = await operation(cmdSet, {
+          setStatus,
+          discardInput: () => {
+            inputDiscarded = true;
+          },
+        });
+        // No retry may resend a finished operation, and the next one asks for the PIN.
+        if (operationRef.current === operation) {
+          operationRef.current = null;
+          pinRef.current = '';
+          pinVerifiedRef.current = false;
+        }
+        return value;
+      } catch (e) {
+        if (inputDiscarded && operationRef.current === operation) {
+          operationRef.current = null;
+        }
+        throw e;
       } finally {
         operationRunningRef.current = false;
       }
@@ -361,6 +387,9 @@ export function useKeycardOperation<T>(): UseKeycardOperation<T> {
       // No PIN yet (back from NFC settings): never send verifyPIN('').
       if (requiresPinRef.current && !pinRef.current) {
         throw new Error('Enter your PIN first — tap Retry to continue.');
+      }
+      if (!operationRef.current) {
+        throw new Error(NOTHING_TO_SEND_STATUS);
       }
 
       const appInfo = cmdSet.applicationInfo;
@@ -613,19 +642,32 @@ export function useKeycardOperation<T>(): UseKeycardOperation<T> {
   };
 }
 
-export function useKeycardOp<T>(
-  op: KeycardOperationFn<T>,
+/** The input given to start() reaches every retry until the operation succeeds, is cancelled or reset, or discards it. */
+export function useKeycardOp<T, I = void>(
+  op: (
+    cmdSet: InstanceType<typeof Keycard.Commandset>,
+    input: I,
+    helpers: KeycardOperationHelpers,
+  ) => Promise<T>,
   options: ExecuteOptions = {},
-): Omit<UseKeycardOperation<T>, 'execute'> & { start: () => void } {
+): Omit<UseKeycardOperation<T>, 'execute'> & { start: (input: I) => void } {
   const { execute, ...rest } = useKeycardOperation<T>();
   const opRef = useRef(op);
   opRef.current = op;
   const optionsRef = useRef(options);
   optionsRef.current = options;
 
-  const start = useCallback(() => {
-    execute(opRef.current, optionsRef.current);
-  }, [execute]);
+  // The input rides in the queued operation, so it lives exactly as long as the runner keeps that.
+  const start = useCallback(
+    (input: I) => {
+      const run = opRef.current;
+      execute(
+        (cmdSet, helpers) => run(cmdSet, input, helpers),
+        optionsRef.current,
+      );
+    },
+    [execute],
+  );
 
   return { ...rest, start };
 }

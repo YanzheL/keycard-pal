@@ -129,6 +129,13 @@ async function completeChallenge() {
   }
 }
 
+/** Lets the deferred key derivation run. */
+async function finishPreparing() {
+  await act(async () => {
+    jest.runOnlyPendingTimers();
+  });
+}
+
 describe('ConfirmKeyScreen insets', () => {
   afterEach(() => {
     mockInsets.top = 0;
@@ -222,7 +229,36 @@ describe('ConfirmKeyScreen', () => {
     it('calls start() after all correct answers are provided', async () => {
       renderScreen();
       await completeChallenge();
+      await finishPreparing();
       expect(mockStart).toHaveBeenCalledTimes(1);
+    });
+
+    it('shows that it is preparing the key before it asks for the card', async () => {
+      renderScreen();
+      await completeChallenge();
+      expect(screen.getByText('Preparing key material...')).toBeTruthy();
+      expect(mockStart).not.toHaveBeenCalled();
+
+      await finishPreparing();
+
+      expect(mockStart).toHaveBeenCalledTimes(1);
+      expect(screen.queryByText('Preparing key material...')).toBeNull();
+    });
+
+    // So the key pair is held by the runner alone, not for the screen's lifetime.
+    it('derives the key pair only once the backup check is complete', async () => {
+      const {
+        deriveMnemonicKeyPair,
+      } = require('../src/hooks/keycard/useLoadKey');
+      deriveMnemonicKeyPair.mockClear();
+      renderScreen();
+      expect(deriveMnemonicKeyPair).not.toHaveBeenCalled();
+
+      await completeChallenge();
+      await finishPreparing();
+
+      expect(deriveMnemonicKeyPair).toHaveBeenCalledWith(WORDS, undefined);
+      expect(mockStart).toHaveBeenCalledWith({ type: 'keypair' });
     });
 
     it('does not call start() before all answers are filled', async () => {

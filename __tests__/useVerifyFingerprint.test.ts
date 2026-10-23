@@ -2,7 +2,7 @@ import { act, renderHook } from '@testing-library/react-native';
 
 import { useVerifyFingerprint } from '../src/hooks/keycard/useVerifyFingerprint';
 
-type OperationFn = (cmdSet: any) => Promise<any>;
+type OperationFn = (cmdSet: any, expected: number) => Promise<any>;
 
 let capturedOperation: OperationFn | null = null;
 let capturedOptions: { requiresPin?: boolean } | null = null;
@@ -46,16 +46,22 @@ describe('useVerifyFingerprint', () => {
     capturedOptions = null;
   });
 
-  it('calls execute with requiresPin: true', async () => {
-    const { result } = renderHook(() => useVerifyFingerprint());
-    await act(async () => {
-      result.current.start(expectedFingerprint);
-    });
+  it('requires the PIN and re-runs from SELECT on a re-tap', () => {
+    renderHook(() => useVerifyFingerprint());
 
     expect(capturedOptions).toEqual({
       requiresPin: true,
       retryOnTagLoss: true,
     });
+  });
+
+  it('hands the expected fingerprint to the runner', async () => {
+    const { result } = renderHook(() => useVerifyFingerprint());
+    await act(async () => {
+      result.current.start(expectedFingerprint);
+    });
+
+    expect(mockStart).toHaveBeenCalledWith(expectedFingerprint);
   });
 
   it('returns match when fingerprints match', async () => {
@@ -66,12 +72,9 @@ describe('useVerifyFingerprint', () => {
     const cmdSet = {
       exportKey: jest.fn().mockResolvedValue({ checkOK, data: cardPubKey }),
     };
-    const { result } = renderHook(() => useVerifyFingerprint());
-    await act(async () => {
-      result.current.start(expectedFingerprint);
-    });
+    renderHook(() => useVerifyFingerprint());
 
-    const opResult = await capturedOperation!(cmdSet);
+    const opResult = await capturedOperation!(cmdSet, expectedFingerprint);
 
     expect(opResult).toBe('match');
     expect(cmdSet.exportKey).toHaveBeenCalledWith(0, true, 'm', false);
@@ -81,17 +84,17 @@ describe('useVerifyFingerprint', () => {
   it('returns mismatch when fingerprints differ', async () => {
     mockFromTLV.mockReturnValue({ publicKey: new Uint8Array([4, 9, 8]) });
     mockPubKeyFingerprint.mockReturnValueOnce(2);
-    const { result } = renderHook(() => useVerifyFingerprint());
-    await act(async () => {
-      result.current.start(1);
-    });
+    renderHook(() => useVerifyFingerprint());
 
-    const opResult = await capturedOperation!({
-      exportKey: jest.fn().mockResolvedValue({
-        checkOK: jest.fn(),
-        data: new Uint8Array([4, 9, 8]),
-      }),
-    });
+    const opResult = await capturedOperation!(
+      {
+        exportKey: jest.fn().mockResolvedValue({
+          checkOK: jest.fn(),
+          data: new Uint8Array([4, 9, 8]),
+        }),
+      },
+      1,
+    );
 
     expect(opResult).toBe('mismatch');
   });

@@ -189,6 +189,7 @@ export default function useNFCSession(
     clearWatchdog();
     setCardPresence('connected');
     inFlightRef.current = true;
+    const attempt = startAttemptRef.current;
     // phaseRef is render-assigned and stale inside the finally below.
     let outcome: 'waiting' | 'done' | 'error' = 'waiting';
     // Before SELECT answers nothing can be replayed, so a loss is always waited for.
@@ -246,6 +247,12 @@ export default function useNFCSession(
       setPhase('done');
       stopWithSuccess();
     } catch (e: any) {
+      // A tap cancelled mid-run stays cancelled: its late failure must not reopen the sheet.
+      if (attempt !== startAttemptRef.current) {
+        outcome = 'error';
+        console.log('[Keycard] Failed after the tap was cancelled:', e);
+        return;
+      }
       if (isTagLostError(e)) {
         if (
           !selected ||

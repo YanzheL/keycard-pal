@@ -8,7 +8,7 @@ import {
 
 const mockToBinarySeed = jest.fn().mockReturnValue(Buffer.from('seed'));
 const mockFromBinarySeed = jest.fn().mockReturnValue({ type: 'keypair' });
-type OperationFn = (cmdSet: any) => Promise<void>;
+type OperationFn = (cmdSet: any, keyPair: BIP32KeyPair) => Promise<void>;
 
 let capturedOperation: OperationFn | null = null;
 let capturedOptions: {
@@ -118,13 +118,9 @@ describe('useLoadKey', () => {
     capturedOptions = null;
   });
 
-  it('requests PIN before loading the prepared keypair', async () => {
-    const { result } = renderHook(() => useLoadKey());
-    await act(async () => {
-      result.current.start(preparedKeyPair);
-    });
+  it('requests PIN before loading the prepared keypair', () => {
+    renderHook(() => useLoadKey());
 
-    expect(mockStart).toHaveBeenCalledTimes(1);
     expect(capturedOptions).toEqual({
       requiresPin: true,
       requiresMasterKey: false,
@@ -132,94 +128,39 @@ describe('useLoadKey', () => {
     });
   });
 
-  it('loads the prepared BIP32 keypair onto an empty card', async () => {
+  it('hands the key pair to the runner', async () => {
     const { result } = renderHook(() => useLoadKey());
     await act(async () => {
       result.current.start(preparedKeyPair);
     });
+
+    expect(mockStart).toHaveBeenCalledWith(preparedKeyPair);
+  });
+
+  it('loads the key pair it is given onto an empty card', async () => {
+    renderHook(() => useLoadKey());
     const checkOK = jest.fn();
     const cmdSet = {
       applicationInfo: { hasMasterKey: () => false },
       loadBIP32KeyPair: jest.fn().mockResolvedValue({ checkOK }),
     };
 
-    await capturedOperation!(cmdSet);
+    await capturedOperation!(cmdSet, preparedKeyPair);
 
     expect(cmdSet.loadBIP32KeyPair).toHaveBeenCalledWith(preparedKeyPair);
     expect(checkOK).toHaveBeenCalledTimes(1);
   });
 
   it('rejects cards that already have a master key', async () => {
-    const { result } = renderHook(() => useLoadKey());
-    await act(async () => {
-      result.current.start(preparedKeyPair);
-    });
+    renderHook(() => useLoadKey());
+    const loadBIP32KeyPair = jest.fn();
 
     await expect(
-      capturedOperation!({
-        applicationInfo: { hasMasterKey: () => true },
-        loadBIP32KeyPair: jest.fn(),
-      }),
-    ).rejects.toThrow(/already has a key/);
-  });
-
-  // retry() runs the same closure again.
-  it.each([
-    [
-      'refused',
-      () =>
-        Promise.resolve({
-          checkOK: () => {
-            throw new Error('refused');
-          },
-        }),
-    ],
-    ['interrupted', () => Promise.reject(new Error('Tag was lost.'))],
-  ])(
-    'retries with the same key pair after the load is %s',
-    async (_, firstAnswer) => {
-      const { result } = renderHook(() => useLoadKey());
-      await act(async () => {
-        result.current.start(preparedKeyPair);
-      });
-
-      const cmdSet = {
-        applicationInfo: { hasMasterKey: () => false },
-        loadBIP32KeyPair: jest
-          .fn()
-          .mockImplementationOnce(firstAnswer)
-          .mockResolvedValueOnce({ checkOK: jest.fn() }),
-      };
-      await expect(capturedOperation!(cmdSet)).rejects.toThrow();
-      await capturedOperation!(cmdSet);
-
-      expect(cmdSet.loadBIP32KeyPair).toHaveBeenNthCalledWith(
-        2,
+      capturedOperation!(
+        { applicationInfo: { hasMasterKey: () => true }, loadBIP32KeyPair },
         preparedKeyPair,
-      );
-    },
-  );
-
-  it.each(['success', 'cancel', 'reset'] as const)(
-    'drops the key pair on %s',
-    async ending => {
-      const { result } = renderHook(() => useLoadKey());
-      await act(async () => {
-        result.current.start(preparedKeyPair);
-      });
-
-      const cmdSet = {
-        applicationInfo: { hasMasterKey: () => false },
-        loadBIP32KeyPair: jest.fn().mockResolvedValue({ checkOK: jest.fn() }),
-      };
-      if (ending === 'success') {
-        await capturedOperation!(cmdSet);
-      } else {
-        act(() => result.current[ending]());
-      }
-      await capturedOperation!(cmdSet);
-
-      expect(cmdSet.loadBIP32KeyPair).toHaveBeenLastCalledWith(null);
-    },
-  );
+      ),
+    ).rejects.toThrow(/already has a key/);
+    expect(loadBIP32KeyPair).not.toHaveBeenCalled();
+  });
 });

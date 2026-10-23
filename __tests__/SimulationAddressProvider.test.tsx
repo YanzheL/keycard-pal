@@ -10,7 +10,9 @@ import SimulationAddressProvider, {
 // Mocks
 // ---------------------------------------------------------------------------
 
-let capturedOperation: ((cmdSet: any) => Promise<string>) | null = null;
+let capturedOperation:
+  | ((cmdSet: any, path: string | undefined) => Promise<string>)
+  | null = null;
 let capturedOptions: any = null;
 const mockStart = jest.fn();
 const mockCancel = jest.fn();
@@ -80,7 +82,7 @@ const PATH = "m/44'/60'/0'/0";
 
 function Consumer() {
   const op = useSimulationAddressOp();
-  return <Text onPress={op.start}>consumer</Text>;
+  return <Text onPress={() => op.start()}>consumer</Text>;
 }
 
 function providerTree(derivationPath?: string) {
@@ -116,10 +118,11 @@ beforeEach(() => {
 // ---------------------------------------------------------------------------
 
 describe('SimulationAddressProvider', () => {
-  it('hands the op to its consumers', () => {
+  it('hands the op to its consumers, started with the derivation path', () => {
     renderProvider(withPath);
     fireEvent.press(screen.getByText('consumer'));
     expect(mockStart).toHaveBeenCalledTimes(1);
+    expect(mockStart).toHaveBeenCalledWith(PATH);
   });
 
   it('renders the NFC sheet after the children, as a sibling of them', () => {
@@ -185,7 +188,7 @@ describe('SimulationAddressProvider', () => {
           .fn()
           .mockResolvedValue({ checkOK, data: new Uint8Array(0) }),
       };
-      await expect(capturedOperation!(cmdSet)).resolves.toBe('0xDerived');
+      await expect(capturedOperation!(cmdSet, PATH)).resolves.toBe('0xDerived');
       expect(cmdSet.exportExtendedKey).toHaveBeenCalledWith(0, PATH, false);
       expect(checkOK).toHaveBeenCalled();
       expect(mockPubKeyToEthAddress).toHaveBeenCalledWith(mockPublicKey);
@@ -194,7 +197,7 @@ describe('SimulationAddressProvider', () => {
     it('refuses to run without a derivation path', async () => {
       renderProvider({});
       const cmdSet = { exportExtendedKey: jest.fn() };
-      await expect(capturedOperation!(cmdSet)).rejects.toThrow(
+      await expect(capturedOperation!(cmdSet, undefined)).rejects.toThrow(
         /derivation path/,
       );
       expect(cmdSet.exportExtendedKey).not.toHaveBeenCalled();

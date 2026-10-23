@@ -4,7 +4,7 @@ import { act, renderHook } from '@testing-library/react-native';
 
 import { useSetCardName } from '../src/hooks/keycard/useSetCardName';
 
-type OperationFn = (cmdSet: any, helpers: any) => Promise<void>;
+type OperationFn = (cmdSet: any, name: string, helpers: any) => Promise<void>;
 
 let capturedOperation: OperationFn | null = null;
 let capturedOptions: {
@@ -46,11 +46,17 @@ describe('useSetCardName', () => {
     capturedOptions = null;
   });
 
-  it('writes the encoded card name with PIN verification', async () => {
+  it('hands the name to the runner', async () => {
     const { result } = renderHook(() => useSetCardName());
     await act(async () => {
       result.current.start('Vault');
     });
+
+    expect(mockStart).toHaveBeenCalledWith('Vault');
+  });
+
+  it('writes the encoded card name with PIN verification', async () => {
+    renderHook(() => useSetCardName());
 
     expect(capturedOptions).toEqual({
       requiresPin: true,
@@ -70,6 +76,7 @@ describe('useSetCardName', () => {
         getData,
         storeData,
       },
+      'Vault',
       { setStatus },
     );
 
@@ -81,10 +88,7 @@ describe('useSetCardName', () => {
   });
 
   it('throws when reading current metadata fails', async () => {
-    const { result } = renderHook(() => useSetCardName());
-    await act(async () => {
-      result.current.start('Vault');
-    });
+    renderHook(() => useSetCardName());
 
     await expect(
       capturedOperation!(
@@ -92,16 +96,14 @@ describe('useSetCardName', () => {
           getData: jest.fn().mockResolvedValue({ sw: 0x6f00 }),
           storeData: jest.fn(),
         },
+        'Vault',
         { setStatus: jest.fn() },
       ),
     ).rejects.toThrow('GET DATA failed: 0x6F00');
   });
 
   it('throws when writing card metadata fails', async () => {
-    const { result } = renderHook(() => useSetCardName());
-    await act(async () => {
-      result.current.start('Vault');
-    });
+    renderHook(() => useSetCardName());
 
     await expect(
       capturedOperation!(
@@ -112,6 +114,7 @@ describe('useSetCardName', () => {
           }),
           storeData: jest.fn().mockResolvedValue({ sw: 0x6985 }),
         },
+        'Vault',
         { setStatus: jest.fn() },
       ),
     ).rejects.toThrow('STORE DATA failed: 0x6985');

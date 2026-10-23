@@ -1,9 +1,11 @@
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useState } from 'react';
 import { WrongPINException } from 'keycard-sdk/dist/apdu-exception';
+import { Commandset } from 'keycard-sdk/dist/commandset';
 
 import { attemptsLeft } from '@/utils/keycardErrors';
 import {
-  useKeycardOperation,
+  useKeycardOp,
+  type KeycardOperationHelpers,
   type KeycardPhase,
   type UseKeycardOperation,
 } from './useKeycardOperation';
@@ -27,59 +29,65 @@ export const PIN_NOT_BLOCKED_STATUS =
 // The applet's answer to UNBLOCK PIN while the PIN still has attempts.
 const SW_CONDITIONS_NOT_SATISFIED = 0x6985;
 
+interface UnblockInput {
+  puk: string;
+  newPin: string;
+}
+
 export function useUnblockPin(): UseUnblockPinOperation {
-  const pukRef = useRef('');
-  const newPinRef = useRef('');
   const [pukError, setPukError] = useState<string | null>(null);
 
-  const { execute, phase: nfcPhase, ...rest } = useKeycardOperation<void>();
+  const {
+    start: startOp,
+    phase: nfcPhase,
+    ...rest
+  } = useKeycardOp(
+    useCallback(
+      async (
+        cmdSet: Commandset,
+        { puk, newPin }: UnblockInput,
+        { discardInput }: KeycardOperationHelpers,
+      ) => {
+        const resp = await cmdSet.unblockPIN(puk, newPin);
+        if (resp.sw === SW_CONDITIONS_NOT_SATISFIED) {
+          throw new Error(PIN_NOT_BLOCKED_STATUS);
+        }
+        try {
+          resp.checkAuthOK();
+        } catch (e) {
+          if (!(e instanceof WrongPINException)) {
+            throw e;
+          }
+          const attempts = e.getRetryAttempts();
+          if (attempts === 0) {
+            throw new Error(PUK_BLOCKED_STATUS);
+          }
+          // No retry may spend another attempt on the same digits.
+          discardInput();
+          const message = `PUK is not valid. ${attemptsLeft(attempts)}.`;
+          setPukError(message);
+          throw new Error(message);
+        }
+      },
+      [],
+    ),
+    {
+      // The PIN is what is blocked. A key may or may not be on the card.
+      requiresPin: false,
+      requiresMasterKey: false,
+      successMessage: PIN_UNBLOCKED_MESSAGE,
+    },
+  );
 
   const start = useCallback(
     (puk: string, newPin: string) => {
-      pukRef.current = puk;
-      newPinRef.current = newPin;
       setPukError(null);
-      execute(
-        async cmdSet => {
-          const resp = await cmdSet.unblockPIN(
-            pukRef.current,
-            newPinRef.current,
-          );
-          if (resp.sw === SW_CONDITIONS_NOT_SATISFIED) {
-            throw new Error(PIN_NOT_BLOCKED_STATUS);
-          }
-          try {
-            resp.checkAuthOK();
-          } catch (e) {
-            if (!(e instanceof WrongPINException)) {
-              throw e;
-            }
-            const attempts = e.getRetryAttempts();
-            if (attempts === 0) {
-              throw new Error(PUK_BLOCKED_STATUS);
-            }
-            // Dropped so that no retry can spend another attempt on the same digits.
-            pukRef.current = '';
-            const message = `PUK is not valid. ${attemptsLeft(attempts)}.`;
-            setPukError(message);
-            throw new Error(message);
-          }
-          pukRef.current = '';
-          newPinRef.current = '';
-        },
-        {
-          // The PIN is what is blocked. A key may or may not be on the card.
-          requiresPin: false,
-          requiresMasterKey: false,
-          successMessage: PIN_UNBLOCKED_MESSAGE,
-        },
-      );
+      startOp({ puk, newPin });
     },
-    [execute],
+    [startOp],
   );
 
-  // A refused PUK goes back to the pad, not to an error sheet whose Try again
-  // would resend it.
+  // A refused PUK goes back to the pad: Try again has nothing left to send.
   const phase: KeycardPhase =
     pukError !== null && nfcPhase === 'error' ? 'idle' : nfcPhase;
 

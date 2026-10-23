@@ -2,7 +2,7 @@ import { act, renderHook } from '@testing-library/react-native';
 
 import { useChangeSecret } from '../src/hooks/keycard/useChangeSecret';
 
-type OperationFn = (cmdSet: any) => Promise<void>;
+type OperationFn = (cmdSet: any, newSecret: string) => Promise<void>;
 
 let capturedOperation: OperationFn | null = null;
 let capturedOptions: {
@@ -13,8 +13,10 @@ let capturedOptions: {
   successMessage?: string;
 } | null = null;
 
-const mockExecute = jest.fn(
-  (
+const mockStart = jest.fn();
+
+jest.mock('../src/hooks/keycard/useKeycardOperation', () => ({
+  useKeycardOp: (
     fn: OperationFn,
     opts: {
       requiresPin?: boolean;
@@ -26,37 +28,30 @@ const mockExecute = jest.fn(
   ) => {
     capturedOperation = fn;
     capturedOptions = opts;
+    return {
+      phase: 'idle',
+      status: '',
+      cardName: null,
+      result: null,
+      pinError: null,
+      start: mockStart,
+      cancel: jest.fn(),
+      reset: jest.fn(),
+      submitPin: jest.fn(),
+      proceedWithNonGenuine: jest.fn(),
+    };
   },
-);
-
-jest.mock('../src/hooks/keycard/useKeycardOperation', () => ({
-  useKeycardOperation: () => ({
-    phase: 'idle',
-    status: '',
-    cardName: null,
-    result: null,
-    pinError: null,
-    execute: mockExecute,
-    cancel: jest.fn(),
-    reset: jest.fn(),
-    submitPin: jest.fn(),
-    clearPinError: jest.fn(),
-    proceedWithNonGenuine: jest.fn(),
-  }),
 }));
 
 describe('useChangeSecret', () => {
   beforeEach(() => {
-    mockExecute.mockClear();
+    mockStart.mockClear();
     capturedOperation = null;
     capturedOptions = null;
   });
 
-  it('does not require master key', async () => {
-    const { result } = renderHook(() => useChangeSecret('pin'));
-    await act(async () => {
-      result.current.start('123456');
-    });
+  it('does not require master key', () => {
+    renderHook(() => useChangeSecret('pin'));
 
     expect(capturedOptions).toEqual({
       requiresMasterKey: false,
@@ -65,18 +60,12 @@ describe('useChangeSecret', () => {
   });
 
   // Stops a different card being tapped the second time.
-  it('binds only the pairing secret to cards that have one', async () => {
-    const pairing = renderHook(() => useChangeSecret('pairing'));
-    await act(async () => {
-      pairing.result.current.start('newpassword');
-    });
+  it('binds only the pairing secret to cards that have one', () => {
+    renderHook(() => useChangeSecret('pairing'));
     expect(capturedOptions?.requiresRoute).toBe('ChangePairingSecret');
 
     for (const secretType of ['pin', 'puk'] as const) {
-      const { result } = renderHook(() => useChangeSecret(secretType));
-      await act(async () => {
-        result.current.start('123456');
-      });
+      renderHook(() => useChangeSecret(secretType));
       expect(capturedOptions?.requiresRoute).toBeUndefined();
     }
   });
@@ -84,111 +73,51 @@ describe('useChangeSecret', () => {
   // A replayed write could land twice, so none of the three may opt in.
   it.each(['pin', 'puk', 'pairing'] as const)(
     'never retries a %s change on tag loss',
-    async secretType => {
-      const { result } = renderHook(() => useChangeSecret(secretType));
-      await act(async () => {
-        result.current.start('123456');
-      });
+    secretType => {
+      renderHook(() => useChangeSecret(secretType));
       expect(capturedOptions?.retryOnTagLoss).toBeUndefined();
     },
   );
 
-  it('changes PIN', async () => {
+  it('hands the new secret to the runner', async () => {
     const { result } = renderHook(() => useChangeSecret('pin'));
     await act(async () => {
       result.current.start('123456');
     });
 
-    const checkOK = jest.fn();
-    const cmdSet = { changePIN: jest.fn().mockResolvedValue({ checkOK }) };
-    await capturedOperation!(cmdSet);
-
-    expect(cmdSet.changePIN).toHaveBeenCalledWith('123456');
-    expect(checkOK).toHaveBeenCalledTimes(1);
+    expect(mockStart).toHaveBeenCalledWith('123456');
   });
 
-  it('changes PUK', async () => {
-    const { result } = renderHook(() => useChangeSecret('puk'));
-    await act(async () => {
-      result.current.start('123456789012');
-    });
-
-    const checkOK = jest.fn();
-    const cmdSet = { changePUK: jest.fn().mockResolvedValue({ checkOK }) };
-    await capturedOperation!(cmdSet);
-
-    expect(cmdSet.changePUK).toHaveBeenCalledWith('123456789012');
-    expect(checkOK).toHaveBeenCalledTimes(1);
-  });
-
-  it('changes pairing password', async () => {
-    const { result } = renderHook(() => useChangeSecret('pairing'));
-    await act(async () => {
-      result.current.start('newpassword');
-    });
-
-    const checkOK = jest.fn();
-    const cmdSet = {
-      changePairingPassword: jest.fn().mockResolvedValue({ checkOK }),
-    };
-    await capturedOperation!(cmdSet);
-
-    expect(cmdSet.changePairingPassword).toHaveBeenCalledWith('newpassword');
-    expect(checkOK).toHaveBeenCalledTimes(1);
-  });
-
-  // retry() runs the same closure again.
   it.each([
     ['pin', 'changePIN', '123456'],
     ['puk', 'changePUK', '123456789012'],
     ['pairing', 'changePairingPassword', 'newpassword'],
   ] as const)(
-    'sends the entered %s again when a refused change is retried',
+    'changes the %s to the secret it is given',
     async (secretType, command, secret) => {
-      const { result } = renderHook(() => useChangeSecret(secretType));
-      await act(async () => {
-        result.current.start(secret);
-      });
+      renderHook(() => useChangeSecret(secretType));
+      const checkOK = jest.fn();
+      const cmdSet = { [command]: jest.fn().mockResolvedValue({ checkOK }) };
 
-      const refused = {
-        checkOK: jest.fn(() => {
+      await capturedOperation!(cmdSet, secret);
+
+      expect(cmdSet[command]).toHaveBeenCalledWith(secret);
+      expect(checkOK).toHaveBeenCalledTimes(1);
+    },
+  );
+
+  it('fails when the card refuses the change', async () => {
+    renderHook(() => useChangeSecret('pairing'));
+    const cmdSet = {
+      changePairingPassword: jest.fn().mockResolvedValue({
+        checkOK: () => {
           throw new Error('refused');
-        }),
-      };
-      const cmdSet = {
-        [command]: jest
-          .fn()
-          .mockResolvedValueOnce(refused)
-          .mockResolvedValueOnce({ checkOK: jest.fn() }),
-      };
-      await expect(capturedOperation!(cmdSet)).rejects.toThrow('refused');
-      await capturedOperation!(cmdSet);
+        },
+      }),
+    };
 
-      expect(cmdSet[command]).toHaveBeenNthCalledWith(2, secret);
-    },
-  );
-
-  it.each(['success', 'cancel', 'reset'] as const)(
-    'drops the entered secret on %s',
-    async ending => {
-      const { result } = renderHook(() => useChangeSecret('pairing'));
-      await act(async () => {
-        result.current.start('newpassword');
-      });
-
-      const cmdSet = {
-        changePairingPassword: jest
-          .fn()
-          .mockResolvedValue({ checkOK: jest.fn() }),
-      };
-      if (ending === 'success') {
-        await capturedOperation!(cmdSet);
-      } else {
-        act(() => result.current[ending]());
-      }
-      await capturedOperation!(cmdSet);
-
-      expect(cmdSet.changePairingPassword).toHaveBeenLastCalledWith('');
-    },
-  );
+    await expect(capturedOperation!(cmdSet, 'newpassword')).rejects.toThrow(
+      'refused',
+    );
+  });
 });
