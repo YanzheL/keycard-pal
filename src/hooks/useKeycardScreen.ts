@@ -54,6 +54,8 @@ export type UseKeycardScreenOptions = {
   onBeforeRemove?: (e: BeforeRemoveEvent) => void;
   /** onCancel only cancels the tap instead of also leaving the screen. */
   stayOnCancel?: boolean;
+  /** How the screen leaves after a cancel, in place of going back. */
+  leaveOnCancel?: () => void;
 };
 
 /** Done, back and the PIN-entry title for every Keycard screen, in one place. */
@@ -155,7 +157,13 @@ export function useKeycardScreen(options: UseKeycardScreenOptions): {
 
   const onCancel = useCallback(() => {
     activeRef.current.cancel();
-    if (!optionsRef.current.stayOnCancel) {
+    const { stayOnCancel, leaveOnCancel } = optionsRef.current;
+    if (stayOnCancel) {
+      return;
+    }
+    if (leaveOnCancel) {
+      leaveOnCancel();
+    } else {
       navigation.goBack();
     }
   }, [navigation]);

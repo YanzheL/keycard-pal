@@ -237,6 +237,39 @@ describe('onCancel', () => {
     expect(keycard.cancel).toHaveBeenCalled();
     expect(navigation.goBack).not.toHaveBeenCalled();
   });
+
+  it('leaves through leaveOnCancel instead of going back', () => {
+    const navigation = makeNavigation();
+    const keycard = makeKeycard('nfc');
+    const leaveOnCancel = jest.fn();
+    const { result } = renderScreenHook({
+      keycard,
+      navigation,
+      title: 'T',
+      leaveOnCancel,
+    });
+    result.current.onCancel();
+    expect(keycard.cancel).toHaveBeenCalled();
+    expect(leaveOnCancel).toHaveBeenCalledTimes(1);
+    expect(navigation.goBack).not.toHaveBeenCalled();
+  });
+
+  it('stayOnCancel wins over leaveOnCancel', () => {
+    const navigation = makeNavigation();
+    const keycard = makeKeycard('nfc');
+    const leaveOnCancel = jest.fn();
+    const { result } = renderScreenHook({
+      keycard,
+      navigation,
+      title: 'T',
+      stayOnCancel: true,
+      leaveOnCancel,
+    });
+    result.current.onCancel();
+    expect(keycard.cancel).toHaveBeenCalled();
+    expect(leaveOnCancel).not.toHaveBeenCalled();
+    expect(navigation.goBack).not.toHaveBeenCalled();
+  });
 });
 
 describe('back guard', () => {
@@ -536,6 +569,20 @@ describe("cancel from Apple's NFC sheet", () => {
     rerender({ ...options, keycard: { ...keycard, userCancels: 1 } });
 
     expect(keycard.cancel).toHaveBeenCalledTimes(1);
+    expect(navigation.goBack).not.toHaveBeenCalled();
+  });
+
+  it('leaves through leaveOnCancel', () => {
+    const navigation = makeNavigation();
+    const keycard = makeKeycard('idle');
+    const leaveOnCancel = jest.fn();
+    const options = { keycard, navigation, title: 'T', leaveOnCancel };
+    const { rerender } = renderScreenHook(options);
+
+    rerender({ ...options, keycard: { ...keycard, userCancels: 1 } });
+
+    expect(keycard.cancel).toHaveBeenCalledTimes(1);
+    expect(leaveOnCancel).toHaveBeenCalledTimes(1);
     expect(navigation.goBack).not.toHaveBeenCalled();
   });
 

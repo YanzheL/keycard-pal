@@ -13,6 +13,10 @@ jest.mock('react-native-paper', () => {
   return { MD3DarkTheme: { colors: {} }, Text };
 });
 
+jest.mock('@react-navigation/native', () => ({
+  useFocusEffect: jest.fn(),
+}));
+
 jest.mock('../src/components/NFCBottomSheet', () => jest.fn(() => null));
 const MockNFCBottomSheet = NFCBottomSheet as jest.MockedFunction<
   typeof NFCBottomSheet
@@ -196,6 +200,11 @@ describe('KeycardScreen', () => {
       expect(navigation.setOptions).toHaveBeenCalledWith({
         title: 'Enter Keycard PIN',
       });
+    });
+
+    it('drops the PIN title outside PIN entry', async () => {
+      await renderScreen('error');
+      expect(navigation.setOptions).toHaveBeenLastCalledWith({ title: '' });
     });
 
     it('nfc.phase is pin_entry when phase is pin_entry', async () => {
@@ -514,6 +523,41 @@ describe('KeycardScreen', () => {
       });
       expect(mockRespondError).toHaveBeenCalledWith(
         { id: 99, topic: 'test-topic' },
+        4001,
+        'User rejected',
+      );
+      expect(navigation.reset).toHaveBeenCalledWith({
+        index: 0,
+        routes: [{ name: 'Dashboard' }],
+      });
+    });
+
+    it("rejects the WalletConnect request and leaves when Apple's sheet is cancelled", async () => {
+      const wcSignRoute = {
+        ...signRoute,
+        params: { ...signRoute.params, wcContext: { id: 7, topic: 't' } },
+      };
+      mockUseKeycardOperation.mockReturnValue({
+        ...hookMock('nfc'),
+        userCancels: 0,
+      });
+      const view = render(
+        <KeycardScreen route={wcSignRoute} navigation={navigation} />,
+      );
+      await act(async () => {});
+
+      mockUseKeycardOperation.mockReturnValue({
+        ...hookMock('idle'),
+        userCancels: 1,
+      });
+      view.rerender(
+        <KeycardScreen route={wcSignRoute} navigation={navigation} />,
+      );
+      await act(async () => {});
+
+      expect(mockCancel).toHaveBeenCalledTimes(1);
+      expect(mockRespondError).toHaveBeenCalledWith(
+        { id: 7, topic: 't' },
         4001,
         'User rejected',
       );
