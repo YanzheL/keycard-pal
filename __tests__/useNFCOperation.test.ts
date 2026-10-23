@@ -323,6 +323,42 @@ describe('useNFCOperation', () => {
       expect(result.current.phase).toBe('idle');
       expect(mockStopNFCWithError).not.toHaveBeenCalled();
     });
+
+    // Before the screen has reacted to Apple's Cancel with a reset.
+    it("reopens no error sheet when the operation fails after Apple's Cancel", async () => {
+      let rejectOp: ((e: Error) => void) | null = null;
+      const { result } = renderHook(() =>
+        useNFCOperation(
+          useCallback(
+            () =>
+              new Promise<string>((_, reject) => {
+                rejectOp = reject;
+              }),
+            [],
+          ),
+        ),
+      );
+      await act(async () => {
+        result.current.start();
+      });
+      let connectPromise: Promise<void> | undefined;
+      act(() => {
+        connectPromise = capturedOnConnected?.();
+      });
+      await act(async () => {});
+      expect(rejectOp).not.toBeNull();
+      await act(async () => {
+        capturedOnCancelled?.();
+      });
+      await act(async () => {
+        rejectOp?.(new Error('NFCError:100'));
+        await connectPromise;
+      });
+
+      expect(result.current.phase).toBe('idle');
+      expect(result.current.userCancels).toBe(1);
+      expect(mockStopNFCWithError).not.toHaveBeenCalled();
+    });
   });
 
   // retryOnTagLoss defaults to false.

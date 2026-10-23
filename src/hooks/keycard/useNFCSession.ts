@@ -337,6 +337,8 @@ export default function useNFCSession(
       // The overlay phases stopped the tap on purpose; the sheet closing behind
       // them must not tear them down.
       if (phaseRef.current !== 'nfc') return;
+      // A command still out belongs to a cancelled tap from here on.
+      startAttemptRef.current++;
       setPhase('idle');
       setUserCancels(n => n + 1);
     });
