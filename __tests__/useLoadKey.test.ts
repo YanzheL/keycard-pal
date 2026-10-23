@@ -162,4 +162,64 @@ describe('useLoadKey', () => {
       }),
     ).rejects.toThrow(/already has a key/);
   });
+
+  // retry() runs the same closure again.
+  it.each([
+    [
+      'refused',
+      () =>
+        Promise.resolve({
+          checkOK: () => {
+            throw new Error('refused');
+          },
+        }),
+    ],
+    ['interrupted', () => Promise.reject(new Error('Tag was lost.'))],
+  ])(
+    'retries with the same key pair after the load is %s',
+    async (_, firstAnswer) => {
+      const { result } = renderHook(() => useLoadKey());
+      await act(async () => {
+        result.current.start(preparedKeyPair);
+      });
+
+      const cmdSet = {
+        applicationInfo: { hasMasterKey: () => false },
+        loadBIP32KeyPair: jest
+          .fn()
+          .mockImplementationOnce(firstAnswer)
+          .mockResolvedValueOnce({ checkOK: jest.fn() }),
+      };
+      await expect(capturedOperation!(cmdSet)).rejects.toThrow();
+      await capturedOperation!(cmdSet);
+
+      expect(cmdSet.loadBIP32KeyPair).toHaveBeenNthCalledWith(
+        2,
+        preparedKeyPair,
+      );
+    },
+  );
+
+  it.each(['success', 'cancel', 'reset'] as const)(
+    'drops the key pair on %s',
+    async ending => {
+      const { result } = renderHook(() => useLoadKey());
+      await act(async () => {
+        result.current.start(preparedKeyPair);
+      });
+
+      const cmdSet = {
+        applicationInfo: { hasMasterKey: () => false },
+        loadBIP32KeyPair: jest.fn().mockResolvedValue({ checkOK: jest.fn() }),
+      };
+      if (ending === 'success') {
+        await capturedOperation!(cmdSet);
+      } else {
+        act(() => result.current[ending]());
+      }
+      await capturedOperation!(cmdSet);
+
+      expect(cmdSet.loadBIP32KeyPair).toHaveBeenLastCalledWith(null);
+    },
+  );
 });
