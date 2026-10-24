@@ -17,7 +17,7 @@ Features:
 
 Keycard Pal comes in two builds:
 - Keycard Pal Offline (com.keycardpal.offline) has no internet permission. It cannot make a network connection.
-- Keycard Pal (com.keycardpal) has the internet permission for optional features: WalletConnect, ENS names, transaction simulation with Tenderly, and token images. Each one is off until you turn it on in Settings. WalletConnect needs your own Reown Project ID and simulation needs your own Tenderly API key.
+- Keycard Pal (com.keycardpal) has the internet permission for optional features: WalletConnect, ENS names, transaction simulation with Tenderly, token images, and downloading the clear-signing descriptor registry. Each one is off until you turn it on in Settings. WalletConnect needs your own Reown Project ID and simulation needs your own Tenderly API key.
 
 Keycard Pal is free and open-source software.
 

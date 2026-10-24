@@ -25,7 +25,7 @@ On Android, Keycard Pal comes in two variants:
 
 | Variant | Package ID | Internet |
 |---------|-----------|----------|
-| **Keycard Pal** | `com.keycardpal` | Optional. WalletConnect, ENS names, Tenderly simulation and token images, each off until you turn it on in Settings |
+| **Keycard Pal** | `com.keycardpal` | Optional. WalletConnect, ENS names, Tenderly simulation, token images and the clear-signing registry download, each off until you turn it on in Settings |
 | **Keycard Pal Offline** | `com.keycardpal.offline` | Never. The `INTERNET` permission is absent from the manifest |
 
 Both variants are fully functional for signing and key management. Keycard Pal Offline is the right choice if you want a hard, manifest-level guarantee of no network access.
@@ -61,7 +61,7 @@ On iOS there is one app, Keycard Pal, with the same opt-in online features; ther
 - Import a recovery phrase (BIP-39, 12 or 24 words, with optional passphrase)
 - Import SLIP-39 Shamir Secret Sharing shares
 - Genuine Keycard verification before first pairing
-- Two Android variants: Keycard Pal Offline (no internet, manifest-level guarantee) and Keycard Pal (optional, opt-in online features: WalletConnect, ENS names, Tenderly transaction simulation, token images); iOS ships Keycard Pal
+- Two Android variants: Keycard Pal Offline (no internet, manifest-level guarantee) and Keycard Pal (optional, opt-in online features: WalletConnect, ENS names, Tenderly transaction simulation, token images, clear-signing registry download); iOS ships Keycard Pal
 
 ## Requirements
 
