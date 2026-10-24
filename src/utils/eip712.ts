@@ -1,4 +1,8 @@
-import { validateTypedData } from 'viem';
+import {
+  getTypesForEIP712Domain,
+  validateTypedData,
+  type TypedDataDomain,
+} from 'viem';
 
 import { checksumEthAddress } from './ethereumAddress';
 import { ensureHexPrefix } from './hex';
@@ -78,14 +82,6 @@ const PREHASHED_BYTE_LENGTH = 66;
 const UINT160_MAX = 2n ** 160n - 1n;
 const UINT256_MAX = 2n ** 256n - 1n;
 const ADDRESS_RE = /^0x[0-9a-fA-F]{40}$/;
-// The types viem infers for a domain when the message leaves EIP712Domain out.
-const DOMAIN_FIELD_TYPES: Record<string, string> = {
-  name: 'string',
-  version: 'string',
-  chainId: 'uint256',
-  verifyingContract: 'address',
-  salt: 'bytes32',
-};
 
 export function parseEip712Prehashed(
   signDataHex: string,
@@ -133,7 +129,13 @@ function toDisplayMap(value: unknown): Record<string, string> {
   return Object.keys(value)
     .sort((a, b) => a.localeCompare(b))
     .reduce<Record<string, string>>((acc, key) => {
-      acc[key] = stringifyValue(value[key]);
+      // Not an assignment: a key named __proto__ would set the prototype and lose its row.
+      Object.defineProperty(acc, key, {
+        value: stringifyValue(value[key]),
+        enumerable: true,
+        writable: true,
+        configurable: true,
+      });
       return acc;
     }, {});
 }
@@ -299,6 +301,7 @@ function parseSpecialReview(
 export type Eip712RawTypedData = {
   domain: Record<string, unknown>;
   message: Record<string, unknown>;
+  /** Empty when the request names none, which the classification refuses. */
   primaryType: string;
   types: Record<string, unknown>;
 };
@@ -308,9 +311,7 @@ function toRawTypedData(parsed: JsonObject): Eip712RawTypedData {
     domain: isJsonObject(parsed.domain) ? parsed.domain : {},
     message: isJsonObject(parsed.message) ? parsed.message : {},
     primaryType:
-      typeof parsed.primaryType === 'string'
-        ? parsed.primaryType
-        : 'EIP712Domain',
+      typeof parsed.primaryType === 'string' ? parsed.primaryType : '',
     types: isJsonObject(parsed.types) ? parsed.types : {},
   };
 }
@@ -400,19 +401,21 @@ function checksumStruct(
   return out;
 }
 
-/**
- * Every value the message's types declare `address`, in EIP-55. viem refuses a wrong
- * checksum, and the 20 bytes it encodes are the same either way.
- */
+// The domain type viem hashes: the declared one, else the one it derives from the domain.
 function domainMembersOf(data: Eip712RawTypedData): Eip712Member[] {
   return (
     structMembers(data.types, 'EIP712Domain') ??
-    Object.keys(data.domain)
-      .filter(k => Object.prototype.hasOwnProperty.call(DOMAIN_FIELD_TYPES, k))
-      .map(name => ({ name, type: DOMAIN_FIELD_TYPES[name] }))
+    getTypesForEIP712Domain({ domain: data.domain as TypedDataDomain })
   );
 }
 
+/** Domain fields outside the hashed domain type: the review would show them, unsigned. */
+export function uncoveredDomainFields(data: Eip712RawTypedData): string[] {
+  const covered = new Set(domainMembersOf(data).map(m => m.name));
+  return Object.keys(data.domain).filter(key => !covered.has(key));
+}
+
+/** Every declared `address` in EIP-55, which viem requires; the encoded 20 bytes stay the same. */
 export function checksumEip712Addresses(data: Eip712RawTypedData): {
   typedData: Eip712RawTypedData;
   miscased: string[];
@@ -480,11 +483,7 @@ function oddBytesInMembers(
   return null;
 }
 
-/**
- * The first `bytes` or `bytesN` value written with an odd number of hex digits. viem pads
- * it before hashing, a `bytes` value at the front and a `bytesN` value at the back, so the
- * signed bytes would not be the ones the request wrote.
- */
+/** The first `bytes` or `bytesN` value of odd hex length: viem pads it, so the card would sign other bytes. */
 export function oddLengthBytesPath(data: Eip712RawTypedData): string | null {
   return (
     (isJsonObject(data.domain)
@@ -567,7 +566,11 @@ export function parseEip712Summary(signDataHex: string): Eip712Summary | null {
     const { typedData, miscased } = checksumEip712Addresses(
       toRawTypedData(parsed),
     );
-    validateTypedData(typedData as Parameters<typeof validateTypedData>[0]);
+    // A request that names no primary type is refused, but its fields still show.
+    validateTypedData({
+      ...typedData,
+      primaryType: typedData.primaryType || 'EIP712Domain',
+    } as Parameters<typeof validateTypedData>[0]);
 
     return {
       rawJson: JSON.stringify(parsed, null, 2),

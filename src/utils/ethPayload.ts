@@ -7,6 +7,7 @@ import {
   oddLengthBytesPath,
   parseEip712Prehashed,
   parseEip712RawTypedData,
+  uncoveredDomainFields,
   type Eip712Prehashed,
   type Eip712RawTypedData,
 } from './eip712';
@@ -17,16 +18,8 @@ import {
 } from './erc8213';
 
 /**
- * The single classification of an Ethereum sign request payload.
- *
- * Every consumer of (signData, dataType) — the review Digests tab, the hash
- * sent to the card, and the signature v computation — must go through this
- * union so they can never disagree about what the bytes mean. The digest a
- * variant carries is the digest the card signs; the review displays the same
- * value ("the digest shown is the digest signed").
- *
- * Transaction classification mirrors txParser.parseTx's accept set exactly:
- * a payload parseTx rejects at scan time must classify as 'invalid' here.
+ * The one classification of an Ethereum sign request: the digest a variant carries is the
+ * one the card signs and the review shows. Transactions follow txParser.parseTx's accept set.
  */
 export type EthPayload =
   | { kind: 'tx-legacy'; raw: Uint8Array; chainId?: number }
@@ -147,6 +140,15 @@ export function classifyEthPayload(
   if (dataType === 2) {
     const typedData = parseEip712RawTypedData(signData);
     if (typedData) {
+      if (!typedData.primaryType) {
+        return invalid('EIP-712 typed data names no primaryType.');
+      }
+      const uncovered = uncoveredDomainFields(typedData).join(', ');
+      if (uncovered) {
+        return invalid(
+          `The EIP-712 domain has fields the signature would not cover: ${uncovered}.`,
+        );
+      }
       const oddBytes = oddLengthBytesPath(typedData);
       if (oddBytes) {
         return invalid(
@@ -183,8 +185,7 @@ export function classifyEthPayload(
     );
   }
 
-  // dataType 0 / undefined: the payload must already be the 32-byte digest
-  // (WalletConnect typed-data convention — see requestAdapter.handleTypedData).
+  // dataType 0 or none: a QR request that carries the 32-byte digest itself.
   if (raw.length === DIGEST_BYTES) {
     return { kind: 'raw-digest', digest: `0x${hex.toLowerCase()}` };
   }
@@ -195,12 +196,7 @@ export function classifyEthPayload(
   );
 }
 
-/**
- * The 32-byte digest the Keycard signs for this payload. The review Digests
- * tab renders the same value, so display and signature cannot diverge.
- * Throws on 'invalid' — buildSignKeycardParams never routes such a payload
- * to the Keycard screen.
- */
+/** The 32-byte digest the card signs; throws on 'invalid', which never gets a Sign button. */
 export function signingDigest(payload: EthPayload): Uint8Array {
   switch (payload.kind) {
     case 'tx-legacy':

@@ -9,8 +9,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Changed
 
 - The backup check of a generated key pair shows a preparing step after the last answer instead of pausing when it opens
+- WalletConnect typed data that cannot be signed opens the review with the reason instead of being refused at once
 
 ### Fixed
+
+- WalletConnect typed data is signed under its declared EIP712Domain, giving the same signature as over QR
+- Typed data that names no primaryType is refused instead of signed under a guessed type
+- Typed data whose domain has a field the signature would not cover is refused
+- The typed-data review shows a field named __proto__ instead of leaving it out
 
 - Try again after the card refuses a PIN, PUK or pairing secret change sends the entered secret again instead of an empty one
 - Try again after a refused or interrupted key pair load sends the key pair again instead of failing

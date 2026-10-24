@@ -1,10 +1,8 @@
-import { hashTypedData, isAddress } from 'viem';
+import { isAddress } from 'viem';
 
 import type { WCContext } from '@/constants/walletConnect';
 import type { WCRequest } from '@/providers/walletConnect/context';
 import type { ScanResult } from '@/types';
-
-import { checksumEip712Addresses, oddLengthBytesPath } from '@/utils/eip712';
 
 export type { WCContext };
 
@@ -25,16 +23,20 @@ function splitAddrParam(params: unknown): { address: string; other: string } {
   throw new Error('Invalid params: signer address missing');
 }
 
-function hexEncodeMessage(value: string): string {
-  if (value.toLowerCase().startsWith('0x')) {
-    return value;
-  }
-  const bytes = new TextEncoder().encode(value);
+function utf8Hex(value: string): string {
   let hex = '0x';
-  for (const b of bytes) {
+  for (const b of new TextEncoder().encode(value)) {
     hex += b.toString(16).padStart(2, '0');
   }
   return hex;
+}
+
+function hexEncodeMessage(value: string): string {
+  return value.toLowerCase().startsWith('0x') ? value : utf8Hex(value);
+}
+
+function isObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 function resolvePath(
@@ -76,71 +78,25 @@ function handleTypedData(
 ): ScanResult {
   const { address, other: typedDataJson } = splitAddrParam(req.params);
 
-  let parsed: { domain: any; types: any; primaryType?: string; message: any };
+  let parsed: unknown;
   try {
     parsed = JSON.parse(typedDataJson);
   } catch {
     throw new Error('Invalid EIP-712 payload: JSON parse failed');
   }
-
-  const { domain, types, primaryType, message } = parsed;
-  if (!domain || !types || !message) {
+  if (!isObject(parsed) || !parsed.domain || !parsed.types || !parsed.message) {
     throw new Error('Invalid EIP-712 payload: missing domain/types/message');
-  }
-
-  // viem builds EIP712Domain from the domain itself.
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const { EIP712Domain: _EIP712Domain, ...signingTypes } = types;
-  const resolvedType = primaryType ?? Object.keys(signingTypes)[0];
-
-  if (
-    oddLengthBytesPath({ domain, message, primaryType: resolvedType, types })
-  ) {
-    // A digest here would be signable; as typed data the review refuses it and says why.
-    // The resolved primary type goes with it, so the review reads the same message.
-    const json = hexEncodeMessage(
-      JSON.stringify({ ...parsed, primaryType: resolvedType }),
-    );
-    return {
-      kind: 'eth-sign-request',
-      request: {
-        signData: json,
-        dataType: 2,
-        derivationPath: resolvePath(address, addressToPath),
-        address,
-        origin: 'WalletConnect',
-        reviewData: json,
-      },
-    };
-  }
-
-  let digest: `0x${string}`;
-  try {
-    const { typedData } = checksumEip712Addresses({
-      domain,
-      message,
-      primaryType: resolvedType,
-      types,
-    });
-    digest = hashTypedData({
-      domain: typedData.domain,
-      types: signingTypes,
-      primaryType: typedData.primaryType,
-      message: typedData.message,
-    });
-  } catch {
-    throw new Error('Invalid EIP-712 payload: hashing failed');
   }
 
   return {
     kind: 'eth-sign-request',
     request: {
-      signData: digest, // dataType 0: already the digest
-      dataType: 0,
+      // Always the JSON text: as dataType 2, hex would be signed blind as a pre-hash or a digest.
+      signData: utf8Hex(typedDataJson),
+      dataType: 2,
       derivationPath: resolvePath(address, addressToPath),
       address,
       origin: 'WalletConnect',
-      reviewData: hexEncodeMessage(typedDataJson),
     },
   };
 }

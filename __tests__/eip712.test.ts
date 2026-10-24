@@ -109,6 +109,20 @@ describe('parseEip712Summary', () => {
     });
   });
 
+  it('keeps a field named __proto__ in the display maps', () => {
+    const json =
+      '{"types":{"EIP712Domain":[{"name":"name","type":"string"},{"name":"__proto__","type":"string"}],"Note":[{"name":"__proto__","type":"string"}]},"primaryType":"Note","domain":{"name":"Notes","__proto__":"hidden"},"message":{"__proto__":"also hidden"}}';
+    const summary = parseEip712Summary(
+      Buffer.from(json, 'utf8').toString('hex'),
+    );
+
+    const own = (map: Record<string, string>, key: string) =>
+      Object.getOwnPropertyDescriptor(map, key)?.value;
+    expect(own(summary!.domain, '__proto__')).toBe('hidden');
+    expect(own(summary!.domain, 'name')).toBe('Notes');
+    expect(own(summary!.message, '__proto__')).toBe('also hidden');
+  });
+
   it('stringifies primitive domain and message values for display', () => {
     const payload = {
       types: {
@@ -491,7 +505,7 @@ describe('parseEip712RawTypedData', () => {
     expect(parseEip712RawTypedData(hex)).toBeNull();
   });
 
-  it('uses fallback primaryType when missing from payload', () => {
+  it('leaves primaryType empty when the payload names none', () => {
     const payload = {
       types: {},
       domain: {},
@@ -499,7 +513,7 @@ describe('parseEip712RawTypedData', () => {
     };
     const hex = Buffer.from(JSON.stringify(payload), 'utf8').toString('hex');
     const result = parseEip712RawTypedData(hex);
-    expect(result!.primaryType).toEqual('EIP712Domain');
+    expect(result!.primaryType).toEqual('');
   });
 
   it('returns null for JSON that is not an object', () => {

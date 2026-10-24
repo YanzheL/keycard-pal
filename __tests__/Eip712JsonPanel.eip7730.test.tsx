@@ -7,7 +7,24 @@ import { DESCRIPTOR_CHECK_FAILED_WARNING } from '../src/constants/eip7730';
 import type { Eip712Summary } from '../src/utils/eip712';
 import { NOT_REVIEWED_TEXT } from '../src/utils/eip7730/source';
 import { checksumEthAddress } from '../src/utils/ethereumAddress';
+import { classifyEthPayload } from '../src/utils/ethPayload';
+import { wcRequestToScanResult } from '../src/utils/walletConnect/requestAdapter';
 import type { EthSignRequest } from '../src/types';
+
+// The classification SignRequestDetail hands the panel.
+function Panel(
+  props: Omit<React.ComponentProps<typeof Eip712JsonPanel>, 'payload'>,
+) {
+  return (
+    <Eip712JsonPanel
+      {...props}
+      payload={classifyEthPayload(
+        props.request.signData,
+        props.request.dataType,
+      )}
+    />
+  );
+}
 
 const CYFRIN = '0x3846c3A30E62075Fa916216b35EF04B8F53931f6';
 
@@ -146,11 +163,7 @@ describe('Eip712JsonPanel EIP-7730 integration', () => {
     });
 
     render(
-      <Eip712JsonPanel
-        request={buildRequest(payload)}
-        eip712={eip712}
-        chainId={1}
-      />,
+      <Panel request={buildRequest(payload)} eip712={eip712} chainId={1} />,
     );
 
     expect(screen.getByText('Approve spender')).toBeTruthy();
@@ -170,7 +183,7 @@ describe('Eip712JsonPanel EIP-7730 integration', () => {
       special: { kind: 'permit' } as any,
     };
     render(
-      <Eip712JsonPanel
+      <Panel
         request={buildRequest(
           buildPayload({ spender: '0xabc', sigDeadline: '1' }),
         )}
@@ -213,7 +226,7 @@ describe('Eip712JsonPanel EIP-7730 integration', () => {
     mockLookupEip712.mockReturnValue(null);
     const payload = buildPayload({ spender: '0xabc', sigDeadline: '1' });
     render(
-      <Eip712JsonPanel
+      <Panel
         request={buildRequest(payload)}
         eip712={buildSummary({ spender: '0xabc', sigDeadline: '1' })}
         chainId={1}
@@ -227,18 +240,23 @@ describe('Eip712JsonPanel EIP-7730 integration', () => {
     );
   });
 
-  it('reads WalletConnect typed data from reviewData', () => {
+  it('reads WalletConnect typed data from the request the adapter hands over', () => {
     mockLookupEip712.mockReturnValue(null);
     const payload = buildPayload({ spender: '0xabc', sigDeadline: '1' });
-    const request: EthSignRequest = {
-      signData: `0x${'11'.repeat(32)}`,
-      dataType: 0,
-      derivationPath: "m/44'/60'/0'/0",
-      reviewData: buildRequest(payload).signData,
-    };
+    const signer = '0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045';
+    const scan = wcRequestToScanResult(
+      {
+        id: 1,
+        topic: 'topic',
+        method: 'eth_signTypedData_v4',
+        params: [signer, JSON.stringify(payload)],
+      },
+      new Map([[signer.toLowerCase(), "m/44'/60'/0'/0/0"]]),
+    );
+    if (scan.kind !== 'eth-sign-request') throw new Error(scan.kind);
     render(
-      <Eip712JsonPanel
-        request={request}
+      <Panel
+        request={scan.request}
         eip712={buildSummary({ spender: '0xabc', sigDeadline: '1' })}
         chainId={undefined}
       />,
@@ -261,7 +279,7 @@ describe('Eip712JsonPanel EIP-7730 integration', () => {
     });
     const payload = buildPayload({ spender: '0xabc', sigDeadline: '1' });
     render(
-      <Eip712JsonPanel
+      <Panel
         request={{
           ...buildRequest(payload),
           address: '0x00000000000000000000000000000000000000aa',
@@ -303,7 +321,7 @@ describe('Eip712JsonPanel EIP-7730 integration', () => {
       message: { spender: mixed, note: mixed },
     };
     render(
-      <Eip712JsonPanel
+      <Panel
         request={buildRequest(payload)}
         eip712={buildSummary({ spender: mixed, note: mixed })}
         chainId={1}
@@ -322,7 +340,7 @@ describe('Eip712JsonPanel EIP-7730 integration', () => {
       special: { kind: 'permit' } as any,
     };
     render(
-      <Eip712JsonPanel
+      <Panel
         request={buildRequest(buildPayload({ spender: '0xabc' }))}
         eip712={eip712}
         chainId={1}
@@ -342,7 +360,7 @@ describe('Eip712JsonPanel EIP-7730 integration', () => {
       sigDeadline: '1',
     };
     render(
-      <Eip712JsonPanel
+      <Panel
         request={buildRequest(buildPayload(message))}
         eip712={buildSummary(message)}
         chainId={1}
@@ -368,7 +386,7 @@ describe('Eip712JsonPanel EIP-7730 integration', () => {
       special: { kind: 'permit' } as any,
     };
     render(
-      <Eip712JsonPanel
+      <Panel
         request={buildRequest(buildPayload({ spender: '0xabc' }))}
         eip712={eip712}
         chainId={1}
@@ -398,11 +416,7 @@ describe('Eip712JsonPanel EIP-7730 integration', () => {
       message: {},
     };
     render(
-      <Eip712JsonPanel
-        request={buildRequest(payload)}
-        eip712={eip712}
-        chainId={1}
-      />,
+      <Panel request={buildRequest(payload)} eip712={eip712} chainId={1} />,
     );
     expect(mockLookupEip712).not.toHaveBeenCalled();
   });
@@ -418,7 +432,7 @@ describe('Eip712JsonPanel EIP-7730 integration', () => {
       },
     };
     render(
-      <Eip712JsonPanel
+      <Panel
         request={buildRequest(payload)}
         eip712={buildSummary({})}
         chainId={1}
@@ -438,7 +452,7 @@ describe('Eip712JsonPanel EIP-7730 integration', () => {
       domain: { name: 'Permit2', verifyingContract: VERIFYING },
     };
     render(
-      <Eip712JsonPanel
+      <Panel
         request={buildRequest(payload)}
         eip712={buildSummary({})}
         chainId={1}
@@ -460,7 +474,7 @@ describe('Eip712JsonPanel EIP-7730 integration', () => {
     });
     const message = { spender: '0xabc', sigDeadline: '5' };
     render(
-      <Eip712JsonPanel
+      <Panel
         request={buildRequest(buildPayload(message))}
         eip712={buildSummary(message)}
         chainId={1}
@@ -484,7 +498,7 @@ describe('Eip712JsonPanel EIP-7730 integration', () => {
     });
     const message = { tokens: ['0x01', '0x02'], amounts: ['1'] } as any;
     render(
-      <Eip712JsonPanel
+      <Panel
         request={buildRequest(buildPayload(message))}
         eip712={buildSummary(message)}
         chainId={1}
@@ -501,7 +515,7 @@ describe('Eip712JsonPanel EIP-7730 integration', () => {
       mockLookupEip712.mockReturnValue({ intent: 'Approve spender', fields });
       const message = { spender: SPENDER, sigDeadline };
       render(
-        <Eip712JsonPanel
+        <Panel
           request={buildRequest(buildPayload(message))}
           eip712={buildSummary(message)}
           chainId={1}

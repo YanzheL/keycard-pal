@@ -173,38 +173,14 @@ describe('a message with a wrong checksum', () => {
         new Map([[addr.toLowerCase(), "m/44'/60'/0'/0/0"]]),
       );
       if (result.kind !== 'eth-sign-request') throw new Error(result.kind);
-      return result.request.signData;
+      const signed = classifyEthPayload(
+        result.request.signData,
+        result.request.dataType,
+      );
+      if (signed.kind !== 'eip712-json') throw new Error(signed.kind);
+      return signed.digest;
     };
     expect(sign(mail(BOB_MISCASED))).toBe(sign(mail(BOB.toLowerCase())));
-  });
-
-  it('hashes the same over WalletConnect without a primaryType', () => {
-    const addr = '0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045';
-    const sign = (payload: unknown) => {
-      const result = wcRequestToScanResult(
-        {
-          id: 1,
-          topic: 'topic',
-          method: 'eth_signTypedData_v4',
-          params: [addr, JSON.stringify(payload)],
-        },
-        new Map([[addr.toLowerCase(), "m/44'/60'/0'/0/0"]]),
-      );
-      if (result.kind !== 'eth-sign-request') throw new Error(result.kind);
-      return result.request.signData;
-    };
-    const note = (to: string, primaryType?: string) => ({
-      types: {
-        EIP712Domain: [{ name: 'name', type: 'string' }],
-        Note: [{ name: 'to', type: 'address' }],
-      },
-      ...(primaryType ? { primaryType } : {}),
-      domain: { name: 'Note' },
-      message: { to },
-    });
-    expect(sign(note(BOB_MISCASED))).toBe(
-      sign(note(BOB.toLowerCase(), 'Note')),
-    );
   });
 });
 
