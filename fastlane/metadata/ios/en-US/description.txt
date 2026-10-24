@@ -15,6 +15,6 @@ Features:
 - Genuine Keycard check
 - No telemetry, no analytics, no account
 
-Network features are optional and each one is off until you turn it on in Settings: WalletConnect, ENS names, transaction simulation with Tenderly, and token images. WalletConnect needs your own Reown Project ID and simulation needs your own Tenderly API key.
+Network features are optional and each one is off until you turn it on in Settings: WalletConnect, ENS names, transaction simulation with Tenderly, token images, and downloading the clear-signing descriptor registry. WalletConnect needs your own Reown Project ID and simulation needs your own Tenderly API key.
 
 Keycard Pal is free and open-source software.
