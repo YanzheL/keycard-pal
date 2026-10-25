@@ -4,9 +4,9 @@ import { Keyboard, Platform } from 'react-native';
 
 import Bip85Screen, {
   BIP85_INDEX_EXPLAINER,
-  BIP85_NEEDS_NEWER_CARD,
 } from '../src/screens/bip85/Bip85Screen';
 import NFCBottomSheet from '../src/components/NFCBottomSheet';
+import { routeAbsence } from '../src/navigation/generationBoundRoutes';
 import type { Bip85Format } from '../src/utils/bip85';
 
 import { testPreferences as mockTestPreferences } from './preferences.testUtils';
@@ -235,15 +235,17 @@ describe('Bip85Screen', () => {
       mockGenerationsInUse = ['3.1', '4.0'];
       renderScreen();
       expect(
-        screen.getByText(`${BIP85_INDEX_EXPLAINER} ${BIP85_NEEDS_NEWER_CARD}`),
+        screen.getByText(
+          `${BIP85_INDEX_EXPLAINER} ${routeAbsence('Bip85').detail}`,
+        ),
       ).toBeTruthy();
     });
 
     it('says nothing when only 4.x cards are ticked', () => {
       renderScreen();
-      expect(screen.queryByText(BIP85_NEEDS_NEWER_CARD, { exact: false })).toBe(
-        null,
-      );
+      expect(
+        screen.queryByText(routeAbsence('Bip85').detail, { exact: false }),
+      ).toBeNull();
     });
   });
 

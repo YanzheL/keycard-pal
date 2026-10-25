@@ -5,6 +5,7 @@ import {
   isRouteHidden,
   routeAbsence,
 } from '../src/navigation/generationBoundRoutes';
+import { ALL_GENERATIONS } from '../src/utils/cardGeneration';
 
 // Routes 4.0 took away. BIP85, which 4.0 added, has its own block below.
 const ROUTES = ['PairingSlots', 'ChangePairingSecret'] as const;
@@ -120,8 +121,24 @@ describe('routeAbsence', () => {
     },
   );
 
+  // A generation's label ("applet 4.x") is how the UI names it (ADR-0012); nothing else is.
   it.each(ALL_ROUTES)('keeps internal vocabulary out of %s', route => {
-    const copy = Object.values(routeAbsence(route)).join(' ');
+    const copy = Object.values(routeAbsence(route))
+      .join(' ')
+      .replace(/applet \d+\.x/gi, '');
     expect(copy).not.toMatch(/generation|secure channel|applet/i);
+  });
+
+  it('names the first generation that has Bip85 by its label', () => {
+    expect(routeAbsence('Bip85').detail).toBe(
+      'This needs a Keycard with applet 4.x.',
+    );
+  });
+});
+
+// A span whose first generation is newer than its last would hide the entry and refuse every card.
+describe('route table', () => {
+  it.each(ALL_ROUTES)('gives %s to at least one generation', route => {
+    expect(ALL_GENERATIONS.some(g => cardHasRoute(route, g))).toBe(true);
   });
 });

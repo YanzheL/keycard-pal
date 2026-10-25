@@ -4,6 +4,10 @@ import { Text } from 'react-native-paper';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Icons } from '@/assets/icons';
+import {
+  everyCardInUseHasRoute,
+  routeAbsence,
+} from '@/navigation/generationBoundRoutes';
 import { Bip85ScreenProps } from '@/navigation/types';
 import theme from '@/theme';
 
@@ -14,14 +18,11 @@ import { useDeriveBip85 } from '@/hooks/keycard/useDeriveBip85';
 import { useKeycardScreen } from '@/hooks/useKeycardScreen';
 import { usePreferences } from '@/hooks/usePreferences';
 
-import { everyCardInUseHasRoute } from '@/navigation/generationBoundRoutes';
 import { BIP85_MAX_INDEX, bip85Format } from '@/utils/bip85';
 
 export const BIP85_INDEX_EXPLAINER =
   'Each index gives a different, unrelated result. The same index always ' +
   'gives the same one, so you can derive it again later.';
-
-export const BIP85_NEEDS_NEWER_CARD = 'This needs a Keycard with applet 4.x.';
 
 export default function Bip85Screen({ navigation, route }: Bip85ScreenProps) {
   const { format } = route.params;
@@ -103,7 +104,7 @@ export default function Bip85Screen({ navigation, route }: Bip85ScreenProps) {
           <View style={styles.body}>
             <Text style={styles.description}>
               {mayLackBip85
-                ? `${BIP85_INDEX_EXPLAINER} ${BIP85_NEEDS_NEWER_CARD}`
+                ? `${BIP85_INDEX_EXPLAINER} ${routeAbsence('Bip85').detail}`
                 : BIP85_INDEX_EXPLAINER}
             </Text>
             <Text style={styles.label}>Index</Text>
