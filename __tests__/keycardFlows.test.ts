@@ -119,8 +119,25 @@ describe('eth sign flow', () => {
   });
 
   it('buildOutput returns a wc-signature outcome when wcContext is present', () => {
+    // WalletConnect typed data, as the adapter hands it over: JSON, no chainId.
+    const signData =
+      '0x' +
+      Buffer.from(
+        JSON.stringify({
+          types: {
+            EIP712Domain: [{ name: 'name', type: 'string' }],
+            Note: [{ name: 'text', type: 'string' }],
+          },
+          primaryType: 'Note',
+          domain: { name: 'Notes' },
+          message: { text: 'hello' },
+        }),
+        'utf8',
+      ).toString('hex');
     const flowRun = prepareKeycardFlow({
       ...ethParams,
+      signData,
+      chainId: undefined,
       wcContext: { id: 1, topic: 't' },
     });
     const cardResult = new Uint8Array(65).fill(0x02);
@@ -129,9 +146,9 @@ describe('eth sign flow', () => {
 
     expect(buildRawEthHexSignature).toHaveBeenCalledWith(
       cardResult,
-      expect.any(Uint8Array),
-      'raw-digest',
-      ethParams.chainId,
+      signingDigest(classifyEthPayload(signData, 2)),
+      'eip712-json',
+      undefined,
     );
     expect(outcome).toEqual({
       kind: 'wc-signature',

@@ -10,9 +10,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - The backup check of a generated key pair shows a preparing step after the last answer instead of pausing when it opens
 - The store descriptions, the README and the F-Droid `NonFreeNet` reason list the clear-signing registry download among the optional network features
+- WalletConnect typed data that cannot be signed opens the review with the reason instead of being refused at once
 
 ### Fixed
 
+- WalletConnect typed data is signed under its declared EIP712Domain, giving the same signature as over QR
+- Typed data that names no primaryType, or that the signature would not fully cover, is refused with the reason
 - Try again after the card refuses a PIN, PUK or pairing secret change sends the entered secret again instead of an empty one
 - Try again after a refused or interrupted key pair load sends the key pair again instead of failing
 - Cancel during a tap no longer brings the error sheet back when the command already sent to the card fails afterwards

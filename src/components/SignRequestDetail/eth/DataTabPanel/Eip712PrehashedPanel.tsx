@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { SegmentedButtons } from 'react-native-paper';
 
@@ -7,35 +7,21 @@ import type { EthSignRequest } from '@/types';
 
 import InfoRow from '@/components/InfoRow';
 
-import { type Eip712Prehashed } from '@/utils/eip712';
-import { computeEip712DigestFromPrehashed } from '@/utils/erc8213';
-import { classifyEthPayload } from '@/utils/ethPayload';
+import type { EthPayload } from '@/utils/ethPayload';
 
 import { DigestExplainer, DigestRow, SectionHeader } from './shared';
 
 type Tab = 'details' | 'digests' | 'raw';
 
 export default function Eip712PrehashedPanel({
-  eip712Prehashed,
+  payload,
   request,
 }: {
-  eip712Prehashed: Eip712Prehashed;
+  payload: Extract<EthPayload, { kind: 'eip712-prehashed' }>;
   request: EthSignRequest;
 }) {
   const [tab, setTab] = useState<Tab>('details');
-
-  const eip712Digest = useMemo(() => {
-    // Prefer the classification's digest — the same value signingDigest sends
-    // to the card. Fall back to the prop-derived compute for WC requests whose
-    // pre-hash came from reviewData rather than signData.
-    const payload = classifyEthPayload(request.signData, request.dataType);
-    return payload.kind === 'eip712-prehashed'
-      ? payload.digest
-      : computeEip712DigestFromPrehashed(
-          eip712Prehashed.domainSeparatorHash,
-          eip712Prehashed.messageHash,
-        );
-  }, [request.signData, request.dataType, eip712Prehashed]);
+  const { prehashed, digest } = payload;
 
   return (
     <View style={styles.panel}>
@@ -55,28 +41,22 @@ export default function Eip712PrehashedPanel({
             <View style={styles.row}>
               <InfoRow
                 label="Domain separator"
-                value={eip712Prehashed.domainSeparatorHash}
+                value={prehashed.domainSeparatorHash}
               />
             </View>
             <View style={styles.row}>
-              <InfoRow
-                label="Message hash"
-                value={eip712Prehashed.messageHash}
-              />
+              <InfoRow label="Message hash" value={prehashed.messageHash} />
             </View>
           </>
         )}
         {tab === 'digests' && (
           <>
-            <DigestRow label="EIP-712 Digest" value={eip712Digest} />
+            <DigestRow label="EIP-712 Digest" value={digest} />
             <DigestRow
               label="Domain Hash"
-              value={eip712Prehashed.domainSeparatorHash}
+              value={prehashed.domainSeparatorHash}
             />
-            <DigestRow
-              label="Message Hash"
-              value={eip712Prehashed.messageHash}
-            />
+            <DigestRow label="Message Hash" value={prehashed.messageHash} />
             <DigestExplainer text={EIP712_DIGEST_EXPLAINER} />
           </>
         )}

@@ -12,6 +12,7 @@ import SimulationAddressProvider from '../src/components/SignRequestDetail/Simul
 import EthSignRequestDetail from '../src/components/SignRequestDetail/eth/SignRequestDetail';
 import { MISCASED_ADDRESS_WARNING } from '../src/constants/eip712';
 import type { EthSignRequest } from '../src/types';
+import { wcRequestToScanResult } from '../src/utils/walletConnect/requestAdapter';
 
 const mockNavigation = {
   goBack: jest.fn(),
@@ -782,15 +783,23 @@ describe('EthSignRequestDetail — EIP-712 special renderers', () => {
   });
 
   it('shows the registry descriptor for a WalletConnect request, which carries no chainId', () => {
-    const { signData, ...rest } = usdcTransferAuthorization();
-    renderDetail({
-      ...rest,
-      chainId: undefined,
-      dataType: 0,
-      signData: `0x${'11'.repeat(32)}`,
-      reviewData: signData,
-      origin: 'WalletConnect',
-    });
+    const signer = '0x2222222222222222222222222222222222222222';
+    const scan = wcRequestToScanResult(
+      {
+        id: 1,
+        topic: 'topic',
+        method: 'eth_signTypedData_v4',
+        params: [
+          signer,
+          Buffer.from(usdcTransferAuthorization().signData, 'hex').toString(
+            'utf8',
+          ),
+        ],
+      },
+      new Map([[signer, "m/44'/60'/0'/0/0"]]),
+    );
+    if (scan.kind !== 'eth-sign-request') throw new Error(scan.kind);
+    renderDetail(scan.request);
 
     expect(screen.getByText('Authorize USDC transfer')).toBeTruthy();
     expect(screen.getByText('1 USDC')).toBeTruthy();
@@ -912,6 +921,65 @@ describe('EthSignRequestDetail — EIP-712 special renderers', () => {
     expect(screen.getByText('Safe Transaction')).toBeTruthy();
     expect(screen.queryByText('ERC-20 Transfer')).toBeNull();
     expect(screen.getByText(data)).toBeTruthy();
+  });
+
+  const NOTE_TYPES = {
+    EIP712Domain: [{ name: 'name', type: 'string' }],
+    Note: [{ name: 'text', type: 'string' }],
+  };
+
+  it('refuses typed data that names no primaryType and says why', () => {
+    renderDetail({
+      signData: typedDataHex({
+        types: NOTE_TYPES,
+        domain: { name: 'Notes' },
+        message: { text: 'hello' },
+      }),
+      dataType: 2,
+      derivationPath: "m/44'/60'/0'/0",
+    });
+
+    expect(
+      screen.getByText(
+        'This request cannot be signed. EIP-712 typed data names no primaryType.',
+      ),
+    ).toBeTruthy();
+    expect(screen.getByText('Notes')).toBeTruthy();
+    expect(screen.getByText('hello')).toBeTruthy();
+  });
+
+  it('shows a declared domain member named __proto__, which is signed', () => {
+    renderDetail({
+      signData: Buffer.from(
+        '{"types":{"EIP712Domain":[{"name":"name","type":"string"},{"name":"__proto__","type":"string"}],"Note":[{"name":"text","type":"string"}]},"primaryType":"Note","domain":{"name":"Notes","__proto__":"hidden"},"message":{"text":"hello"}}',
+        'utf8',
+      ).toString('hex'),
+      dataType: 2,
+      derivationPath: "m/44'/60'/0'/0",
+    });
+
+    expect(screen.queryByText(/This request cannot be signed/)).toBeNull();
+    expect(screen.getByText('__proto__')).toBeTruthy();
+    expect(screen.getByText('hidden')).toBeTruthy();
+  });
+
+  it('refuses a domain field the signature would not cover and names it', () => {
+    renderDetail({
+      signData: typedDataHex({
+        types: NOTE_TYPES,
+        primaryType: 'Note',
+        domain: { name: 'Notes', chainId: 1 },
+        message: { text: 'hello' },
+      }),
+      dataType: 2,
+      derivationPath: "m/44'/60'/0'/0",
+    });
+
+    expect(
+      screen.getByText(
+        'This request cannot be signed. The EIP-712 domain has fields the signature would not cover: chainId.',
+      ),
+    ).toBeTruthy();
   });
 });
 

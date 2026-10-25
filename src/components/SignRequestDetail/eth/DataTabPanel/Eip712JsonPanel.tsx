@@ -27,7 +27,7 @@ import { lookupEip712 } from '@/utils/eip7730/lookup';
 import { buildEip712Resolvers } from '@/utils/eip7730/paths';
 import { reviewerNames } from '@/utils/eip7730/source';
 import { fitsRequest, shownFields } from '@/utils/eip7730/visibility';
-import { classifyEthPayload } from '@/utils/ethPayload';
+import type { EthPayload } from '@/utils/ethPayload';
 
 import Eip7730FieldList from './Eip7730FieldList';
 import {
@@ -44,19 +44,20 @@ type Tab = 'details' | 'digests' | 'raw';
 export default function Eip712JsonPanel({
   request,
   eip712,
+  payload,
   chainId,
 }: {
   request: EthSignRequest;
   eip712: Eip712Summary;
+  payload: EthPayload;
   chainId: number | undefined;
 }) {
   const [tab, setTab] = useState<Tab>('details');
   const specialEip712 = eip712.special;
 
-  // WalletConnect typed data is in reviewData; the app hashed it into signData itself.
   const rawTypedData = useMemo(
-    () => parseEip712RawTypedData(request.reviewData ?? request.signData),
-    [request.reviewData, request.signData],
+    () => parseEip712RawTypedData(request.signData),
+    [request.signData],
   );
   const verifyingContract = eip712.domain?.verifyingContract;
   // ERC-7730 binds a message to its domain's chain; WalletConnect requests carry no other.
@@ -119,13 +120,8 @@ export default function Eip712JsonPanel({
       eip7730Descriptor.intent
     : undefined;
 
-  const eip712Digest = useMemo(() => {
-    // Same classification as the bytes sent to the card, so the digest shown is the one signed.
-    const payload = classifyEthPayload(request.signData, request.dataType);
-    return payload.kind === 'eip712-json' || payload.kind === 'raw-digest'
-      ? payload.digest
-      : null;
-  }, [request.signData, request.dataType]);
+  // The classification's digest is the one the card signs.
+  const eip712Digest = payload.kind === 'eip712-json' ? payload.digest : null;
 
   return (
     <View style={styles.panel}>

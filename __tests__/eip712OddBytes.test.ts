@@ -31,10 +31,10 @@ const SAFE_TX_TYPES = {
   ],
 };
 
-function safeTx(data: string, withPrimaryType = true) {
+function safeTx(data: string) {
   return {
     types: SAFE_TX_TYPES,
-    ...(withPrimaryType ? { primaryType: 'SafeTx' } : {}),
+    primaryType: 'SafeTx',
     domain: {
       chainId: 1,
       verifyingContract: '0x3333333333333333333333333333333333333333',
@@ -54,11 +54,6 @@ function safeTx(data: string, withPrimaryType = true) {
   };
 }
 
-const typedSafeTx = (data: string) => ({
-  ...safeTx(data),
-  primaryType: 'SafeTx',
-});
-
 function hex(payload: unknown): string {
   return '0x' + Buffer.from(JSON.stringify(payload), 'utf8').toString('hex');
 }
@@ -71,7 +66,7 @@ describe('oddLengthBytesPath', () => {
   ) => ({ types, primaryType: 'M', domain, message });
 
   it('names a bytes value with an odd number of hex digits', () => {
-    expect(oddLengthBytesPath(typedSafeTx(TRANSFER_ODD))).toBe('message.data');
+    expect(oddLengthBytesPath(safeTx(TRANSFER_ODD))).toBe('message.data');
   });
 
   it('names a bytesN value, inside arrays and structs too', () => {
@@ -118,8 +113,8 @@ describe('oddLengthBytesPath', () => {
   });
 
   it('passes whole bytes, empty bytes, and what is not hex at all', () => {
-    expect(oddLengthBytesPath(typedSafeTx(TRANSFER))).toBeNull();
-    expect(oddLengthBytesPath(typedSafeTx('0x'))).toBeNull();
+    expect(oddLengthBytesPath(safeTx(TRANSFER))).toBeNull();
+    expect(oddLengthBytesPath(safeTx('0x'))).toBeNull();
     expect(
       oddLengthBytesPath(
         typed({ M: [{ name: 'b', type: 'bytes' }] }, { b: 'not hex' }),
@@ -163,14 +158,6 @@ describe('a WalletConnect request with odd-length bytes', () => {
   it('reaches the review as typed data, which refuses it', () => {
     const request = scan(safeTx(TRANSFER_ODD));
     expect(request.dataType).toBe(2);
-    expect(request.reviewData).toBe(request.signData);
-    expect(
-      classifyEthPayload(request.signData, request.dataType),
-    ).toMatchObject({ kind: 'invalid' });
-  });
-
-  it('keeps the primary type it resolved, so the review reads the same message', () => {
-    const request = scan(safeTx(TRANSFER_ODD, false));
     expect(
       classifyEthPayload(request.signData, request.dataType),
     ).toMatchObject({
@@ -179,14 +166,15 @@ describe('a WalletConnect request with odd-length bytes', () => {
     });
   });
 
-  it('still hashes a message whose bytes are whole', () => {
+  it('signs a message whose bytes are whole under its declared types', () => {
     const request = scan(safeTx(TRANSFER));
-    expect(request.dataType).toBe(0);
-    const { SafeTx } = SAFE_TX_TYPES;
-    expect(request.signData).toBe(
-      hashTypedData({ ...safeTx(TRANSFER), types: { SafeTx } } as Parameters<
-        typeof hashTypedData
-      >[0]),
-    );
+    expect(
+      classifyEthPayload(request.signData, request.dataType),
+    ).toMatchObject({
+      kind: 'eip712-json',
+      digest: hashTypedData(
+        safeTx(TRANSFER) as Parameters<typeof hashTypedData>[0],
+      ),
+    });
   });
 });

@@ -379,11 +379,22 @@ describe('buildRawEthHexSignature', () => {
     expect(parseInt(vHex, 16)).toBe(27 + recId);
   });
 
-  it('v = 27 + recId for raw-digest (WC typed-data digest)', () => {
+  it('v = 27 + recId for raw-digest (a digest request over QR)', () => {
     const result = buildRawEthHexSignature(
       tlvBytes,
       HASH,
       'raw-digest',
+      undefined,
+    );
+    const vHex = result.slice(2 + 128);
+    expect(parseInt(vHex, 16)).toBe(27 + recId);
+  });
+
+  it('v = 27 + recId for eip712-json (WalletConnect typed data)', () => {
+    const result = buildRawEthHexSignature(
+      tlvBytes,
+      HASH,
+      'eip712-json',
       undefined,
     );
     const vHex = result.slice(2 + 128);

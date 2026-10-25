@@ -43,8 +43,10 @@ const TYPED_DATA = {
   },
   message: { contents: 'hi' },
 } as const;
-const TYPED_DATA_JSON_HEX =
-  '0x' + Buffer.from(JSON.stringify(TYPED_DATA), 'utf8').toString('hex');
+function typedDataHex(typed: object): string {
+  return '0x' + Buffer.from(JSON.stringify(typed), 'utf8').toString('hex');
+}
+const TYPED_DATA_JSON_HEX = typedDataHex(TYPED_DATA);
 
 const DOMAIN_SEPARATOR = '0x' + 'aa'.repeat(32);
 const MESSAGE_HASH = '0x' + 'bb'.repeat(32);
@@ -159,11 +161,59 @@ describe('classifyEthPayload', () => {
     expect(classifyEthPayload(junkJson, 2).kind).toBe('invalid');
   });
 
+  it('dataType=2 typed data that names no primaryType → invalid', () => {
+    const unnamed = {
+      domain: TYPED_DATA.domain,
+      types: TYPED_DATA.types,
+      message: TYPED_DATA.message,
+    };
+    expect(classifyEthPayload(typedDataHex(unnamed), 2)).toEqual({
+      kind: 'invalid',
+      reason: 'EIP-712 typed data names no primaryType.',
+    });
+  });
+
+  it('dataType=2 with domain fields the declared EIP712Domain leaves out → invalid', () => {
+    const typed = {
+      ...TYPED_DATA,
+      types: {
+        ...TYPED_DATA.types,
+        EIP712Domain: [
+          { name: 'name', type: 'string' },
+          { name: 'verifyingContract', type: 'address' },
+        ],
+      },
+    };
+    expect(classifyEthPayload(typedDataHex(typed), 2)).toEqual({
+      kind: 'invalid',
+      reason:
+        'The EIP-712 domain has fields the signature would not cover: version, chainId.',
+    });
+  });
+
+  it('dataType=2 typed data whose domain is not an object → invalid, not an empty domain', () => {
+    const typed = { ...TYPED_DATA, domain: 'x' };
+    expect(classifyEthPayload(typedDataHex(typed), 2).kind).toBe('invalid');
+  });
+
+  // Without a declared EIP712Domain, viem hashes chainId only when it is a number.
+  it('dataType=2 with a domain field viem leaves out of the type it derives → invalid', () => {
+    const typed = {
+      ...TYPED_DATA,
+      domain: { ...TYPED_DATA.domain, chainId: '1' },
+    };
+    expect(classifyEthPayload(typedDataHex(typed), 2)).toEqual({
+      kind: 'invalid',
+      reason:
+        'The EIP-712 domain has fields the signature would not cover: chainId.',
+    });
+  });
+
   it('dataType=2 with 47 junk bytes → invalid', () => {
     expect(classifyEthPayload('ee'.repeat(47), 2).kind).toBe('invalid');
   });
 
-  it('dataType=0 with a 32-byte digest → raw-digest (WC typed-data convention)', () => {
+  it('dataType=0 with a 32-byte digest → raw-digest (a QR request carrying the digest)', () => {
     expect(classifyEthPayload(DIGEST_32_HEX, 0)).toEqual({
       kind: 'raw-digest',
       digest: DIGEST_32_HEX,
@@ -402,7 +452,7 @@ describe('adversarial first-byte payloads keep v = 27 + recId', () => {
     expect(computeEthV(1, payload.kind, 1)).toBe(28);
   });
 
-  it('WC typed-data digest starting 0x02', () => {
+  it('dataType=0 digest starting 0x02', () => {
     const digest = '02' + 'ab'.repeat(31);
     const payload = classifyEthPayload(digest, 0);
     expect(payload.kind).toBe('raw-digest');
