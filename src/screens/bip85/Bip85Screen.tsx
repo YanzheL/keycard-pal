@@ -26,9 +26,6 @@ export const BIP85_INDEX_EXPLAINER =
 
 export const BIP85_INDEX_TOO_HIGH = `The highest index is ${BIP85_MAX_INDEX}.`;
 
-// Capped here, after the non-digits go: maxLength would cut a pasted 2,147,483,647 first.
-const MAX_INDEX_DIGITS = String(BIP85_MAX_INDEX).length;
-
 export default function Bip85Screen({ navigation, route }: Bip85ScreenProps) {
   const { format } = route.params;
   const insets = useSafeAreaInsets();
@@ -118,9 +115,8 @@ export default function Bip85Screen({ navigation, route }: Bip85ScreenProps) {
             <TextInput
               style={styles.input}
               value={index}
-              onChangeText={value =>
-                setIndex(value.replace(/\D/g, '').slice(0, MAX_INDEX_DIGITS))
-              }
+              // Never cut: a cut index above the highest can become a valid, different one.
+              onChangeText={value => setIndex(value.replace(/\D/g, ''))}
               keyboardType="number-pad"
               selectTextOnFocus
               placeholder={`0-${BIP85_MAX_INDEX}`}

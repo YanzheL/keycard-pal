@@ -202,10 +202,14 @@ describe('Bip85Screen', () => {
       expect(screen.getByDisplayValue('2147483647')).toBeTruthy();
     });
 
-    it('keeps at most ten digits', () => {
+    // Cutting 21474836470 to ten digits would derive at 2147483647 without a word.
+    it('refuses an index longer than the highest instead of cutting it', () => {
       renderScreen();
-      fireEvent.changeText(screen.getByDisplayValue('0'), '123456789012');
-      expect(screen.getByDisplayValue('1234567890')).toBeTruthy();
+      fireEvent.changeText(screen.getByDisplayValue('0'), '21474836470');
+      expect(screen.getByDisplayValue('21474836470')).toBeTruthy();
+      expect(screen.getByText(BIP85_INDEX_TOO_HIGH)).toBeTruthy();
+      fireEvent.press(screen.getByText('Derive'));
+      expect(mockStart).not.toHaveBeenCalled();
     });
 
     it('says why an index above the highest cannot be derived', () => {
