@@ -52,10 +52,23 @@ export function cardHasRoute(
   if (generation === null) {
     return false;
   }
-  const { first, last } = ROUTE_GENERATIONS[route];
+  const { last } = ROUTE_GENERATIONS[route];
   return (
-    !(first && isNewerGeneration(first, generation)) &&
+    !cardPredatesRoute(route, generation) &&
     !(last && isNewerGeneration(generation, last))
+  );
+}
+
+/** The card is older than the destination, so the user is sent to another card. */
+export function cardPredatesRoute(
+  route: GenerationBoundRoute,
+  generation: Generation | null,
+): boolean {
+  const { first } = ROUTE_GENERATIONS[route];
+  return (
+    generation !== null &&
+    first !== undefined &&
+    isNewerGeneration(first, generation)
   );
 }
 

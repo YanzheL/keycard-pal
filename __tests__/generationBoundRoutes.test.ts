@@ -1,5 +1,6 @@
 import {
   cardHasRoute,
+  cardPredatesRoute,
   everyCardInUseHasRoute,
   isRouteHidden,
   routeAbsence,
@@ -81,6 +82,25 @@ describe('Bip85', () => {
   it('is on a 4.0 card and not on a 3.1 card', () => {
     expect(cardHasRoute('Bip85', '4.0')).toBe(true);
     expect(cardHasRoute('Bip85', '3.1')).toBe(false);
+  });
+});
+
+// Decides whether the refused card's PIN is kept: only a card too old is swapped for another.
+describe('cardPredatesRoute', () => {
+  it('is true for a 3.1 card asked for Bip85', () => {
+    expect(cardPredatesRoute('Bip85', '3.1')).toBe(true);
+  });
+
+  it('is false for a card that has the route', () => {
+    expect(cardPredatesRoute('Bip85', '4.0')).toBe(false);
+  });
+
+  it.each(ROUTES)('is false for a 4.0 card refused %s', route => {
+    expect(cardPredatesRoute(route, '4.0')).toBe(false);
+  });
+
+  it('is false when the card is unknown', () => {
+    expect(cardPredatesRoute('Bip85', null)).toBe(false);
   });
 });
 
