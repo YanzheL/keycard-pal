@@ -4,6 +4,7 @@ import { Keyboard, Platform } from 'react-native';
 
 import Bip85Screen, {
   BIP85_INDEX_EXPLAINER,
+  BIP85_INDEX_TOO_HIGH,
 } from '../src/screens/bip85/Bip85Screen';
 import NFCBottomSheet from '../src/components/NFCBottomSheet';
 import { routeAbsence } from '../src/navigation/generationBoundRoutes';
@@ -178,7 +179,6 @@ describe('Bip85Screen', () => {
     // Any hardened index, so one used with another BIP85 tool can be derived here.
     it('takes every hardened index', () => {
       renderScreen();
-      expect(screen.getByDisplayValue('0').props.maxLength).toBe(10);
       fireEvent.changeText(screen.getByDisplayValue('0'), '2147483647');
       fireEvent.press(screen.getByText('Derive'));
       expect(mockStart).toHaveBeenCalledWith({
@@ -192,6 +192,28 @@ describe('Bip85Screen', () => {
       fireEvent.changeText(screen.getByDisplayValue('0'), index);
       fireEvent.press(screen.getByText('Derive'));
       expect(mockStart).not.toHaveBeenCalled();
+    });
+
+    // The cap applies after the non-digits go, so a pasted, grouped index stays whole.
+    it('keeps a pasted index with separators whole', () => {
+      renderScreen();
+      expect(screen.getByDisplayValue('0').props.maxLength).toBeUndefined();
+      fireEvent.changeText(screen.getByDisplayValue('0'), '2,147,483,647');
+      expect(screen.getByDisplayValue('2147483647')).toBeTruthy();
+    });
+
+    it('keeps at most ten digits', () => {
+      renderScreen();
+      fireEvent.changeText(screen.getByDisplayValue('0'), '123456789012');
+      expect(screen.getByDisplayValue('1234567890')).toBeTruthy();
+    });
+
+    it('says why an index above the highest cannot be derived', () => {
+      renderScreen();
+      expect(screen.queryByText(BIP85_INDEX_TOO_HIGH)).toBeNull();
+      fireEvent.changeText(screen.getByDisplayValue('0'), '2147483648');
+      expect(screen.getByText(BIP85_INDEX_TOO_HIGH)).toBeTruthy();
+      expect(BIP85_INDEX_TOO_HIGH).toBe('The highest index is 2147483647.');
     });
 
     it('moves the bottom action above the keyboard', () => {

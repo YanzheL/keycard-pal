@@ -24,6 +24,11 @@ export const BIP85_INDEX_EXPLAINER =
   'Each index gives a different, unrelated result. The same index always ' +
   'gives the same one, so you can derive it again later.';
 
+export const BIP85_INDEX_TOO_HIGH = `The highest index is ${BIP85_MAX_INDEX}.`;
+
+// Capped here, after the non-digits go: maxLength would cut a pasted 2,147,483,647 first.
+const MAX_INDEX_DIGITS = String(BIP85_MAX_INDEX).length;
+
 export default function Bip85Screen({ navigation, route }: Bip85ScreenProps) {
   const { format } = route.params;
   const insets = useSafeAreaInsets();
@@ -83,6 +88,8 @@ export default function Bip85Screen({ navigation, route }: Bip85ScreenProps) {
   const keyboardPadding =
     keyboardHeight + (Platform.OS === 'android' ? insets.bottom : 0) + 8;
 
+  const tooHigh = Number(index) > BIP85_MAX_INDEX;
+
   const handleDerive = useCallback(() => {
     const requested = Number(index);
     setDerivedIndex(requested);
@@ -111,13 +118,17 @@ export default function Bip85Screen({ navigation, route }: Bip85ScreenProps) {
             <TextInput
               style={styles.input}
               value={index}
-              onChangeText={value => setIndex(value.replace(/\D/g, ''))}
+              onChangeText={value =>
+                setIndex(value.replace(/\D/g, '').slice(0, MAX_INDEX_DIGITS))
+              }
               keyboardType="number-pad"
-              maxLength={String(BIP85_MAX_INDEX).length}
               selectTextOnFocus
               placeholder={`0-${BIP85_MAX_INDEX}`}
               placeholderTextColor={theme.colors.onSurfaceDisabled}
             />
+            <Text style={[styles.error, !tooHigh && styles.errorHidden]}>
+              {tooHigh ? BIP85_INDEX_TOO_HIGH : ''}
+            </Text>
           </View>
 
           <View style={styles.footer}>
@@ -125,7 +136,7 @@ export default function Bip85Screen({ navigation, route }: Bip85ScreenProps) {
               label="Derive"
               onPress={handleDerive}
               icon={Icons.nfcActivate}
-              disabled={index === '' || Number(index) > BIP85_MAX_INDEX}
+              disabled={index === '' || tooHigh}
             />
           </View>
         </View>
@@ -180,6 +191,16 @@ const styles = StyleSheet.create({
     fontSize: 16,
     paddingHorizontal: 16,
     paddingVertical: 8,
+  },
+  error: {
+    color: theme.colors.errorDark,
+    fontSize: 12,
+    height: 20,
+    lineHeight: 16,
+    paddingTop: 4,
+  },
+  errorHidden: {
+    opacity: 0,
   },
   footer: {
     paddingBottom: 16,
