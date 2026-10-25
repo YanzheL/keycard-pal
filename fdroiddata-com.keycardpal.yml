@@ -16,8 +16,9 @@ AntiFeatures:
       that are not free software. WalletConnect uses the Reown relay with a project
       ID you provide yourself, transaction simulation uses Tenderly with an API key
       you provide yourself, ENS names are looked up through a public Ethereum RPC
-      endpoint you can change, and token images are downloaded from CoinGecko, GitHub
-      and CoinMarketCap. Signing by QR code works without any of them.
+      endpoint you can change, token images are downloaded from CoinGecko, GitHub
+      and CoinMarketCap, and clear-signing descriptors are downloaded from a GitHub
+      address you can change. Signing by QR code works without any of them.
 Categories:
   - Security
   - Wallet
