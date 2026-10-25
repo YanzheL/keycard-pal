@@ -15,10 +15,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Fixed
 
 - WalletConnect typed data is signed under its declared EIP712Domain, giving the same signature as over QR
-- Typed data that names no primaryType is refused instead of signed under a guessed type
-- Typed data whose domain has a field the signature would not cover is refused
-- The typed-data review shows a field named __proto__ instead of leaving it out
-
+- Typed data that names no primaryType, or that the signature would not fully cover, is refused with the reason
 - Try again after the card refuses a PIN, PUK or pairing secret change sends the entered secret again instead of an empty one
 - Try again after a refused or interrupted key pair load sends the key pair again instead of failing
 - Cancel during a tap no longer brings the error sheet back when the command already sent to the card fails afterwards

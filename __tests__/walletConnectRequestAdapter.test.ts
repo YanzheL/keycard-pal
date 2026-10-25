@@ -152,15 +152,19 @@ describe('wcRequestToScanResult — eth_signTypedData_v4', () => {
     ).toThrow('JSON parse failed');
   });
 
-  it('throws when domain/types/message missing', () => {
+  // The classification would read a field that is not an object as empty.
+  it.each([
+    ['message is missing', { domain: {}, types: {} }],
+    ['domain is a string', { domain: 'x', types: {}, message: {} }],
+    ['types is an array', { domain: {}, types: [], message: {} }],
+    ['message is a number', { domain: {}, types: {}, message: 1 }],
+  ])('throws when %s', (_label, payload) => {
     expect(() =>
       wcRequestToScanResult(
-        makeReq('eth_signTypedData_v4', [
-          addr,
-          JSON.stringify({ domain: {}, types: {} }),
-        ]),
+        makeReq('eth_signTypedData_v4', [addr, JSON.stringify(payload)]),
+        new Map([[addr.toLowerCase(), "m/44'/60'/0'/0/0"]]),
       ),
-    ).toThrow('missing domain/types/message');
+    ).toThrow('domain, types and message must be objects');
   });
 
   // As dataType 2, a pre-hash or a bare digest would be signed without a review.

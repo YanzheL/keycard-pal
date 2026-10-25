@@ -323,7 +323,13 @@ export function parseEip712RawTypedData(
   if (!json) return null;
   try {
     const parsed = JSON.parse(json) as unknown;
-    return isJsonObject(parsed) ? toRawTypedData(parsed) : null;
+    // Hashing would read a field that is not an object as empty.
+    return isJsonObject(parsed) &&
+      isJsonObject(parsed.domain) &&
+      isJsonObject(parsed.types) &&
+      isJsonObject(parsed.message)
+      ? toRawTypedData(parsed)
+      : null;
   } catch {
     return null;
   }

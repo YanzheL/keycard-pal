@@ -521,10 +521,14 @@ describe('parseEip712RawTypedData', () => {
     expect(parseEip712RawTypedData(hex)).toBeNull();
   });
 
-  it('uses empty types when they are not an object', () => {
-    const payload = { types: 'Mail', domain: {}, message: {} };
+  it.each([
+    ['domain is a string', { types: {}, domain: 'x', message: {} }],
+    ['types is a string', { types: 'Mail', domain: {}, message: {} }],
+    ['message is an array', { types: {}, domain: {}, message: ['x'] }],
+    ['domain is missing', { types: {}, message: {} }],
+  ])('returns null when %s', (_label, payload) => {
     const hex = Buffer.from(JSON.stringify(payload), 'utf8').toString('hex');
-    expect(parseEip712RawTypedData(hex)!.types).toEqual({});
+    expect(parseEip712RawTypedData(hex)).toBeNull();
   });
 });
 

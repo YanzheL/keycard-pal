@@ -191,6 +191,11 @@ describe('classifyEthPayload', () => {
     });
   });
 
+  it('dataType=2 typed data whose domain is not an object → invalid, not an empty domain', () => {
+    const typed = { ...TYPED_DATA, domain: 'x' };
+    expect(classifyEthPayload(typedDataHex(typed), 2).kind).toBe('invalid');
+  });
+
   // Without a declared EIP712Domain, viem hashes chainId only when it is a number.
   it('dataType=2 with a domain field viem leaves out of the type it derives → invalid', () => {
     const typed = {

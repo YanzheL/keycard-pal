@@ -84,8 +84,15 @@ function handleTypedData(
   } catch {
     throw new Error('Invalid EIP-712 payload: JSON parse failed');
   }
-  if (!isObject(parsed) || !parsed.domain || !parsed.types || !parsed.message) {
-    throw new Error('Invalid EIP-712 payload: missing domain/types/message');
+  if (
+    !isObject(parsed) ||
+    !isObject(parsed.domain) ||
+    !isObject(parsed.types) ||
+    !isObject(parsed.message)
+  ) {
+    throw new Error(
+      'Invalid EIP-712 payload: domain, types and message must be objects',
+    );
   }
 
   return {
