@@ -1,4 +1,5 @@
 import React from 'react';
+import { StyleSheet } from 'react-native';
 import { act, fireEvent, render, screen } from '@testing-library/react-native';
 
 import Bip85Review, {
@@ -92,6 +93,18 @@ describe('Bip85Review', () => {
   it('shows the path, outside the blur', () => {
     renderReview('xprv', new Uint8Array(64).fill(1), 7);
     expect(screen.getByText("m/83696968'/32'/7'")).toBeTruthy();
+  });
+
+  // iOS has no font named monospace, and a password's I, l, 1, O and 0 must stay apart.
+  it('sets the secret and the path in a monospace font that iOS has', async () => {
+    renderReview('password', new Uint8Array(64));
+    await reveal();
+    const fontOf = (element: { props: { style: unknown } }) =>
+      StyleSheet.flatten(element.props.style as any).fontFamily;
+    expect(fontOf(screen.getByTestId('bip85-secret'))).toBe('ui-monospace');
+    expect(fontOf(screen.getByText("m/83696968'/707764'/21'/0'"))).toBe(
+      'ui-monospace',
+    );
   });
 
   it('leaves on Done', async () => {
