@@ -13,7 +13,7 @@ import PersonalMessagePanel from './DataTabPanel/PersonalMessagePanel';
 import TxDataPanel from './DataTabPanel/TxDataPanel';
 
 import { getChainName, getNativeCurrencySymbol } from '@/utils/chainMetadata';
-import { parseEip712Prehashed, parseEip712Summary } from '@/utils/eip712';
+import { parseEip712Summary } from '@/utils/eip712';
 import { classifyEthPayload, payloadChainId } from '@/utils/ethPayload';
 import { checksumEthAddress } from '@/utils/ethereumAddress';
 import { getTxLabel, parseTx, type DecodedCall } from '@/utils/txParser';
@@ -41,18 +41,14 @@ export default function SignRequestDetail({
   const nativeSymbol =
     chainId !== undefined ? getNativeCurrencySymbol(chainId) : 'ETH';
   // Parse the request once per request, not once per render.
-  const { eip712, eip712Prehashed, tx } = useMemo(() => {
-    // WC EIP-712 requests carry original JSON in reviewData (dataType=0 + digest in signData)
-    const eip712Source =
-      request.reviewData ?? (request.dataType === 2 ? request.signData : null);
-    const summary = eip712Source ? parseEip712Summary(eip712Source) : null;
-    return {
-      eip712: summary,
-      eip712Prehashed:
-        eip712Source && !summary ? parseEip712Prehashed(eip712Source) : null,
+  const { eip712, tx } = useMemo(
+    () => ({
+      eip712:
+        request.dataType === 2 ? parseEip712Summary(request.signData) : null,
       tx: parseTx(request.signData, request.dataType, nativeSymbol),
-    };
-  }, [request.reviewData, request.signData, request.dataType, nativeSymbol]);
+    }),
+    [request.signData, request.dataType, nativeSymbol],
+  );
   const typeLabel =
     eip712?.primaryType ?? getTxLabel(request.signData, request.dataType);
   const signer = request.address
@@ -129,13 +125,11 @@ export default function SignRequestDetail({
         <Eip712JsonPanel
           request={request}
           eip712={eip712}
+          payload={payload}
           chainId={request.chainId}
         />
-      ) : eip712Prehashed ? (
-        <Eip712PrehashedPanel
-          eip712Prehashed={eip712Prehashed}
-          request={request}
-        />
+      ) : payload.kind === 'eip712-prehashed' ? (
+        <Eip712PrehashedPanel payload={payload} request={request} />
       ) : tx ? (
         <TxDataPanel tx={tx} request={request} chainId={chainId} />
       ) : payload.kind === 'personal-message' ? (

@@ -8,7 +8,6 @@ export type EthSignRequest = {
   derivationPath: string;
   address?: string;
   origin?: string;
-  reviewData?: string; // UI-only: original EIP-712 JSON for WC requests
 };
 
 export type BtcPsbtRequest = {

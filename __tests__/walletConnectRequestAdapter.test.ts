@@ -1,3 +1,4 @@
+import { classifyEthPayload } from '../src/utils/ethPayload';
 import { wcRequestToScanResult } from '../src/utils/walletConnect/requestAdapter';
 import type { WCRequest } from '../src/providers/walletConnect/context';
 
@@ -90,15 +91,17 @@ describe('wcRequestToScanResult — eth_signTypedData_v4', () => {
     message: { contents: 'hello' },
   });
 
-  it('returns dataType=0 with 0x-prefixed digest', () => {
+  it('hands the JSON text over unchanged as dataType 2', () => {
     const result = expectEthSignResult(
       wcRequestToScanResult(
         makeReq('eth_signTypedData_v4', [addr, validPayload]),
         new Map([[addr.toLowerCase(), "m/44'/60'/0'/0/0"]]),
       ),
     );
-    expect(result.request.dataType).toBe(0);
-    expect(result.request.signData).toMatch(/^0x[0-9a-f]{64}$/);
+    expect(result.request.dataType).toBe(2);
+    expect(
+      Buffer.from(result.request.signData.slice(2), 'hex').toString('utf8'),
+    ).toBe(validPayload);
   });
 
   it('sets address and origin', () => {
@@ -110,16 +113,6 @@ describe('wcRequestToScanResult — eth_signTypedData_v4', () => {
     );
     expect(result.request.address).toBe(addr);
     expect(result.request.origin).toBe('WalletConnect');
-  });
-
-  it('includes hex-encoded reviewData', () => {
-    const result = expectEthSignResult(
-      wcRequestToScanResult(
-        makeReq('eth_signTypedData_v4', [addr, validPayload]),
-        new Map([[addr.toLowerCase(), "m/44'/60'/0'/0/0"]]),
-      ),
-    );
-    expect(result.request.reviewData).toMatch(/^0x/);
   });
 
   it('resolves derivation path from addressToPath map', () => {
@@ -159,27 +152,55 @@ describe('wcRequestToScanResult — eth_signTypedData_v4', () => {
     ).toThrow('JSON parse failed');
   });
 
-  it('throws when domain/types/message missing', () => {
+  // The classification would read a field that is not an object as empty.
+  it.each([
+    ['message is missing', { domain: {}, types: {} }],
+    ['domain is a string', { domain: 'x', types: {}, message: {} }],
+    ['types is an array', { domain: {}, types: [], message: {} }],
+    ['message is a number', { domain: {}, types: {}, message: 1 }],
+  ])('throws when %s', (_label, payload) => {
     expect(() =>
       wcRequestToScanResult(
-        makeReq('eth_signTypedData_v4', [
-          addr,
-          JSON.stringify({ domain: {}, types: {} }),
-        ]),
+        makeReq('eth_signTypedData_v4', [addr, JSON.stringify(payload)]),
+        new Map([[addr.toLowerCase(), "m/44'/60'/0'/0/0"]]),
       ),
-    ).toThrow('missing domain/types/message');
+    ).toThrow('domain, types and message must be objects');
   });
 
-  it('throws when hashing fails (invalid type reference)', () => {
+  // As dataType 2, a pre-hash or a bare digest would be signed without a review.
+  it.each([
+    ['a pre-hashed payload', `0x1901${'aa'.repeat(32)}${'bb'.repeat(32)}`],
+    ['a bare digest', `0x${'11'.repeat(32)}`],
+    ['a JSON string', JSON.stringify(`0x${'11'.repeat(32)}`)],
+    ['a JSON array', JSON.stringify([JSON.parse(validPayload)])],
+  ])('refuses %s at entry', (_label, param) => {
+    expect(() =>
+      wcRequestToScanResult(
+        makeReq('eth_signTypedData_v4', [addr, param]),
+        new Map([[addr.toLowerCase(), "m/44'/60'/0'/0/0"]]),
+      ),
+    ).toThrow('Invalid EIP-712 payload');
+  });
+
+  it('hands typed data it cannot hash to the review, which refuses it', () => {
     const bad = JSON.stringify({
       domain: {},
       types: { Foo: [{ name: 'bar', type: 'NonExistentType' }] },
       primaryType: 'Foo',
       message: { bar: 'x' },
     });
-    expect(() =>
-      wcRequestToScanResult(makeReq('eth_signTypedData_v4', [addr, bad])),
-    ).toThrow('hashing failed');
+    const result = expectEthSignResult(
+      wcRequestToScanResult(
+        makeReq('eth_signTypedData_v4', [addr, bad]),
+        new Map([[addr.toLowerCase(), "m/44'/60'/0'/0/0"]]),
+      ),
+    );
+    expect(
+      classifyEthPayload(result.request.signData, result.request.dataType),
+    ).toEqual({
+      kind: 'invalid',
+      reason: 'EIP-712 typed data could not be hashed.',
+    });
   });
 });
 

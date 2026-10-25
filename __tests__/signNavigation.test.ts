@@ -73,7 +73,7 @@ describe('buildSignKeycardParams', () => {
     ).not.toBeNull();
   });
 
-  it('returns null for a WC digest request that is not 32 bytes', () => {
+  it('returns null for a dataType 0 digest request that is not 32 bytes', () => {
     const result: ScanResult = {
       kind: 'eth-sign-request',
       request: {
@@ -85,7 +85,7 @@ describe('buildSignKeycardParams', () => {
     expect(buildSignKeycardParams(result)).toBeNull();
   });
 
-  it('returns eth params for a 32-byte WC digest request', () => {
+  it('returns eth params for a 32-byte dataType 0 digest request', () => {
     const result: ScanResult = {
       kind: 'eth-sign-request',
       request: {
