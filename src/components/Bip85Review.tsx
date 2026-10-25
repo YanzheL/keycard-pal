@@ -12,7 +12,6 @@ import { bip85Format, bip85Path, type Bip85Format } from '@/utils/bip85';
 type Props = {
   format: Bip85Format;
   index: number;
-  /** What the card returned for this format and index. */
   entropy: Uint8Array;
   onDone: () => void;
 };
@@ -30,7 +29,6 @@ const MONOSPACE = Platform.select({
   default: 'monospace',
 });
 
-/** A derived secret behind a reveal, with the path it was derived at. */
 export default function Bip85Review({ format, index, entropy, onDone }: Props) {
   const { title, layout, encode } = bip85Format(format);
   const [revealed, setRevealed] = useState(false);
@@ -125,7 +123,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     lineHeight: 22,
   },
-  // The word grid is GenerateKeyScreen's, so a derived phrase reads like a generated one.
   wordGridWrapper: {
     marginVertical: 24,
   },
